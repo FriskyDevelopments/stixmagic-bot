@@ -1,7 +1,7 @@
 """
 loaders/controller.py – Animation controller for Telegram loader messages.
 
-Usage:
+Standard usage:
     loader = get_loader_for_context("create_pack")
     caption = random.choice(loader["captions"])
     msg = await update.message.reply_text(caption)
@@ -11,8 +11,13 @@ Usage:
     try:
         result = await do_slow_work()
     finally:
-        await ctrl.stop()
+        await ctrl.stop()   # safe to call multiple times — idempotent
 
+    await msg.edit_text(final_text, ...)
+
+Cleaner alternative using the context manager:
+    async with LoaderSession(msg, loader):
+        result = await do_slow_work()
     await msg.edit_text(final_text, ...)
 
 The controller:
@@ -20,6 +25,8 @@ The controller:
     so fast operations never show animation at all.
   • edits the same Telegram message in a background asyncio Task.
   • stops cleanly on cancel or edit failure.
+  • stop() is idempotent — safe to call from multiple paths (success,
+    error, finally) without double-cancellation or race conditions.
   • is isolated per-call — no shared state between commands.
 """
 
@@ -51,6 +58,7 @@ class LoaderController:
         )
         self._config = config or DEFAULT_CONFIG
         self._task: asyncio.Task | None = None
+        self._stop_called: bool = False
 
     async def start(self) -> None:
         """Spawn the background animation task (no-op if disabled)."""
@@ -61,7 +69,16 @@ class LoaderController:
         logger.debug("[loader] started '%s'", self._loader["name"])
 
     async def stop(self) -> None:
-        """Cancel the animation task and wait for it to finish cleanly."""
+        """Cancel the animation task and wait for it to finish cleanly.
+
+        Idempotent — safe to call from multiple code paths (success block,
+        error handler, finally clause) without causing double-cancellation
+        or asyncio errors.
+        """
+        if self._stop_called:
+            return
+        self._stop_called = True
+
         if self._task and not self._task.done():
             self._task.cancel()
             try:
@@ -96,11 +113,12 @@ class LoaderController:
             except asyncio.CancelledError:
                 return
             except Exception as exc:
-                logger.debug("[loader] edit failed (%s)", exc)
-                if self._config.fallback_to_static_on_edit_failure:
-                    logger.debug("[loader] falling back to static mode")
-                    return
-                # Non-fatal edit failures are silently skipped.
+                # Telegram can reject edits for various reasons (rate limit,
+                # message deleted, "not modified", etc.).  Rather than
+                # retrying and spamming the API, disable animation for this
+                # run so the main handler always reaches its final edit.
+                logger.debug("[loader] edit failed, disabling animation (%s)", exc)
+                return
 
             frame_idx = (frame_idx + 1) % max_frames
 
@@ -108,3 +126,43 @@ class LoaderController:
                 await asyncio.sleep(self._config.frame_interval_ms / 1000)
             except asyncio.CancelledError:
                 return
+
+
+class LoaderSession:
+    """Async context manager wrapper around LoaderController.
+
+    Automatically starts and stops the loader, ensuring stop() is always
+    called even if the body raises.  Useful for keeping handler code clean.
+
+    The context manager yields itself; use `.controller` if you need to
+    access the underlying LoaderController inside the block (e.g. to call
+    custom methods), but this is rarely needed.
+
+    Example (simple):
+        msg = await update.message.reply_text(loader["captions"][0])
+        async with LoaderSession(msg, loader):
+            result = await async_convert_to_sticker(file_bytes)
+        await msg.edit_text(final_text, ...)
+
+    Example (accessing the controller):
+        async with LoaderSession(msg, loader) as session:
+            # session.controller is the LoaderController instance
+            result = await async_convert_to_sticker(file_bytes)
+    """
+
+    def __init__(
+        self,
+        message,
+        loader: dict,
+        caption: str | None = None,
+        config: LoaderConfig | None = None,
+    ):
+        self.controller = LoaderController(message, loader, caption=caption, config=config)
+        self._ctrl = self.controller  # internal alias
+
+    async def __aenter__(self) -> "LoaderSession":
+        await self._ctrl.start()
+        return self
+
+    async def __aexit__(self, *_) -> None:
+        await self._ctrl.stop()

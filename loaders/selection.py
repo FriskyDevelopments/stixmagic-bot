@@ -15,12 +15,15 @@ from .definitions import LOADERS
 # Add entries here when you want a specific loader for a new command.
 ACTION_LOADER_MAP: dict[str, str] = {
     "create_pack": "magic_wand",
-    "add_sticker": "dust",
+    "add_sticker": "sparkle_burst",
     "video_convert": "thunder",
-    "apply_effect": "stars",
+    "apply_effect": "prism",
     "apply_mask": "dust",
     "export": "stars",
-    "publish": "magic_wand",
+    "publish": "bloom",
+    "cut_ritual": "crystal_ball",
+    "sync": "orbit",
+    "download": "comet",
 }
 
 # Pre-built list for random.choice — avoids re-allocating on every call.
