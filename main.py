@@ -29,11 +29,14 @@ from infra.db import (
 )
 from domain.media import (
     apply_mask_to_image,
+    async_convert_to_sticker,
+    async_convert_video_to_sticker,
     convert_to_sticker,
     convert_video_to_sticker,
     download_file_bytes,
     extract_file_info,
 )
+from loaders import LoaderController, get_loader_for_context
 from menus import build_keyboard, get_menu_text
 
 logging.basicConfig(
@@ -180,7 +183,14 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return WAITING_STICKER
 
-    progress = await update.message.reply_text("⚗️ <i>Transmuting the vessel...</i>", parse_mode="HTML")
+    # Select loader and send initial static caption as the progress message.
+    loader = get_loader_for_context("create_pack" if media_type != "video" else "video_convert")
+    initial_caption = loader["captions"][0]
+    progress = await update.message.reply_text(initial_caption)
+
+    # Start loader animation (animates only if the op takes > 2.5 s).
+    ctrl = LoaderController(progress, loader)
+    await ctrl.start()
 
     bot_username = context.bot.username
     suffix = "".join(random.choices(string.ascii_lowercase, k=5))
@@ -189,16 +199,16 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         sticker_file = await download_file_bytes(context.bot, file_id)
         if not sticker_file:
+            await ctrl.stop()
             await progress.edit_text("⚠ Download failed. Please try again.")
             return WAITING_STICKER
 
         if media_type == "image":
-            converted = convert_to_sticker(sticker_file)
+            converted = await async_convert_to_sticker(sticker_file)
             if converted:
                 sticker_file = converted
         elif media_type == "video":
-            await progress.edit_text("⚗️ <i>Distilling the animation...</i>", parse_mode="HTML")
-            converted = convert_video_to_sticker(sticker_file)
+            converted = await async_convert_video_to_sticker(sticker_file)
             if converted:
                 sticker_file = converted
 
@@ -222,6 +232,7 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ],
         ])
 
+        await ctrl.stop()
         await progress.edit_text(
             f"⚗️ <b>Pack forged!</b>\n"
             f"{DIV}\n\n"
@@ -242,6 +253,7 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🔄 Try Again", callback_data="menu_create")],
             [InlineKeyboardButton("✦ Home", callback_data="nav:home")],
         ])
+        await ctrl.stop()
         await progress.edit_text(
             f"⚠ <b>The transmutation failed</b>\n"
             f"{DIV}\n\n"
