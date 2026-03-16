@@ -17,17 +17,15 @@ from __future__ import annotations
 import abc
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import List, Optional
 
+from pipeline._paths import RENDERS_DIR
 from pipeline.asset_model.asset import Asset
 from pipeline.motion_presets.preset import MotionPreset
 
-# Root directory where rendered outputs are written, relative to repo root.
-_DEFAULT_RENDERS_DIR = os.path.join(
-    os.path.dirname(__file__),  # pipeline/exporters/
-    "..", "..",                  # repo root
-    "renders",
-)
+# Root directory where rendered outputs are written.
+_DEFAULT_RENDERS_DIR: Path = RENDERS_DIR
 
 
 @dataclass
@@ -64,7 +62,7 @@ class BaseExporter(abc.ABC):
     format_id: str = "unknown"
 
     def __init__(self, renders_dir: Optional[str] = None) -> None:
-        self.renders_dir = os.path.realpath(renders_dir or _DEFAULT_RENDERS_DIR)
+        self.renders_dir = Path(renders_dir).resolve() if renders_dir else _DEFAULT_RENDERS_DIR
 
     @abc.abstractmethod
     def export(self, asset: Asset, preset: MotionPreset) -> ExportResult:
@@ -82,10 +80,10 @@ class BaseExporter(abc.ABC):
 
         Convention: ``renders/<format>/<asset_id>_<preset_id><suffix>.<ext>``
         """
-        subdir = os.path.join(self.renders_dir, self.format_id)
-        os.makedirs(subdir, exist_ok=True)
+        subdir = self.renders_dir / self.format_id
+        subdir.mkdir(parents=True, exist_ok=True)
         filename = f"{asset.id}_{preset.id}{suffix}.{self.format_id}"
-        return os.path.join(subdir, filename)
+        return str(subdir / filename)
 
     def _result_ok(self, path: str) -> ExportResult:
         size = os.path.getsize(path) if os.path.exists(path) else 0

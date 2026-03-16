@@ -25,8 +25,10 @@ from __future__ import annotations
 import json
 import logging
 import os
+from pathlib import Path
 from typing import Dict, List, Optional
 
+from pipeline._paths import PACKS_DIR
 from pipeline.asset_model.asset import Asset
 from pipeline.exporters.base import ExportResult
 from pipeline.exporters.gif_exporter import GifExporter
@@ -41,12 +43,8 @@ from pipeline.packager.pack import Pack
 
 logger = logging.getLogger(__name__)
 
-# Default packs directory, relative to repo root.
-_DEFAULT_PACKS_DIR = os.path.join(
-    os.path.dirname(__file__),  # pipeline/packager/
-    "..", "..",                  # repo root
-    "packs",
-)
+# Default packs directory.
+_DEFAULT_PACKS_DIR: Path = PACKS_DIR
 
 # Map from export format id → exporter class
 _EXPORTERS = {
@@ -77,7 +75,7 @@ class PackGenerator:
         packs_dir: Optional[str] = None,
     ) -> None:
         self._registry = registry
-        self._packs_dir = os.path.realpath(packs_dir or _DEFAULT_PACKS_DIR)
+        self._packs_dir = Path(packs_dir).resolve() if packs_dir else _DEFAULT_PACKS_DIR
 
     # ── Pack loading ──────────────────────────────────────────
 
@@ -87,8 +85,8 @@ class PackGenerator:
 
         Returns ``None`` if the descriptor file is missing or invalid.
         """
-        path = os.path.join(self._packs_dir, pack_id, "pack.json")
-        if not os.path.exists(path):
+        path = self._packs_dir / pack_id / "pack.json"
+        if not path.exists():
             logger.error("Pack descriptor not found: %s", path)
             return None
         try:
@@ -101,12 +99,12 @@ class PackGenerator:
 
     def list_packs(self) -> List[str]:
         """Return IDs of all packs that have a ``pack.json`` descriptor."""
-        if not os.path.isdir(self._packs_dir):
+        if not self._packs_dir.is_dir():
             return []
         return [
-            name
-            for name in os.listdir(self._packs_dir)
-            if os.path.isfile(os.path.join(self._packs_dir, name, "pack.json"))
+            p.name
+            for p in self._packs_dir.iterdir()
+            if p.is_dir() and (p / "pack.json").is_file()
         ]
 
     # ── Generation ────────────────────────────────────────────

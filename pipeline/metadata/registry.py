@@ -24,18 +24,16 @@ from __future__ import annotations
 import json
 import logging
 import os
+from pathlib import Path
 from typing import Dict, List, Optional
 
+from pipeline._paths import ASSETS_SOURCE_DIR
 from pipeline.asset_model.asset import Asset
 
 logger = logging.getLogger(__name__)
 
-# Default location of source asset JSON descriptors, relative to the repo root.
-_DEFAULT_SOURCE_DIR = os.path.join(
-    os.path.dirname(__file__),  # pipeline/metadata/
-    "..", "..",                  # repo root
-    "assets", "source",
-)
+# Default location of source asset JSON descriptors.
+_DEFAULT_SOURCE_DIR: Path = ASSETS_SOURCE_DIR
 
 
 class AssetRegistry:
@@ -55,7 +53,7 @@ class AssetRegistry:
     """
 
     def __init__(self, source_dir: Optional[str] = None) -> None:
-        self._source_dir = os.path.realpath(source_dir or _DEFAULT_SOURCE_DIR)
+        self._source_dir = Path(source_dir).resolve() if source_dir else _DEFAULT_SOURCE_DIR
         self._assets: Dict[str, Asset] = {}
         self._load()
 
@@ -63,7 +61,7 @@ class AssetRegistry:
 
     def _load(self) -> None:
         """Scan *source_dir* recursively for ``*.json`` asset descriptors."""
-        if not os.path.isdir(self._source_dir):
+        if not self._source_dir.is_dir():
             logger.warning(
                 "Asset source directory not found: %s — registry will be empty.",
                 self._source_dir,
@@ -71,19 +69,15 @@ class AssetRegistry:
             return
 
         loaded = 0
-        for root, _dirs, files in os.walk(self._source_dir):
-            for fname in files:
-                if not fname.endswith(".json"):
-                    continue
-                path = os.path.join(root, fname)
-                try:
-                    with open(path, encoding="utf-8") as fh:
-                        data = json.load(fh)
-                    asset = Asset.from_dict(data)
-                    self._assets[asset.id] = asset
-                    loaded += 1
-                except Exception as exc:
-                    logger.error("Failed to load asset from %s: %s", path, exc)
+        for path in self._source_dir.rglob("*.json"):
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    data = json.load(fh)
+                asset = Asset.from_dict(data)
+                self._assets[asset.id] = asset
+                loaded += 1
+            except Exception as exc:
+                logger.error("Failed to load asset from %s: %s", path, exc)
 
         logger.info("AssetRegistry: loaded %d asset(s) from %s", loaded, self._source_dir)
 
@@ -137,14 +131,14 @@ class AssetRegistry:
 
         Returns the absolute path of the written file.
         """
-        category_dir = os.path.join(self._source_dir, asset.category + "s")
-        os.makedirs(category_dir, exist_ok=True)
-        path = os.path.join(category_dir, f"{asset.id}.json")
+        category_dir = self._source_dir / (asset.category + "s")
+        category_dir.mkdir(parents=True, exist_ok=True)
+        path = category_dir / f"{asset.id}.json"
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(asset.to_dict(), fh, indent=2)
         self._assets[asset.id] = asset
         logger.info("Saved asset %s → %s", asset.id, path)
-        return path
+        return str(path)
 
     # ── Dunder ────────────────────────────────────────────────
 
@@ -152,4 +146,4 @@ class AssetRegistry:
         return len(self._assets)
 
     def __repr__(self) -> str:
-        return f"<AssetRegistry assets={len(self._assets)} source_dir={self._source_dir!r}>"
+        return f"<AssetRegistry assets={len(self._assets)} source_dir={str(self._source_dir)!r}>"

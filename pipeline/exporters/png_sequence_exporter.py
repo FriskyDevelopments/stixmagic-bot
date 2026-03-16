@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 
 from pipeline.asset_model.asset import Asset
 from pipeline.motion_presets.preset import MotionPreset
@@ -41,11 +42,9 @@ class PngSequenceExporter(BaseExporter):
 
     def output_path(self, asset: Asset, preset: MotionPreset, suffix: str = "") -> str:
         """Return the directory path for this sequence (not a single file)."""
-        seq_dir = os.path.join(
-            self.renders_dir, self.format_id, f"{asset.id}_{preset.id}"
-        )
-        os.makedirs(seq_dir, exist_ok=True)
-        return seq_dir
+        seq_dir = Path(self.renders_dir) / self.format_id / f"{asset.id}_{preset.id}"
+        seq_dir.mkdir(parents=True, exist_ok=True)
+        return str(seq_dir)
 
     def export(self, asset: Asset, preset: MotionPreset) -> ExportResult:
         """

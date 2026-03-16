@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 
 from pipeline.asset_model.asset import Asset
 from pipeline.motion_presets.preset import MotionPreset
@@ -46,10 +47,10 @@ class ThumbnailExporter(BaseExporter):
     format_id = "thumbnails"
 
     def output_path(self, asset: Asset, preset: MotionPreset, suffix: str = "") -> str:
-        subdir = os.path.join(self.renders_dir, self.format_id)
-        os.makedirs(subdir, exist_ok=True)
+        subdir = Path(self.renders_dir) / self.format_id
+        subdir.mkdir(parents=True, exist_ok=True)
         filename = f"{asset.id}_{preset.id}{suffix}_preview.jpg"
-        return os.path.join(subdir, filename)
+        return str(subdir / filename)
 
     def export(self, asset: Asset, preset: MotionPreset) -> ExportResult:
         """
