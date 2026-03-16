@@ -9,8 +9,14 @@ Handles:
 All functions are pure or near-pure: they receive bytes / BytesIO and
 return BytesIO (or None on failure) so they can be tested without a
 running bot and without touching the file-system beyond temp files.
+
+Async wrappers (async_convert_to_sticker, async_convert_video_to_sticker,
+async_apply_mask_to_image) offload the blocking Pillow/ffmpeg work to a
+thread-pool executor so the event loop — and any running loader animations
+— stay responsive during processing.
 """
 
+import asyncio
 import io
 import logging
 import os
@@ -211,3 +217,29 @@ def apply_mask_to_image(
 
     output.seek(0)
     return output
+
+
+# ── Async wrappers ────────────────────────────────────────────
+
+async def async_convert_to_sticker(file_bytes: io.BytesIO) -> io.BytesIO | None:
+    """Thread-pool wrapper around convert_to_sticker (non-blocking)."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, convert_to_sticker, file_bytes)
+
+
+async def async_convert_video_to_sticker(file_bytes: io.BytesIO) -> io.BytesIO | None:
+    """Thread-pool wrapper around convert_video_to_sticker (non-blocking)."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, convert_video_to_sticker, file_bytes)
+
+
+async def async_apply_mask_to_image(
+    source_bytes: io.BytesIO,
+    mask_bytes: io.BytesIO,
+    inverted: bool = False,
+) -> io.BytesIO:
+    """Thread-pool wrapper around apply_mask_to_image (non-blocking)."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None, apply_mask_to_image, source_bytes, mask_bytes, inverted
+    )
