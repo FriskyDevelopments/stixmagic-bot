@@ -8,9 +8,7 @@ Each exporter function takes:
   • (optional kwargs) – format-specific overrides
 
 All functions return the path of the created file on success, or None on
-failure.  Functions that are not yet fully implemented raise
-``NotImplementedError`` with a clear message so callers know which outputs
-are available.
+failure.
 
 Current implementation status
 ------------------------------
@@ -23,6 +21,26 @@ export_thumbnail     – IMPLEMENTED  (saves first-frame/source as PNG thumb)
 
 The ``ExportResult`` dataclass bundles all outputs from a single
 ``export_all`` run.
+
+Stable interface guarantee
+--------------------------
+``ExportResult`` is considered a **stable public interface**.  Consumers
+should interact with it via the three properties:
+
+* ``sticker_ready_outputs``  – dict of format → path for Telegram stickers
+* ``overlay_ready_outputs``  – dict of format → path for overlay compositing
+* ``preview_outputs``        – dict of format → path for preview thumbnails
+
+These properties always return a dict (possibly empty).  The individual
+nullable attributes (``gif``, ``webp``, ``webm``, ``mov``,
+``png_sequence_dir``, ``thumbnail``) are stable too and will never be
+removed, though new attributes may be added in future.
+
+Placeholder convention
+----------------------
+Unimplemented exporters MUST call ``_write_placeholder()`` and log a
+``WARNING`` via ``_log_placeholder()`` so operators can clearly identify
+which export steps require a real renderer implementation.
 """
 
 from __future__ import annotations
@@ -45,12 +63,17 @@ OVERLAY_READY_FORMATS   = {"webm", "mov"}
 PREVIEW_FORMATS         = {"thumbnail"}
 
 
-# ── Result container ──────────────────────────────────────────
+# ── Stable result container ───────────────────────────────────
 
 @dataclass
 class ExportResult:
     """
     Bundles every output path produced by a single export_all() call.
+
+    This is a **stable public interface**.  The three properties
+    ``sticker_ready_outputs``, ``overlay_ready_outputs``, and
+    ``preview_outputs`` are guaranteed to always be present and to
+    return a dict (empty when no outputs were produced for that class).
 
     Attributes
     ----------
@@ -86,6 +109,7 @@ class ExportResult:
 
     @property
     def sticker_ready_outputs(self) -> dict[str, str]:
+        """Always-present dict of format → path for Telegram-sticker-ready outputs."""
         result: dict[str, str] = {}
         if self.gif:
             result["gif"] = self.gif
@@ -97,6 +121,7 @@ class ExportResult:
 
     @property
     def overlay_ready_outputs(self) -> dict[str, str]:
+        """Always-present dict of format → path for overlay-compositor-ready outputs."""
         result: dict[str, str] = {}
         if self.webm:
             result["webm"] = self.webm
@@ -106,6 +131,7 @@ class ExportResult:
 
     @property
     def preview_outputs(self) -> dict[str, str]:
+        """Always-present dict of format → path for preview / thumbnail outputs."""
         result: dict[str, str] = {}
         if self.thumbnail:
             result["thumbnail"] = self.thumbnail
@@ -140,7 +166,7 @@ def export_gif(
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, _output_name(asset_id, preset.id, "gif"))
     _write_placeholder(out_path, f"GIF placeholder | asset={source_path} | preset={preset.id}")
-    logger.warning("export_gif: PLACEHOLDER output written to %s", out_path)
+    _log_placeholder("export_gif", out_path)
     return out_path
 
 
@@ -161,7 +187,7 @@ def export_animated_webp(
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, _output_name(asset_id, preset.id, "webp"))
     _write_placeholder(out_path, f"WEBP placeholder | asset={source_path} | preset={preset.id}")
-    logger.warning("export_animated_webp: PLACEHOLDER output written to %s", out_path)
+    _log_placeholder("export_animated_webp", out_path)
     return out_path
 
 
@@ -182,7 +208,7 @@ def export_webm(
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, _output_name(asset_id, preset.id, "webm"))
     _write_placeholder(out_path, f"WEBM placeholder | asset={source_path} | preset={preset.id}")
-    logger.warning("export_webm: PLACEHOLDER output written to %s", out_path)
+    _log_placeholder("export_webm", out_path)
     return out_path
 
 
@@ -203,7 +229,7 @@ def export_mov(
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, _output_name(asset_id, preset.id, "mov"))
     _write_placeholder(out_path, f"MOV placeholder | asset={source_path} | preset={preset.id}")
-    logger.warning("export_mov: PLACEHOLDER output written to %s", out_path)
+    _log_placeholder("export_mov", out_path)
     return out_path
 
 
@@ -232,7 +258,7 @@ def export_png_sequence(
         placeholder_file,
         f"PNG sequence placeholder | asset={source_path} | preset={preset.id} | fps={fps}",
     )
-    logger.warning("export_png_sequence: PLACEHOLDER output written to %s", seq_dir)
+    _log_placeholder("export_png_sequence", seq_dir)
     return seq_dir
 
 
@@ -360,3 +386,18 @@ def _write_placeholder(path: str, content: str) -> None:
     """Write a plain-text placeholder file (used by unimplemented exporters)."""
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(f"[PLACEHOLDER]\n{content}\n")
+
+
+def _log_placeholder(exporter_name: str, out_path: str) -> None:
+    """
+    Emit a standardised WARNING so incomplete exporters are obvious in logs.
+
+    All placeholder exporters MUST call this function so operators can
+    grep for ``PLACEHOLDER EXPORTER`` to find every unimplemented step.
+    """
+    logger.warning(
+        "PLACEHOLDER EXPORTER | %s | output=%s | "
+        "replace this stub with a real renderer implementation",
+        exporter_name,
+        out_path,
+    )

@@ -34,6 +34,10 @@ from pipeline.asset_model import Asset
 logger = logging.getLogger(__name__)
 
 
+class PackValidationError(ValueError):
+    """Raised when a pack definition references unknown assets or presets."""
+
+
 # ── PackDefinition ────────────────────────────────────────────
 
 @dataclass
@@ -140,6 +144,64 @@ class PackManifest:
         )
 
 
+# ── Validation helper ─────────────────────────────────────────
+
+def validate_pack(
+    pack: PackDefinition,
+    catalog: Any,  # pipeline.metadata.AssetCatalog
+    *,
+    strict: bool = True,
+) -> list[str]:
+    """
+    Validate that all assets and presets referenced by *pack* exist.
+
+    Parameters
+    ----------
+    pack:
+        The pack definition to validate.
+    catalog:
+        A loaded :class:`~pipeline.metadata.AssetCatalog` instance.
+    strict:
+        When True (default), raise :exc:`PackValidationError` if any
+        referenced asset or preset is missing.
+        When False, return the list of error strings without raising.
+
+    Returns
+    -------
+    list[str]
+        Empty list when valid.  Contains one error string per missing
+        asset or preset when ``strict=False``.
+
+    Raises
+    ------
+    PackValidationError
+        When ``strict=True`` and any referenced asset or preset is not found.
+    """
+    from pipeline.motion_presets import PRESET_REGISTRY
+
+    errors: list[str] = []
+
+    for asset_id in pack.included_assets:
+        if catalog.get(asset_id) is None:
+            errors.append(
+                f"Pack '{pack.pack_id}': asset '{asset_id}' not found in catalog."
+            )
+
+    for preset_id in pack.included_motion_presets:
+        if preset_id not in PRESET_REGISTRY:
+            errors.append(
+                f"Pack '{pack.pack_id}': motion preset '{preset_id}' not found in preset registry."
+            )
+
+    if errors:
+        for err in errors:
+            logger.warning(err)
+        if strict:
+            raise PackValidationError("\n".join(errors))
+
+    return errors
+
+
 # ── Build helper ──────────────────────────────────────────────
 
 def build_pack(
@@ -147,6 +209,7 @@ def build_pack(
     catalog: Any,  # pipeline.metadata.AssetCatalog
     *,
     renders_root: str = "renders",
+    strict_validation: bool = True,
 ) -> PackManifest:
     """
     Compute the expected output manifest for a pack without running exporters.
@@ -163,13 +226,25 @@ def build_pack(
         An :class:`~pipeline.metadata.AssetCatalog` instance (already loaded).
     renders_root:
         Root directory used to compute expected output paths.
+    strict_validation:
+        When True (default), raise :exc:`PackValidationError` if any
+        referenced asset or preset is not found.  When False, missing
+        references are logged as warnings and skipped.
 
     Returns
     -------
     PackManifest
         Contains one :class:`PackManifestEntry` per asset × preset combination.
+
+    Raises
+    ------
+    PackValidationError
+        When ``strict_validation=True`` and an invalid reference is found.
     """
     from pipeline.motion_presets import get_preset, BUILTIN_PRESETS
+
+    # Validate referenced assets and presets before building the manifest
+    validate_pack(pack, catalog, strict=strict_validation)
 
     # Resolve assets
     if pack.included_assets:
