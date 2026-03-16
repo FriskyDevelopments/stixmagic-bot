@@ -6,6 +6,8 @@ import asyncio
 from functools import wraps
 from flask import Flask, jsonify, request, send_from_directory
 
+import config
+
 DB_FILE = "bot.db"
 
 app = Flask(__name__, static_folder="static")
@@ -224,6 +226,7 @@ def health():
         "status": "ok",
         "service": "stixmagic",
         "version": API_VERSION,
+        "environment": config.ENVIRONMENT,
         "db": "ok" if db_ok else "error",
         "timestamp": int(time.time()),
     })
