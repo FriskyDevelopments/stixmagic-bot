@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stix Magic — Sticker Alchemy</title>
-    <meta name="description" content="Sticker alchemy workshop. Transform images into magical Telegram stickers.">
-    <meta property="og:title" content="Stix Magic — Sticker Alchemy">
-    <meta property="og:description" content="Transform images into magical stickers on Telegram.">
+    <title>STIX MΛGIC — Sticker Alchemy Lab</title>
+    <meta name="description" content="Sticker Λlchemy Lab. Transform images into magical Telegram stickers.">
+    <meta property="og:title" content="STIX MΛGIC — Sticker Alchemy Lab">
+    <meta property="og:description" content="Transform images into magical stickers on Telegram. Enter the PØRTAL.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://stixmagic.com">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -184,14 +184,54 @@
         }
 
         /* ── Footer ─────────────────────────── */
-        .footer {
-            display: block;
-            margin-top: 2.5rem; font-size: 0.68rem;
-            color: var(--muted); letter-spacing: 0.18em; text-transform: uppercase;
+        .footer-sig {
+            margin-top: 2.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid rgba(99, 102, 241, 0.15);
+            text-align: center;
+        }
+
+        .footer-brand {
+            font-size: 0.75rem;
+            color: var(--muted);
+            line-height: 1.8;
+            letter-spacing: 0.06em;
+        }
+
+        .footer-brand strong {
+            background: linear-gradient(90deg, var(--cyan), var(--indigo));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: 700;
+        }
+
+        .footer-link {
+            display: inline-block;
+            margin-top: 0.6rem;
+            font-size: 0.65rem;
+            color: var(--muted);
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
             text-decoration: none;
             transition: color 0.2s;
         }
-        .footer:hover, .footer:focus { color: var(--cyan); outline: 2px solid var(--cyan); outline-offset: 4px; }
+        .footer-link:hover, .footer-link:focus {
+            color: var(--cyan);
+            outline: 2px solid var(--cyan);
+            outline-offset: 4px;
+        }
+
+        /* ── Reveal-on-scroll ────────────────── */
+        .reveal {
+            opacity: 0;
+            transform: translateY(18px);
+            transition: opacity 0.55s ease, transform 0.55s ease;
+        }
+        .reveal.in-view {
+            opacity: 1;
+            transform: translateY(0);
+        }
     </style>
 </head>
 <body>
@@ -281,42 +321,57 @@
             </svg>
         </div>
 
-        <h1>STIX MAGIC</h1>
-        <p class="tagline">Sticker Alchemy</p>
+        <h1 aria-label="STIX MAGIC">STIX MΛGIC</h1>
+        <p class="tagline" aria-label="Sticker Alchemy Lab">Sticker Λlchemy Lab</p>
 
         <div class="divider">
+            <span class="divider-icon">△</span>
+            <span class="divider-icon" style="font-size:0.6rem;opacity:0.5">──</span>
+            <span class="divider-icon">◯</span>
+            <span class="divider-icon" style="font-size:0.6rem;opacity:0.5">──</span>
             <span class="divider-icon">✦</span>
+            <span class="divider-icon" style="font-size:0.6rem;opacity:0.5">──</span>
+            <span class="divider-icon">◯</span>
+            <span class="divider-icon" style="font-size:0.6rem;opacity:0.5">──</span>
+            <span class="divider-icon">△</span>
         </div>
 
         <div class="features">
-            <div class="feature">
-                <div class="feature-icon">🟣</div>
+            <div class="feature reveal">
+                <div class="feature-icon">△</div>
                 <div class="feature-text">
-                    <h3>Create a Pack</h3>
-                    <p>Give your pack a name, send any photo or video — it's live on Telegram instantly.</p>
+                    <h3>Transmute Λ Pack</h3>
+                    <p>Name your alchemical vessel, send any photo or video — your sticker pack materialises on Telegram instantly.</p>
                 </div>
             </div>
-            <div class="feature">
-                <div class="feature-icon">🪄</div>
+            <div class="feature reveal">
+                <div class="feature-icon">✦</div>
                 <div class="feature-text">
                     <h3>Magic Cut</h3>
-                    <p>Send a photo + a black‑and‑white mask. The wizard cuts out the subject cleanly.</p>
+                    <p>Send an image and a black‑and‑white mask. The Alchemy Wizard extracts the subject with surgical precision.</p>
                 </div>
             </div>
-            <div class="feature">
-                <div class="feature-icon">📦</div>
+            <div class="feature reveal">
+                <div class="feature-icon">◯</div>
                 <div class="feature-text">
                     <h3>Collect &amp; Share</h3>
-                    <p>All your packs in one place. Add stickers, share links, or delete anytime.</p>
+                    <p>All your creations in one portal. Add stickers, share packs, or dissolve them — on your terms.</p>
                 </div>
             </div>
         </div>
 
-        <a href="https://t.me/stixmagicbot" class="cta">
-            ✨ Open in Telegram
+        <a href="https://t.me/stixmagicbot" class="cta" aria-label="Enter the Portal — Open in Telegram">
+            ✦ Enter the PØRTAL
         </a>
 
-        <a href="https://stixmagic.com" class="footer">stixmagic.com</a>
+        <footer class="footer-sig reveal">
+            <p class="footer-brand">
+                🐾 Forged with a Frisky Paw and a daring heart.<br>
+                Bringing the magic of <strong>STIX MΛGIC</strong> to life ✨<br>
+                <span style="opacity:0.6">— FriskyDevelopments</span>
+            </p>
+            <a href="https://stixmagic.com" class="footer-link">stixmagic.com</a>
+        </footer>
     </div>
 
     <script>
@@ -335,6 +390,21 @@
                 '--delay:' + (Math.random() * 6) + 's'
             ].join(';');
             container.appendChild(s);
+        }
+
+        // Reveal-on-scroll
+        if ('IntersectionObserver' in window) {
+            var obs = new IntersectionObserver(function (entries) {
+                entries.forEach(function (e) {
+                    if (e.isIntersecting) {
+                        e.target.classList.add('in-view');
+                        obs.unobserve(e.target);
+                    }
+                });
+            }, { threshold: 0.15 });
+            document.querySelectorAll('.reveal').forEach(function (el) { obs.observe(el); });
+        } else {
+            document.querySelectorAll('.reveal').forEach(function (el) { el.classList.add('in-view'); });
         }
     }());
     </script>
