@@ -17,6 +17,7 @@ from telegram.ext import (
     ConversationHandler, MessageHandler, filters,
 )
 
+import config
 from infra.db import (
     add_pack as add_pack_to_db,
     delete_pack as delete_pack_from_db,
@@ -37,10 +38,12 @@ from domain.media import (
 from menus import build_keyboard, get_menu_text
 
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=config.LOG_LEVEL,
 )
 logger = logging.getLogger(__name__)
 
+config.validate_config()
 init_db()
 
 async def validate_and_sync_packs(bot, user_id):
@@ -110,8 +113,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     first_name = user.first_name or "there"
 
+    dev_notice = ""
+    if config.is_feature_enabled("dev_banner"):
+        dev_notice = "🔬 <i>[DEV] You are on the development bot.</i>\n\n"
+
     if is_new_user(user.id):
         welcome = (
+            f"{dev_notice}"
             f"⚗️ <b>The laboratory opens, {first_name}.</b>\n"
             f"{DIV}\n\n"
             "You have entered the sticker alchemy lab.\n\n"
@@ -184,7 +192,7 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     bot_username = context.bot.username
     suffix = "".join(random.choices(string.ascii_lowercase, k=5))
-    pack_name = f"stix_{user.id}_{suffix}_by_{bot_username}"
+    pack_name = f"{config.PACK_NAME_PREFIX}stix_{user.id}_{suffix}_by_{bot_username}"
 
     try:
         sticker_file = await download_file_bytes(context.bot, file_id)
@@ -668,6 +676,31 @@ async def show_about(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
 
 
+async def show_env(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin-only command: show current environment, active feature flags, and pack prefix."""
+    user = update.effective_user
+
+    if config.ADMIN_USER_IDS and user.id not in config.ADMIN_USER_IDS:
+        await update.message.reply_text("⚠ This command is restricted to admins.")
+        return
+
+    active_flags = [name for name, enabled in config.FEATURES.items() if enabled]
+    flags_text = "\n".join(f"  ✓ {f}" for f in active_flags) if active_flags else "  <i>none</i>"
+    inactive_flags = [name for name, enabled in config.FEATURES.items() if not enabled]
+    inactive_text = "\n".join(f"  ✗ {f}" for f in inactive_flags) if inactive_flags else "  <i>none</i>"
+
+    text = (
+        f"🔬 <b>ENVIRONMENT STATUS</b>\n"
+        f"{DIV}\n\n"
+        f"<b>Environment:</b> <code>{config.ENVIRONMENT}</code>\n"
+        f"<b>Pack prefix:</b> <code>{config.PACK_NAME_PREFIX or '(none)'}</code>\n\n"
+        f"<b>Active feature flags:</b>\n{flags_text}\n\n"
+        f"<b>Inactive feature flags:</b>\n{inactive_text}"
+    )
+
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=home_keyboard())
+
+
 async def manage_stickers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
 
@@ -922,17 +955,8 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── MAIN ─────────────────────────────────────────────────────
 
 def main():
-    raw_token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    if not raw_token:
-        logger.error("No TELEGRAM_BOT_TOKEN set. Add it in Secrets.")
-        return
-
-    token_match = re.search(r'\d+:[A-Za-z0-9_-]+', raw_token)
-    if not token_match:
-        logger.error("Invalid token format in TELEGRAM_BOT_TOKEN.")
-        return
-
-    token = token_match.group(0)
+    # Token and config are already validated at module load via config.validate_config().
+    token = config.BOT_TOKEN
 
     from menus import MINIAPP_URL
 
@@ -953,6 +977,7 @@ def main():
     application.add_handler(CommandHandler("manage", manage_stickers))
     application.add_handler(CommandHandler("help", show_help))
     application.add_handler(CommandHandler("about", show_about))
+    application.add_handler(CommandHandler("env", show_env))
 
     create_conv = ConversationHandler(
         entry_points=[CommandHandler("create", create_start), CallbackQueryHandler(create_start, pattern="^menu_create$")],
@@ -1009,7 +1034,7 @@ def main():
     web_thread.start()
     logger.info("API + landing page serving on port 5000")
 
-    logger.info("Stix Magic bot is running...")
+    logger.info("Stix Magic bot is running... (env=%s)", config.ENVIRONMENT)
     application.run_polling()
 
 if __name__ == "__main__":
