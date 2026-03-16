@@ -1,0 +1,11 @@
+{
+  "pack_id": "dj_pack",
+  "title": "MagicStix DJ Pack",
+  "theme": "dj",
+  "description": "DJ-themed animated icons — turntables, waveforms, EQ bars, headphones, and vinyl — with bounce, pulse, and laser sweep effects.",
+  "included_assets": [],
+  "included_motion_presets": ["bounce", "pulse", "laser_sweep"],
+  "export_formats": ["gif", "webp", "webm", "thumbnails"],
+  "target_platforms": ["telegram", "overlay", "virtual_camera"],
+  "use_cases": ["sticker", "dj_stream_overlay", "event_reactions"]
+}

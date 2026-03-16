@@ -1,0 +1,11 @@
+{
+  "pack_id": "overlay_starter",
+  "title": "MagicStix Overlay Starter Pack",
+  "theme": "abstract",
+  "description": "A curated selection of overlay-safe animated elements — frames, particles, signal indicators, and abstract shapes — exported as WebM and MOV with alpha channels for use in OBS and virtual camera setups.",
+  "included_assets": [],
+  "included_motion_presets": ["pulse", "particle_burst", "glow", "laser_sweep"],
+  "export_formats": ["webm", "mov", "png_sequences", "thumbnails"],
+  "target_platforms": ["overlay", "virtual_camera", "obs"],
+  "use_cases": ["stream_overlay", "virtual_camera_layer", "compositor_source"]
+}

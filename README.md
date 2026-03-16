@@ -1,6 +1,9 @@
-# 🪄 Stix Magic Bot
+# 🪄 Stix Magic — Visual Asset Platform
 
-  > **Telegram sticker alchemy bot** — create, cut, and manage sticker packs with ease.
+  > **Telegram sticker alchemy bot + multi-format visual asset pipeline.**
+  >
+  > Create animated stickers, letters, symbols, and overlays — one base asset,
+  > many outputs.
 
   **Bot:** [@stixmagicbot](https://t.me/stixmagicbot) &nbsp;|&nbsp; **Website:** [stixmagic.com](https://stixmagic.com)
 
@@ -9,6 +12,8 @@
   ## What It Does
 
   Stix Magic lets you build and manage Telegram sticker packs without leaving the chat. Send any image or short video and it becomes a sticker instantly. The `/magic` command uses a black-and-white mask photo to cut a subject cleanly out of any background.
+
+  Beyond stickers, the **MagicStix visual asset pipeline** transforms any base asset (letter, symbol, emoji, signal icon) into multiple export formats — GIF, animated WebP, WebM with alpha, MOV with alpha, PNG sequences — using a library of reusable motion presets (pulse, glow, glitch, sparkle, …).
 
   ---
 
@@ -103,15 +108,85 @@
 
   ```
   stixmagic-bot/
-  ├── main.py           # Bot logic, conversation handlers, sticker processing
-  ├── menus.py          # Inline menu definitions (color-coded groups, keyboard builder)
-  ├── api.py            # Flask REST API with auth, CORS, pagination
+  ├── main.py                  # Bot orchestration + conversation handlers
+  ├── menus.py                 # Inline menu system (MENU_STRUCTURE)
+  ├── api.py                   # Flask REST API
+  ├── domain/
+  │   └── media.py             # Image/video processing (Pillow, ffmpeg)
+  ├── infra/
+  │   └── db.py                # SQLite persistence layer
+  │
+  ├── pipeline/                # Visual asset pipeline
+  │   ├── asset_model/         # Asset dataclass + category/theme/format constants
+  │   ├── metadata/            # JSON-backed AssetRegistry
+  │   ├── motion_presets/      # MotionPreset + 10 built-in presets
+  │   ├── exporters/           # GIF / WebP / WebM / MOV / PNG / thumbnail exporters
+  │   └── packager/            # Pack dataclass + PackGenerator
+  │
+  ├── assets/                  # Source asset library
+  │   ├── source/
+  │   │   ├── letters/
+  │   │   ├── numbers/
+  │   │   ├── emojis/
+  │   │   ├── symbols/
+  │   │   ├── signals/
+  │   │   ├── frames/
+  │   │   └── particles/
+  │   ├── processed/
+  │   └── previews/
+  │
+  ├── renders/                 # Pipeline output files
+  │   ├── gif/
+  │   ├── webp/
+  │   ├── webm/
+  │   ├── mov/
+  │   ├── png_sequences/
+  │   └── thumbnails/
+  │
+  ├── packs/                   # Product pack descriptors (pack.json)
+  │   ├── motion_alphabet/
+  │   ├── neon_signals/
+  │   ├── dj_pack/
+  │   ├── cloud_pack/
+  │   └── overlay_starter/
+  │
+  ├── integrations/            # Future integration scaffolding
+  │   ├── extension/           # Browser / Nebulosa extension
+  │   ├── overlay_engine/      # OBS-style lightweight compositor
+  │   └── virtual_camera/      # Virtual camera output
+  │
+  ├── docs/                    # Architecture documentation
+  │   ├── architecture.md
+  │   ├── pipeline.md
+  │   ├── asset_schema.md
+  │   ├── motion_system.md
+  │   ├── export_formats.md
+  │   ├── pack_generation.md
+  │   └── future_integrations.md
+  │
   ├── static/
-  │   ├── index.html    # Landing page (stixmagic.com)
-  │   └── api.html      # Interactive API documentation
-  ├── requirements.txt  # Python dependencies
-  └── pyproject.toml    # Project metadata
+  │   ├── index.html           # Landing page (stixmagic.com)
+  │   └── api.html             # Interactive API documentation
+  ├── requirements.txt
+  └── pyproject.toml
   ```
+
+  ---
+
+  ## Pipeline: One Asset → Many Outputs
+
+  ```
+  base asset  +  motion preset  →  multiple output formats
+  ─────────────────────────────────────────────────────────
+  letter_a_neon  +  pulse  →  letter_a_neon_pulse.gif
+                           →  letter_a_neon_pulse.webp
+                           →  letter_a_neon_pulse.webm
+                           →  letter_a_neon_pulse.mov
+                           →  renders/png_sequences/letter_a_neon_pulse/
+                           →  letter_a_neon_pulse_preview.jpg
+  ```
+
+  See [`docs/pipeline.md`](docs/pipeline.md) for the full walkthrough.
 
   ---
 
