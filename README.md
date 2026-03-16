@@ -103,14 +103,96 @@
 
   ```
   stixmagic-bot/
-  ├── main.py           # Bot logic, conversation handlers, sticker processing
-  ├── menus.py          # Inline menu definitions (color-coded groups, keyboard builder)
-  ├── api.py            # Flask REST API with auth, CORS, pagination
-  ├── static/
-  │   ├── index.html    # Landing page (stixmagic.com)
-  │   └── api.html      # Interactive API documentation
-  ├── requirements.txt  # Python dependencies
-  └── pyproject.toml    # Project metadata
+  ├── main.py              ← Bot entry-point (Layer 1 – Bot)
+  ├── api.py               ← Flask REST API + web UI
+  ├── menus.py             ← Inline keyboard registry
+  ├── domain/              ← Bot media processing (Pillow, ffmpeg)
+  ├── infra/               ← SQLite persistence layer
+  ├── static/              ← Landing page + Mini App HTML
+  │
+  ├── pipeline/            ← Visual asset pipeline (Layers 2–5)
+  │   ├── asset_model/     ← Asset dataclass, category/theme enums
+  │   ├── metadata/        ← AssetCatalog (JSON I/O, assets/catalog.json)
+  │   ├── motion_presets/  ← 10 built-in MotionPreset definitions
+  │   ├── exporters/       ← GIF / WebP / WebM / MOV / PNG / thumbnail
+  │   └── packager/        ← PackDefinition + build_pack()
+  │
+  ├── assets/              ← Raw and processed asset files
+  │   ├── source/          ← Category sub-directories (letters, numbers, …)
+  │   ├── processed/       ← Normalised base assets
+  │   └── previews/        ← Static preview images
+  │
+  ├── renders/             ← Export pipeline outputs
+  │   ├── gif/
+  │   ├── webp/
+  │   ├── webm/
+  │   ├── mov/
+  │   ├── png_sequences/
+  │   └── thumbnails/
+  │
+  ├── packs/               ← Per-pack JSON metadata
+  │   ├── motion_alphabet/ ← MagicStix Motion Alphabet
+  │   ├── neon_signals/    ← MagicStix Neon Signals
+  │   ├── dj_pack/         ← MagicStix DJ Pack
+  │   ├── cloud_pack/      ← MagicStix Cloud Pack
+  │   └── overlay_starter/ ← MagicStix Overlay Starter Pack
+  │
+  ├── integrations/        ← Future integration scaffolding
+  │   ├── extension/       ← Browser / Nebulosa extension (future)
+  │   ├── overlay_engine/  ← OBS-style compositor (future)
+  │   └── virtual_camera/  ← Virtual camera output (future)
+  │
+  ├── docs/                ← Architecture and developer guides
+  │   ├── architecture.md
+  │   ├── pipeline.md
+  │   ├── asset_schema.md
+  │   ├── motion_system.md
+  │   ├── export_formats.md
+  │   ├── pack_generation.md
+  │   └── future_integrations.md
+  │
+  ├── requirements.txt     ← Python dependencies
+  └── pyproject.toml       ← Project metadata
+  ```
+
+  See [`docs/architecture.md`](docs/architecture.md) for the full five-layer architecture overview.
+
+  ---
+
+  ## Visual Asset Pipeline
+
+  The MagicStix pipeline transforms bot-generated base assets into multiple
+  export formats via reusable motion presets, then groups outputs into themed
+  product packs.
+
+  ```
+  Base asset (PNG/WebP)
+        │
+        ▼  pipeline/motion_presets/
+  Motion preset (pulse, glow, sparkle, …)
+        │
+        ▼  pipeline/exporters/
+  Multiple outputs:
+    letter_A_pulse.gif
+    letter_A_pulse.webp
+    letter_A_pulse.webm
+    letter_A_pulse_thumb.png
+        │
+        ▼  pipeline/packager/
+  Pack:  MagicStix Motion Alphabet
+  ```
+
+  **Quick start:**
+
+  ```python
+  from pipeline.metadata import AssetCatalog
+  from pipeline.motion_presets import get_preset
+  from pipeline.exporters import export_all
+
+  catalog = AssetCatalog(auto_load=True)
+  asset   = catalog.get("letter_A")
+  result  = export_all(asset.id, asset.source_path, get_preset("pulse"))
+  print(result.sticker_ready_outputs)
   ```
 
   ---

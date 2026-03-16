@@ -1,0 +1,15 @@
+{
+  "pack_id": "motion_alphabet",
+  "title": "MagicStix Motion Alphabet",
+  "theme": "neon",
+  "included_assets": [],
+  "included_motion_presets": ["pulse", "glow", "wobble", "bounce"],
+  "export_formats": ["gif", "webp", "webm", "thumbnail"],
+  "target_platforms": ["telegram", "browser_extension"],
+  "use_cases": [
+    "animated letter stickers for Telegram",
+    "alphabet overlays for virtual camera",
+    "browser extension chat reactions"
+  ],
+  "notes": "All 26 letters (A-Z) and 10 digits (0-9) paired with motion presets."
+}

@@ -1,0 +1,15 @@
+{
+  "pack_id": "neon_signals",
+  "title": "MagicStix Neon Signals",
+  "theme": "neon",
+  "included_assets": [],
+  "included_motion_presets": ["glow", "laser_sweep", "signal_flash"],
+  "export_formats": ["gif", "webp", "webm", "mov", "thumbnail"],
+  "target_platforms": ["telegram", "obs", "virtual_camera"],
+  "use_cases": [
+    "neon signal overlays for live streams",
+    "DJ booth sticker packs",
+    "moderation signal indicators"
+  ],
+  "notes": "Neon-themed signal icons and symbols with glowing motion presets."
+}
