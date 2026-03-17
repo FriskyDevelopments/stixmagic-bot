@@ -7,6 +7,9 @@ import re
 import string
 import threading
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from telegram import (
     InputSticker, InlineKeyboardButton, InlineKeyboardMarkup,
     MenuButtonWebApp, Update, WebAppInfo,

@@ -135,11 +135,62 @@
 
   ## Environment Variables
 
-  | Variable | Description |
+  | Variable | Required | Description |
+  |---|---|---|
+  | `TELEGRAM_BOT_TOKEN` | ✅ | Bot token from [@BotFather](https://t.me/BotFather) |
+  | `STIXMAGIC_API_KEY` | ✅ | Secret key for authenticating REST API requests |
+  | `SESSION_SECRET` | Recommended | Flask session secret (random string) |
+  | `MINIAPP_URL` | Optional | URL of the Telegram Mini App |
+
+  ---
+
+  ## Setup & Deployment
+
+  ### Local Development
+
+  1. **Clone the repository** and install dependencies:
+     ```bash
+     git clone https://github.com/FriskyDevelopments/stixmagic-bot.git
+     cd stixmagic-bot
+     pip install -r requirements.txt
+     ```
+
+  2. **Create a `.env` file** from the template:
+     ```bash
+     cp .env.example .env
+     ```
+     Then fill in your values in `.env`. The file is git-ignored and will never be committed.
+
+  3. **Run the bot:**
+     ```bash
+     python main.py
+     ```
+     The Flask API and the bot polling loop start together.
+
+  ### Automated Deployment (GitHub Actions)
+
+  The repository includes a GitHub Actions workflow (`.github/workflows/deploy.yml`) that
+  triggers automatically on every push to `main`. It:
+  - Sets up Python 3.11 and installs all dependencies (including `ffmpeg`)
+  - Validates the `TELEGRAM_BOT_TOKEN` format
+  - Launches `main.py`
+
+  **Required GitHub Secrets** — add these under *Settings → Secrets → Actions*:
+
+  | Secret | Description |
   |---|---|
-  | `TELEGRAM_BOT_TOKEN` | Your bot token from @BotFather |
-  | `STIXMAGIC_API_KEY` | Auto-generated key for the REST API |
+  | `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather |
+  | `STIXMAGIC_API_KEY` | API authentication key |
   | `SESSION_SECRET` | Flask session secret |
+  | `MINIAPP_URL` | (Optional) Mini App URL |
+
+  ### Hosting on Replit
+
+  1. Import the repo via *Create Repl → Import from GitHub*.
+  2. Open the **Secrets** tab (🔒) and add the environment variables listed above.
+  3. Click **Run** — the bot and API start automatically.
+  4. To keep the bot alive on a free Replit plan, use [UptimeRobot](https://uptimerobot.com/)
+     to ping your Repl URL every 5 minutes, or enable *Always On* in your Replit settings.
 
   ---
 
