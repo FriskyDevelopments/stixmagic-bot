@@ -38,6 +38,33 @@ All endpoints except `/` and `/api/health` require API key auth via `X-API-Key` 
 ## Environment Variables
 - `TELEGRAM_BOT_TOKEN`: Bot token (supports raw token or full BotFather message)
 - `STIXMAGIC_API_KEY`: API key for authenticating web API requests
+- `SESSION_SECRET`: Flask session secret (optional but recommended in production)
+- `MINIAPP_URL`: URL of the Telegram Mini App (optional)
+
+## Running on Replit
+
+1. **Import the repository** — In Replit, click *Create Repl* → *Import from GitHub* and paste the repository URL.
+
+2. **Set Secrets** — Open the **Secrets** tab (🔒 icon in the left sidebar) and add the following keys:
+   - `TELEGRAM_BOT_TOKEN` — your bot token from [@BotFather](https://t.me/BotFather)
+   - `STIXMAGIC_API_KEY` — a secure random string used to authenticate API requests
+   - `SESSION_SECRET` — a secure random string for Flask session signing
+   - `MINIAPP_URL` — (optional) the URL of your deployed Mini App
+
+3. **Install dependencies** — Open the Shell tab and run:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Start the bot** — Click the **Run** button or execute in the Shell:
+   ```bash
+   python main.py
+   ```
+   The Flask API starts automatically on port 5000 in a background thread.
+
+5. **Keep the bot alive** — By default, Replit pauses free projects after inactivity.
+   Use [UptimeRobot](https://uptimerobot.com/) to ping your Repl's web URL every 5 minutes,
+   or upgrade to a Replit plan that includes *Always On*.
 
 ## DB Tables
 - **packs**: id, user_id, name, title
