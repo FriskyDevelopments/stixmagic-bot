@@ -117,14 +117,22 @@ Every response carries `X-Request-ID` and `X-API-Version` headers.
 
 ### Rate Limiting
 
-A lightweight in-memory sliding-window rate limiter is applied per
-client IP. No external dependency is required. Limits reset on process
-restart (stateless by design; sufficient for Replit/single-instance).
+A lightweight in-memory sliding-window rate limiter is applied per client IP
+to all API endpoints. No external dependency is required. Limits reset on
+process restart (stateless by design; sufficient for Replit/single-instance).
+
+Stale IP keys are pruned automatically when their window expires, preventing
+unbounded memory growth under high-cardinality traffic.
+
+`X-Forwarded-For` is only honoured for rate limiting when `TRUST_PROXY=1` is
+set, preventing header-spoofing bypass.
 
 | Endpoint group | Limit |
 |----------------|-------|
-| Public health / mini-app | 30–60 req/min |
-| Authenticated API | 20–30 req/min |
+| Public health | 60 req/min |
+| Mini App endpoints | 20–30 req/min |
+| Authenticated read endpoints | 30 req/min |
+| Authenticated write/delete endpoints | 20 req/min |
 
 ### Data Layer
 

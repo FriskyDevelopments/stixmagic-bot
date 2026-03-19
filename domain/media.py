@@ -114,7 +114,7 @@ def convert_to_sticker(file_bytes: io.BytesIO) -> io.BytesIO | None:
 
 async def async_convert_to_sticker(file_bytes: io.BytesIO) -> io.BytesIO | None:
     """Async wrapper: runs convert_to_sticker in a thread-pool executor."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, convert_to_sticker, file_bytes)
 
 
@@ -193,7 +193,7 @@ async def async_convert_video_to_sticker(file_bytes: io.BytesIO) -> io.BytesIO |
     This prevents the synchronous ffmpeg subprocess call from blocking the
     asyncio event loop and delaying other bot updates.
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, convert_video_to_sticker, file_bytes)
 
 
@@ -245,7 +245,7 @@ async def async_apply_mask_to_image(
     inverted: bool = False,
 ) -> io.BytesIO:
     """Async wrapper: runs apply_mask_to_image in a thread-pool executor."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, apply_mask_to_image, source_bytes, mask_bytes, inverted)
 
 

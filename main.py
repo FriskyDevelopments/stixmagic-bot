@@ -1,3 +1,4 @@
+import asyncio
 import html
 import io
 import logging
@@ -41,6 +42,15 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+# ── Admin access control ──────────────────────────────────────
+# Comma-separated Telegram user IDs allowed to use /status.
+# Example: ADMIN_USER_IDS=123456789,987654321
+# Leave empty to make /status available to all users.
+_raw_admin_ids = os.environ.get("ADMIN_USER_IDS", "").strip()
+ADMIN_USER_IDS: frozenset[int] = frozenset(
+    int(x.strip()) for x in _raw_admin_ids.split(",") if x.strip().isdigit()
+)
 
 init_db()
 
@@ -213,7 +223,7 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         add_pack_to_db(user.id, pack_name, title)
-        log_event(user.id, "pack_created", pack_name)
+        asyncio.get_running_loop().run_in_executor(None, log_event, user.id, "pack_created", pack_name)
 
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("✦ Inscribe More Stickers", callback_data=f"addto_{pack_name}")],
@@ -381,7 +391,7 @@ async def addsticker_receive(update: Update, context: ContextTypes.DEFAULT_TYPE)
             name=pack_name,
             sticker=input_sticker
         )
-        log_event(user.id, "sticker_added", pack_name)
+        asyncio.get_running_loop().run_in_executor(None, log_event, user.id, "sticker_added", pack_name)
 
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("✦ Bind Another", callback_data=f"addto_{pack_name}")],
@@ -900,11 +910,14 @@ async def _sync_process(update: Update, context: ContextTypes.DEFAULT_TYPE, pack
 
 # ── CALLBACK ROUTER ──────────────────────────────────────────
 
-async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    data = query.data
+# Built once at module scope after all handler functions are defined —
+# avoids reconstructing the dict on every callback invocation.
+_MENU_DISPATCH: dict = {}
 
-    _dispatch = {
+
+def _build_dispatch() -> dict:
+    """Populate _MENU_DISPATCH after all handler functions exist."""
+    return {
         "menu_manage": manage_stickers,
         "menu_help_detail": show_help,
         "menu_packs": show_packs,
@@ -913,8 +926,13 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "toggle_mask": toggle_mask,
     }
 
-    if data in _dispatch:
-        await _dispatch[data](update, context)
+
+async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    data = query.data
+
+    if data in _MENU_DISPATCH:
+        await _MENU_DISPATCH[data](update, context)
     elif data.startswith("del_"):
         await delete_pack_callback(update, context)
     elif data.startswith("delconfirm_"):
@@ -924,23 +942,35 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── STATUS COMMAND ────────────────────────────────────────────
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin-only /status command: show basic platform health metrics."""
+    """/status command: show platform health metrics.
+
+    Restricted to ADMIN_USER_IDS when that env var is set; otherwise public.
+    Synchronous DB work is offloaded to a thread to avoid blocking the event loop.
+    """
     import time
-    from infra.db import get_event_counts
-    from infra.db import db_conn
+    from infra.db import get_event_counts, db_conn
 
-    with db_conn() as conn:
-        users = conn.execute("SELECT COUNT(DISTINCT user_id) FROM packs").fetchone()[0]
-        packs = conn.execute("SELECT COUNT(*) FROM packs").fetchone()[0]
+    user = update.effective_user
+    if ADMIN_USER_IDS and user.id not in ADMIN_USER_IDS:
+        await update.message.reply_text("⚠ You don't have permission to use this command.")
+        return
 
-    events = get_event_counts(10)
+    def _fetch_stats():
+        with db_conn() as conn:
+            users = conn.execute("SELECT COUNT(DISTINCT user_id) FROM packs").fetchone()[0]
+            total_packs = conn.execute("SELECT COUNT(*) FROM packs").fetchone()[0]
+        events = get_event_counts(10)
+        return users, total_packs, events
+
+    loop = asyncio.get_running_loop()
+    users, total_packs, events = await loop.run_in_executor(None, _fetch_stats)
+
     event_lines = "\n".join(f"  {e['event']}: {e['count']}" for e in events) or "  (none)"
-
     text = (
         f"⚙ <b>PLATFORM STATUS</b>\n"
         f"{DIV}\n\n"
         f"<b>Users with packs:</b> {users}\n"
-        f"<b>Total packs:</b> {packs}\n\n"
+        f"<b>Total packs:</b> {total_packs}\n\n"
         f"<b>Top events:</b>\n{event_lines}\n\n"
         f"<i>UTC {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}</i>"
     )
@@ -950,14 +980,26 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── GLOBAL ERROR HANDLER ──────────────────────────────────────
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Log all unhandled exceptions raised inside bot handlers."""
-    logger.error("Unhandled exception in update %s", update, exc_info=context.error)
+    """Log unhandled exceptions with minimal context (not the full Update payload)."""
+    update_id = getattr(update, "update_id", "?")
+    user_id = None
+    if hasattr(update, "effective_user") and update.effective_user:
+        user_id = update.effective_user.id
+    logger.error(
+        "Unhandled exception update_id=%s user_id=%s",
+        update_id, user_id,
+        exc_info=context.error,
+    )
 
 
 # ── MAIN ─────────────────────────────────────────────────────
 
 
 def main():
+    # Populate the module-level callback dispatch table now that all handler
+    # functions are fully defined.
+    _MENU_DISPATCH.update(_build_dispatch())
+
     raw_token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not raw_token:
         logger.error("No TELEGRAM_BOT_TOKEN set. Add it in Secrets.")

@@ -18,11 +18,17 @@ logger = logging.getLogger(__name__)
 @contextmanager
 def db_conn():
     """Context manager that yields a connected sqlite3 connection and
-    guarantees it is closed on exit, even if an exception is raised."""
-    conn = sqlite3.connect(DB_FILE)
+    guarantees it is closed on exit, even if an exception is raised.
+
+    A 5-second connection timeout and PRAGMA busy_timeout prevent transient
+    "database is locked" errors under concurrent bot + API thread writes.
+    """
+    conn = sqlite3.connect(DB_FILE, timeout=5.0)
     conn.row_factory = sqlite3.Row
-    # Enable WAL mode for better concurrent read/write performance
+    # WAL mode for better concurrent read/write performance
     conn.execute("PRAGMA journal_mode=WAL")
+    # Let SQLite retry for up to 5 000 ms before raising a lock error
+    conn.execute("PRAGMA busy_timeout=5000")
     try:
         yield conn
     finally:
@@ -52,11 +58,21 @@ def init_db() -> None:
             )
             """
         )
-        # Add created_at to existing packs table if it was created before this migration
+        # Zero-downtime migration: add created_at to existing packs rows.
+        # SQLite ADD COLUMN with a constant default is supported from 3.37+;
+        # for older builds the column is nullable (the DEFAULT expression is
+        # evaluated at INSERT time, not retrospectively), which is acceptable.
+        # Only suppress the specific "duplicate column name" error so genuine
+        # schema problems (locked DB, corrupted file) still surface.
         try:
-            c.execute("ALTER TABLE packs ADD COLUMN created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))")
-        except sqlite3.OperationalError:
-            pass  # column already exists
+            c.execute(
+                "ALTER TABLE packs ADD COLUMN created_at TEXT "
+                "DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))"
+            )
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                logger.error("Unexpected migration error adding created_at: %s", exc)
+                raise
         # Event log for observability / analytics
         c.execute(
             """

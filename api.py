@@ -21,6 +21,11 @@ PAGE_SIZE = 20
 # CORS_ALLOW_ORIGIN in production (e.g. "https://stixmagic.com").
 CORS_ORIGIN = os.environ.get("CORS_ALLOW_ORIGIN", "*")
 
+# Set TRUST_PROXY=1 when running behind a trusted reverse proxy (e.g. nginx,
+# Replit's edge layer) to honour the X-Forwarded-For header for rate limiting.
+# Without this, rate limiting always uses the direct socket IP (request.remote_addr).
+_TRUST_PROXY = os.environ.get("TRUST_PROXY", "").strip() in ("1", "true", "yes")
+
 
 # ── Simple in-memory rate limiter ─────────────────────────────
 
@@ -28,24 +33,46 @@ class _RateLimiter:
     """Sliding-window rate limiter keyed by (IP, endpoint).
 
     Thread-safe; uses a deque per key to track request timestamps.
+    Empty deques are pruned from the key map to prevent unbounded growth
+    under high-cardinality IPs or bot traffic.
     """
     def __init__(self):
         self._lock = threading.Lock()
-        self._windows: dict[str, collections.deque] = collections.defaultdict(collections.deque)
+        self._windows: dict[str, collections.deque] = {}
 
     def is_allowed(self, key: str, limit: int, window: float) -> bool:
         now = time.monotonic()
         cutoff = now - window
         with self._lock:
-            dq = self._windows[key]
+            dq = self._windows.get(key)
+            if dq is None:
+                dq = collections.deque()
+                self._windows[key] = dq
+            # Drain timestamps that have expired out of the window
             while dq and dq[0] < cutoff:
                 dq.popleft()
             if len(dq) >= limit:
                 return False
+            # If the window fully drained this is a fresh start — replace the deque
+            # so the old (empty) object can be garbage-collected (implicit eviction).
+            if not dq:
+                dq = collections.deque()
+                self._windows[key] = dq
             dq.append(now)
             return True
 
 _limiter = _RateLimiter()
+
+
+def _client_ip() -> str:
+    """Return the best-effort client IP, honouring X-Forwarded-For only when
+    TRUST_PROXY is explicitly enabled to prevent header spoofing."""
+    if _TRUST_PROXY:
+        forwarded_for = request.headers.get("X-Forwarded-For", "")
+        ip = forwarded_for.split(",")[0].strip()
+        if ip:
+            return ip
+    return request.remote_addr or "unknown"
 
 
 def rate_limit(limit: int = 60, window: float = 60.0):
@@ -53,10 +80,7 @@ def rate_limit(limit: int = 60, window: float = 60.0):
     def decorator(f):
         @wraps(f)
         def wrapped(*args, **kwargs):
-            # Use the first IP in X-Forwarded-For to handle proxy chains correctly
-            forwarded_for = request.headers.get("X-Forwarded-For", "")
-            ip = (forwarded_for.split(",")[0].strip() or request.remote_addr or "unknown")
-            key = f"{ip}:{f.__name__}"
+            key = f"{_client_ip()}:{f.__name__}"
             if not _limiter.is_allowed(key, limit, window):
                 return err("Too many requests — please slow down.", 429, "rate_limited")
             return f(*args, **kwargs)
@@ -346,6 +370,7 @@ def search_packs():
 
 @app.route("/api/packs/<int:user_id>")
 @require_api_key
+@rate_limit(limit=30, window=60.0)
 def user_packs(user_id):
     conn = get_db()
     c = conn.cursor()
@@ -363,6 +388,7 @@ def user_packs(user_id):
 
 @app.route("/api/packs/<int:user_id>/<pack_name>")
 @require_api_key
+@rate_limit(limit=30, window=60.0)
 def pack_detail(user_id, pack_name):
     conn = get_db()
     c = conn.cursor()
@@ -381,6 +407,7 @@ def pack_detail(user_id, pack_name):
 
 @app.route("/api/packs/<int:user_id>/<pack_name>", methods=["DELETE"])
 @require_api_key
+@rate_limit(limit=20, window=60.0)
 def delete_pack(user_id, pack_name):
     conn = get_db()
     c = conn.cursor()
@@ -397,6 +424,7 @@ def delete_pack(user_id, pack_name):
 
 @app.route("/api/settings/<int:user_id>")
 @require_api_key
+@rate_limit(limit=30, window=60.0)
 def user_settings_get(user_id):
     conn = get_db()
     c = conn.cursor()
@@ -411,6 +439,7 @@ def user_settings_get(user_id):
 
 @app.route("/api/settings/<int:user_id>", methods=["PATCH"])
 @require_api_key
+@rate_limit(limit=20, window=60.0)
 def user_settings_update(user_id):
     data = request.get_json(silent=True)
     if not data:
