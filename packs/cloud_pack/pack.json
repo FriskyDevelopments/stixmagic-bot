@@ -1,0 +1,15 @@
+{
+  "pack_id": "cloud_pack",
+  "title": "MagicStix Cloud Pack",
+  "theme": "cloud",
+  "included_assets": [],
+  "included_motion_presets": ["wobble", "sparkle", "orbit"],
+  "export_formats": ["gif", "webp", "webm", "mov", "thumbnail"],
+  "target_platforms": ["telegram", "obs"],
+  "use_cases": [
+    "cloud and weather themed stickers",
+    "ambient overlay elements for livestreams",
+    "soft animated backgrounds"
+  ],
+  "notes": "Soft cloud and atmospheric symbols with gentle motion presets."
+}

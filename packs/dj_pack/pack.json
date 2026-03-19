@@ -1,0 +1,15 @@
+{
+  "pack_id": "dj_pack",
+  "title": "MagicStix DJ Pack",
+  "theme": "dj",
+  "included_assets": [],
+  "included_motion_presets": ["pulse", "glitch", "particle_burst", "signal_flash"],
+  "export_formats": ["gif", "webp", "webm", "thumbnail"],
+  "target_platforms": ["telegram", "browser_extension", "virtual_camera"],
+  "use_cases": [
+    "DJ cue reaction stickers",
+    "music event overlays",
+    "livestream visual effects"
+  ],
+  "notes": "High-energy animated assets for DJ events and music livestreams."
+}

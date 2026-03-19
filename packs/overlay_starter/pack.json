@@ -1,0 +1,15 @@
+{
+  "pack_id": "overlay_starter",
+  "title": "MagicStix Overlay Starter Pack",
+  "theme": "abstract",
+  "included_assets": [],
+  "included_motion_presets": ["pulse", "glow", "laser_sweep", "signal_flash"],
+  "export_formats": ["webm", "mov", "thumbnail"],
+  "target_platforms": ["obs", "virtual_camera", "overlay_engine"],
+  "use_cases": [
+    "transparent overlay assets for OBS",
+    "virtual camera compositing",
+    "Nebulosa browser extension triggers"
+  ],
+  "notes": "Overlay-safe assets exported as WebM/MOV with alpha for compositor use."
+}
