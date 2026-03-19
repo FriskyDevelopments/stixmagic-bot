@@ -296,7 +296,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if is_new_user(user.id):
         welcome = (
-            f"✦ <b>Welcome, {first_name}.</b>\n"
+            f"✦ <b>Welcome, {html.escape(first_name)}.</b>\n"
             f"{DIV}\n\n"
             "You've found the sticker alchemy lab.\n\n"
             "◦ Send any image → sticker pack\n"
