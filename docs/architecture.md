@@ -1,92 +1,79 @@
-# MagicStix — Architecture Overview
+# MagicStix Architecture
 
-> **Version:** 1.0 · **Updated:** 2026-03
+## Overview
 
-This document describes the five-layer architecture of the MagicStix visual
-asset platform.  The bot remains the primary interface for end-users, while the
-pipeline, asset registry, motion preset system, export pipeline, and pack
-generator collectively transform individual base assets into multi-format
-animated outputs.
+MagicStix is a **visual asset ecosystem** built on top of the StixMagic Telegram bot.
+The bot serves as the asset-creation engine; a multi-layer pipeline transforms those
+base assets into distributable products across multiple formats and platforms.
 
 ---
 
-## Layer Map
+## Five-Layer Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  LAYER 1 — BOT                                                  │
-│  Telegram bot (python-telegram-bot v21)                         │
-│  main.py · menus.py · infra/db.py · domain/media.py · api.py   │
-│  → generates base assets (PNG/WebP stickers)                    │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │ base assets
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  LAYER 2 — ASSET & METADATA                                     │
-│  pipeline/asset_model/   pipeline/metadata/                     │
-│  Asset dataclass         AssetRegistry (JSON-backed)            │
-│  → indexed, searchable, tag-annotated asset catalog             │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │ Asset objects
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  LAYER 3 — MOTION PRESETS                                       │
-│  pipeline/motion_presets/                                       │
-│  MotionPreset dataclass   10 built-in presets                   │
-│  → reusable, parameter-driven animation descriptors             │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │ (Asset, MotionPreset) pairs
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  LAYER 4 — EXPORT PIPELINE                                      │
-│  pipeline/exporters/                                            │
-│  GIF · animated WebP · WebM · MOV · PNG sequence · thumbnail    │
-│  → renders/gif/ · renders/webp/ · renders/webm/ · …            │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │ ExportResult lists
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  LAYER 5 — PRODUCT / PACK GENERATION                            │
-│  pipeline/packager/  +  packs/<pack_id>/pack.json               │
-│  Pack dataclass   PackGenerator                                 │
-│  → self-describing product packs driven by metadata             │
+│  LAYER 1 – BOT LAYER                                            │
+│  Telegram bot (main.py)                                         │
+│  Generates clean transparent base assets (PNG/WebP) from user   │
+│  input; stores them in assets/source/ by category.              │
+└─────────────────────────────────┬───────────────────────────────┘
+                                  │ base assets
+┌─────────────────────────────────▼───────────────────────────────┐
+│  LAYER 2 – ASSET & METADATA LAYER                               │
+│  pipeline/asset_model/   – Asset dataclass + category/theme     │
+│  pipeline/metadata/      – AssetCatalog (JSON persistence)      │
+│  assets/catalog.json     – On-disk index of all known assets    │
+└─────────────────────────────────┬───────────────────────────────┘
+                                  │ asset records
+┌─────────────────────────────────▼───────────────────────────────┐
+│  LAYER 3 – MOTION PRESET LAYER                                  │
+│  pipeline/motion_presets/ – MotionPreset dataclass +            │
+│                             10 built-in presets                  │
+│  Presets are reusable across asset categories and export         │
+│  targets; they describe animation parameters, not rendering.     │
+└─────────────────────────────────┬───────────────────────────────┘
+                                  │ asset + preset
+┌─────────────────────────────────▼───────────────────────────────┐
+│  LAYER 4 – EXPORT PIPELINE                                      │
+│  pipeline/exporters/  – Per-format export drivers               │
+│  renders/             – Output tree (gif/ webp/ webm/ mov/ …)   │
+│  One base asset → multiple outputs via export_all()             │
+└─────────────────────────────────┬───────────────────────────────┘
+                                  │ rendered files
+┌─────────────────────────────────▼───────────────────────────────┐
+│  LAYER 5 – PRODUCT / PACK GENERATION                            │
+│  pipeline/packager/   – PackDefinition + build_pack()           │
+│  packs/               – Per-pack JSON definitions               │
+│  Pack assembly is metadata-driven (no hardcoded file lists)      │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Directory Structure
+## Repository Layout
 
 ```
 stixmagic-bot/
-├── main.py                  # Bot orchestration + conversation handlers
-├── menus.py                 # Inline menu system (MENU_STRUCTURE)
-├── api.py                   # Flask REST API
-├── domain/
-│   └── media.py             # Image/video processing (Pillow, ffmpeg)
-├── infra/
-│   └── db.py                # SQLite persistence layer
+├── main.py              ← Bot entry-point (Layer 1)
+├── api.py               ← Flask REST API + web UI
+├── menus.py             ← Inline keyboard registry
+├── domain/              ← Bot media processing (Pillow, ffmpeg)
+├── infra/               ← SQLite persistence layer
+├── static/              ← Landing page + Mini App HTML
 │
-├── pipeline/                # ← NEW: Visual asset pipeline
-│   ├── asset_model/         # Asset + category/theme/format constants
-│   ├── metadata/            # JSON-backed AssetRegistry
-│   ├── motion_presets/      # MotionPreset dataclass + 10 built-in presets
-│   ├── exporters/           # GIF / WebP / WebM / MOV / PNG / thumbnail
-│   └── packager/            # Pack dataclass + PackGenerator
+├── pipeline/            ← Visual asset pipeline (Layers 2–5)
+│   ├── asset_model/     ← Asset dataclass, enums
+│   ├── metadata/        ← AssetCatalog (JSON I/O)
+│   ├── motion_presets/  ← 10 built-in MotionPreset definitions
+│   ├── exporters/       ← GIF / WebP / WebM / MOV / PNG / thumb
+│   └── packager/        ← PackDefinition + build_pack()
 │
-├── assets/                  # ← NEW: Source asset library
-│   ├── source/
-│   │   ├── letters/         # Base letter assets (JSON descriptors + PNGs)
-│   │   ├── numbers/
-│   │   ├── emojis/
-│   │   ├── symbols/
-│   │   ├── signals/
-│   │   ├── frames/
-│   │   └── particles/
-│   ├── processed/           # Post-processed / composited base assets
-│   └── previews/            # Static preview images for the catalog
+├── assets/              ← Raw and processed asset files
+│   ├── source/          ← Category sub-directories (letters, …)
+│   ├── processed/       ← Normalised base assets
+│   └── previews/        ← Static preview images
 │
-├── renders/                 # ← NEW: Pipeline output files
+├── renders/             ← Export pipeline outputs
 │   ├── gif/
 │   ├── webp/
 │   ├── webm/
@@ -94,104 +81,28 @@ stixmagic-bot/
 │   ├── png_sequences/
 │   └── thumbnails/
 │
-├── packs/                   # ← NEW: Product pack descriptors
-│   ├── motion_alphabet/pack.json
-│   ├── neon_signals/pack.json
-│   ├── dj_pack/pack.json
-│   ├── cloud_pack/pack.json
-│   └── overlay_starter/pack.json
+├── packs/               ← Per-pack JSON metadata
+│   ├── motion_alphabet/
+│   ├── neon_signals/
+│   ├── dj_pack/
+│   ├── cloud_pack/
+│   └── overlay_starter/
 │
-├── integrations/            # ← NEW: Future integration scaffolding
-│   ├── extension/           # Browser / Nebulosa extension
-│   ├── overlay_engine/      # OBS-style lightweight compositor
-│   └── virtual_camera/      # Virtual camera output
+├── integrations/        ← Future integration scaffolding
+│   ├── extension/       ← Browser / Nebulosa extension (future)
+│   ├── overlay_engine/  ← OBS-style compositor (future)
+│   └── virtual_camera/  ← Virtual camera output (future)
 │
-├── docs/                    # ← NEW: Architecture documentation
-│   ├── architecture.md      # This file
-│   ├── pipeline.md
-│   ├── asset_schema.md
-│   ├── motion_system.md
-│   ├── export_formats.md
-│   ├── pack_generation.md
-│   └── future_integrations.md
-│
-└── static/                  # Web assets (landing page, Mini App, API docs)
+└── docs/                ← Architecture and developer guides
 ```
 
 ---
 
-## Data Flow: One Asset → Multiple Outputs
+## Design Principles
 
-```
-┌──────────────┐    ┌─────────────┐    ┌──────────────────────────────────┐
-│  Base Asset  │ ×  │  Motion     │ →  │  Export Pipeline                 │
-│  letter_a    │    │  Preset     │    │  ┌──────────┐  ┌──────────────┐  │
-│  (PNG/WebP)  │    │  "pulse"    │    │  │ GIF      │  │ animated WebP│  │
-└──────────────┘    └─────────────┘    │  ├──────────┤  ├──────────────┤  │
-                                        │  │ WebM+α  │  │ MOV+α        │  │
-                                        │  ├──────────┤  ├──────────────┤  │
-                                        │  │ PNG seq  │  │ thumbnail    │  │
-                                        │  └──────────┘  └──────────────┘  │
-                                        └──────────────────────────────────┘
-                                                        │
-                                                        ▼
-                                        ┌──────────────────────────────────┐
-                                        │  Pack Inclusion                  │
-                                        │  motion_alphabet pack.json       │
-                                        │  → asset_id in included_assets   │
-                                        └──────────────────────────────────┘
-```
-
----
-
-## Key Design Principles
-
-1. **One base asset, many outputs** — a single source PNG/WebP can generate
-   GIF, animated WebP, WebM, MOV, and PNG sequence outputs by pairing with
-   any compatible motion preset.
-
-2. **Metadata-driven packs** — product packs are described by JSON files, not
-   by hardcoded file lists.  The pack generator resolves assets and presets
-   at generation time.
-
-3. **Exporter independence** — exporters do not depend on the bot.  They
-   consume `Asset` and `MotionPreset` objects and write files to `renders/`.
-
-4. **Preset reusability** — a motion preset is defined once and can be applied
-   to any number of assets across any number of packs.
-
-5. **Placeholder safety** — all exporters are marked as placeholder
-   implementations.  They write stub files so the pipeline can be exercised
-   end-to-end before real rendering code is written.
-
-6. **Future compatibility** — the `integrations/` stubs reserve namespaces
-   for the overlay engine, browser extension, and virtual camera without
-   requiring any implementation now.
-
----
-
-## Component Responsibilities
-
-| Component | Responsibility |
-|---|---|
-| `main.py` | Bot conversation handlers; drives sticker creation via Telegram |
-| `domain/media.py` | Pillow / ffmpeg media processing for sticker formats |
-| `infra/db.py` | SQLite CRUD for packs and user settings |
-| `api.py` | Flask REST API for external access |
-| `pipeline/asset_model/` | Defines what an asset is (data model only) |
-| `pipeline/metadata/` | Loads and indexes asset descriptors from JSON files |
-| `pipeline/motion_presets/` | Defines animation presets and their parameters |
-| `pipeline/exporters/` | Renders (asset + preset) pairs to disk in each format |
-| `pipeline/packager/` | Loads pack descriptors and orchestrates batch exports |
-| `integrations/` | Placeholder stubs for future overlay / extension / camera |
-
----
-
-## See Also
-
-- [`pipeline.md`](pipeline.md) — detailed pipeline walkthrough
-- [`asset_schema.md`](asset_schema.md) — JSON asset descriptor schema
-- [`motion_system.md`](motion_system.md) — motion preset system
-- [`export_formats.md`](export_formats.md) — supported export formats
-- [`pack_generation.md`](pack_generation.md) — pack generation guide
-- [`future_integrations.md`](future_integrations.md) — integration roadmap
+1. **Preserve the bot** — `main.py` and its dependencies are never modified by the pipeline.
+2. **Separation of concerns** — Exporters don't import from `main.py`; the bot doesn't import from `pipeline/`.
+3. **Metadata-driven** — Pack contents are declared in JSON, not in code.
+4. **Modular presets** — Animation behaviour is described once in `motion_presets/` and reused everywhere.
+5. **One base asset → many outputs** — `export_all()` in `exporters/` produces every format from a single source.
+6. **Placeholder-first** — Unimplemented exporters write stub files and log warnings rather than raising errors silently.

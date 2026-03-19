@@ -1,38 +1,57 @@
 """
-integrations/virtual_camera – Virtual camera output integration scaffold.
+integrations/virtual_camera/__init__.py – Virtual camera output scaffold.
 
-STATUS: not yet implemented.
+FUTURE INTEGRATION — not yet implemented.
 
-Planned functionality
----------------------
-This module will provide a virtual camera output that sends the composited
-MagicStix overlay stream to virtual camera drivers, making MagicStix visuals
-available in:
+This module will provide the interface between the MagicStix compositor and
+a virtual camera device (e.g. OBS Virtual Camera, v4l2loopback on Linux,
+or the macOS DAL plugin) so MagicStix-composited visuals can appear as a
+camera input in Zoom, Google Meet, or any WebRTC-based application.
 
-- Zoom
-- Google Meet
-- Microsoft Teams
-- OBS (as an additional source)
+Planned capabilities
+--------------------
+- Receive composited frames from the OverlayCompositor
+- Push frames to a virtual camera device at a target frame-rate
+- Support resolution presets (720p, 1080p)
+- Handle start / stop lifecycle cleanly
 
-Implementation options
-----------------------
-1. **pyvirtualcam** (Linux, macOS, Windows) — pure-Python virtual camera sink.
-   Requires a compatible virtual camera driver (v4l2loopback on Linux,
-   OBS Virtual Camera on macOS/Windows).
+Planned interface
+-----------------
+>>> from integrations.virtual_camera import VirtualCamera
+>>> cam = VirtualCamera(device="/dev/video0", fps=30, resolution=(1280, 720))
+>>> cam.push_frame(composited_pil_image)
+>>> cam.start()
+>>> cam.stop()
 
-2. **NDI SDK** — Network Device Interface for low-latency professional video.
-
-3. **Syphon / Spout** — GPU-accelerated frame sharing on macOS / Windows.
-
-Integration points
-------------------
-The virtual camera module will:
-
-1. Receive composited RGBA frames from ``integrations/overlay_engine/``.
-2. Convert frames to the format required by the chosen sink.
-3. Push frames to the virtual camera device at a configurable frame rate.
-
-See ``docs/future_integrations.md`` for the full specification.
+Implementation notes
+--------------------
+- Linux: uses v4l2loopback and pyfakewebcam.
+- macOS: requires the OBS DAL plugin or a third-party virtual camera.
+- Windows: requires OBS Virtual Camera or equivalent driver.
+- This module should NOT depend on the bot layer.
 """
 
-# Future: define VirtualCameraOutput and frame-push loop here.
+# TODO: implement virtual camera integration
+
+
+class VirtualCamera:
+    """
+    Pushes composited MagicStix frames to a virtual camera device.
+
+    NOT YET IMPLEMENTED.
+    """
+
+    def __init__(self, device: str = "/dev/video0", fps: int = 30,
+                 resolution: tuple[int, int] = (1280, 720)) -> None:
+        self.device = device
+        self.fps = fps
+        self.resolution = resolution
+
+    def push_frame(self, frame) -> None:
+        raise NotImplementedError("VirtualCamera.push_frame is not yet implemented.")
+
+    def start(self) -> None:
+        raise NotImplementedError("VirtualCamera.start is not yet implemented.")
+
+    def stop(self) -> None:
+        raise NotImplementedError("VirtualCamera.stop is not yet implemented.")

@@ -1,218 +1,100 @@
-# MagicStix — Motion Preset System
+# Motion Preset System
 
-Motion presets are reusable, parameterised animation descriptors.
-They define *what* an animation effect should look like and *which assets* it
-works best with — but they do not contain rendering code.
-Rendering is handled by the exporter layer.
-
----
-
-## Design Goals
-
-- **Reusable across asset categories** — `pulse` works on a letter, an emoji, and a symbol.
-- **Parameterisable** — tunable via `parameter_schema` without code changes.
-- **Format-agnostic** — the same preset drives GIF, WebP, WebM, and MOV exporters.
-- **Composable** — multiple presets can be applied in sequence in future renderers.
+Motion presets are the animation vocabulary of the MagicStix pipeline.
+Each preset describes *what kind of animation* should be applied to a base
+asset.  Presets are intentionally abstract — they do not contain rendering
+code.  Actual rendering is the responsibility of the exporters layer.
 
 ---
 
 ## MotionPreset Schema
 
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Unique slug (used in output filenames) |
+| `name` | `string` | Human-readable label |
+| `loopable` | `boolean` | Animation loops seamlessly |
+| `duration` | `float` | Total duration in seconds |
+| `alpha_safe` | `boolean` | Effect preserves source alpha channel |
+| `overlay_safe` | `boolean` | Suitable for transparent overlay use |
+| `sticker_safe` | `boolean` | Meets Telegram sticker constraints |
+| `recommended_categories` | `string[]` | Best-fit asset categories (empty = all) |
+| `parameter_schema` | `object` | Tweakable parameter descriptions |
+| `notes` | `string` | Free-form remarks |
+
+---
+
+## Built-in Presets
+
+| ID | Name | Loop | Duration | Alpha | Overlay | Sticker |
+|---|---|---|---|---|---|---|
+| `pulse` | Pulse | ✅ | 1.5 s | ✅ | ✅ | ✅ |
+| `glow` | Glow | ✅ | 2.0 s | ✅ | ✅ | ✅ |
+| `wobble` | Wobble | ✅ | 1.0 s | ✅ | ✅ | ✅ |
+| `bounce` | Bounce | ✅ | 1.2 s | ✅ | ✅ | ✅ |
+| `orbit` | Orbit | ✅ | 3.0 s | ✅ | ✅ | ❌ |
+| `glitch` | Glitch | ✅ | 2.0 s | ❌ | ✅ | ✅ |
+| `sparkle` | Sparkle | ✅ | 2.5 s | ✅ | ✅ | ✅ |
+| `particle_burst` | Particle Burst | ❌ | 1.5 s | ✅ | ✅ | ❌ |
+| `laser_sweep` | Laser Sweep | ✅ | 2.0 s | ✅ | ✅ | ✅ |
+| `signal_flash` | Signal Flash | ✅ | 0.8 s | ✅ | ✅ | ✅ |
+
+---
+
+## Querying Presets
+
 ```python
-@dataclass
-class MotionPreset:
-    id: str                          # Unique identifier
-    name: str                        # Human-readable display name
-    loopable: bool                   # Does the animation loop seamlessly?
-    duration_ms: int                 # Approximate duration in milliseconds
-    alpha_safe: bool                 # Preserves transparency?
-    overlay_safe: bool               # Suitable for overlay compositing?
-    sticker_safe: bool               # Meets Telegram sticker constraints?
-    recommended_categories: list     # Asset categories it works best with
-    parameter_schema: dict           # Tunable parameter definitions
-    description: str                 # Human-readable effect description
+from pipeline.motion_presets import list_presets, get_preset
+
+# All sticker-safe presets
+sticker_presets = list_presets(sticker_safe=True)
+
+# Presets recommended for letters
+letter_presets  = list_presets(category="letter")
+
+# Get one by ID
+pulse = get_preset("pulse")
+print(pulse.duration)   # 1.5
 ```
 
 ---
 
-## Built-in Preset Catalog
+## Adding a Custom Preset
 
-### `pulse` — Pulse
+Add a `MotionPreset` instance to `BUILTIN_PRESETS` in
+`pipeline/motion_presets/__init__.py`:
 
-> Smooth scale-up / scale-down loop that makes the asset breathe.
+```python
+MotionPreset(
+    id="my_preset",
+    name="My Custom Preset",
+    loopable=True,
+    duration=2.0,
+    alpha_safe=True,
+    overlay_safe=True,
+    sticker_safe=True,
+    recommended_categories=["letter", "symbol"],
+    parameter_schema={
+        "intensity": {"type": "float", "default": 0.8, "min": 0.0, "max": 1.0},
+    },
+    notes="Describe what the animation does.",
+),
+```
 
-| Property | Value |
-|---|---|
-| Loop | ✓ |
-| Duration | 800 ms |
-| Alpha-safe | ✓ |
-| Overlay-safe | ✓ |
-| Sticker-safe | ✓ |
-| Best for | letter, number, emoji, icon, sticker |
-
-**Parameters:**
-
-| Name | Type | Default | Range |
-|---|---|---|---|
-| `scale_min` | number | 0.9 | 0.5–1.0 |
-| `scale_max` | number | 1.1 | 1.0–2.0 |
-| `easing` | string | `ease_in_out` | — |
-
----
-
-### `glow` — Glow
-
-> Animated outer glow that pulses between low and high intensity.
-
-| Property | Value |
-|---|---|
-| Loop | ✓ |
-| Duration | 1200 ms |
-| Alpha-safe | ✓ |
-| Overlay-safe | ✓ |
-| Sticker-safe | ✓ |
-| Best for | letter, number, symbol, signal, icon |
-
-**Parameters:**
-
-| Name | Type | Default |
-|---|---|---|
-| `glow_color` | string (hex) | `#ffffff` |
-| `glow_radius` | number (px) | 12 |
-| `intensity_min` | number 0–1 | 0.3 |
-| `intensity_max` | number 0–1 | 1.0 |
+The preset will immediately be discoverable via `get_preset()` and `list_presets()`.
 
 ---
 
-### `wobble` — Wobble
+## Parameter Schema Convention
 
-> Left-right rotation oscillation. Best with small icons and emoji.
+Each entry in `parameter_schema` is a dict with at minimum:
 
-| Loop | Duration | Overlay-safe |
-|---|---|---|
-| ✓ | 600 ms | ✗ |
+```json
+{
+  "type": "float | integer | string | boolean | array",
+  "default": <value>
+}
+```
 
-**Parameters:** `angle_deg` (default 8°), `pivot` (default `center`).
-
----
-
-### `bounce` — Bounce
-
-> Vertical bounce with optional squash-and-stretch on landing.
-
-| Loop | Duration | Overlay-safe |
-|---|---|---|
-| ✓ | 700 ms | ✗ |
-
-**Parameters:** `amplitude_px` (default 20 px), `squash` (default `true`).
-
----
-
-### `orbit` — Orbit
-
-> Circular orbit around the asset's centre.
-
-| Loop | Duration | Overlay-safe |
-|---|---|---|
-| ✓ | 2000 ms | ✓ |
-
-**Parameters:** `radius_px`, `speed_factor`, `clockwise`.
-
-Best for: particle, symbol, icon, frame.
-
----
-
-### `glitch` — Glitch
-
-> RGB channel shift glitch effect.
-
-| Loop | Duration | Overlay-safe |
-|---|---|---|
-| ✓ | 500 ms | ✓ |
-
-**Parameters:** `shift_px`, `color_channels`, `frames`.
-
-Best for: letter, number, signal, icon.
-
----
-
-### `sparkle` — Sparkle
-
-> Twinkling star/sparkle particles orbiting the asset.
-
-| Loop | Duration | Overlay-safe |
-|---|---|---|
-| ✓ | 1500 ms | ✓ |
-
-**Parameters:** `count`, `size_min_px`, `size_max_px`, `color`.
-
----
-
-### `particle_burst` — Particle Burst
-
-> One-shot radial particle explosion.
-
-| Loop | Duration | Sticker-safe |
-|---|---|---|
-| ✗ | 1000 ms | ✗ |
-
-Not sticker-safe because Telegram requires looping animations.
-
-**Parameters:** `particle_count`, `burst_radius_px`, `fade_out`, `color`.
-
----
-
-### `laser_sweep` — Laser Sweep
-
-> A bright laser line sweeps across the asset.
-
-| Loop | Duration | Overlay-safe |
-|---|---|---|
-| ✓ | 1000 ms | ✓ |
-
-**Parameters:** `color`, `width_px`, `direction` (`horizontal`/`vertical`/`diagonal`).
-
----
-
-### `signal_flash` — Signal Flash
-
-> Hard on/off strobe flash effect.
-
-| Loop | Duration | Overlay-safe |
-|---|---|---|
-| ✓ | 400 ms | ✓ |
-
-**Parameters:** `on_duration_ms`, `off_duration_ms`, `flash_color`.
-
----
-
-## Adding a New Preset
-
-1. Open `pipeline/motion_presets/catalog.py`.
-2. Instantiate a `MotionPreset` with the required fields.
-3. Add it to the `PRESETS` dict.
-4. Implement the visual effect in each relevant exporter:
-   - `pipeline/exporters/gif_exporter.py` → `_render_frames`
-   - `pipeline/exporters/webp_exporter.py` → `_render_frames`
-   - `pipeline/exporters/webm_exporter.py` → `_render`
-5. Update this document.
-
----
-
-## Preset Compatibility Matrix
-
-| Preset | letter | number | emoji | symbol | signal | frame | particle | icon |
-|---|---|---|---|---|---|---|---|---|
-| pulse | ✓ | ✓ | ✓ | | | | | ✓ |
-| glow | ✓ | ✓ | | ✓ | ✓ | | | ✓ |
-| wobble | ✓ | ✓ | ✓ | | | | | ✓ |
-| bounce | ✓ | ✓ | ✓ | ✓ | | | | |
-| orbit | | | | ✓ | | ✓ | ✓ | ✓ |
-| glitch | ✓ | ✓ | | | ✓ | | | ✓ |
-| sparkle | | | ✓ | ✓ | | | ✓ | ✓ |
-| particle_burst | | | ✓ | ✓ | | | ✓ | ✓ |
-| laser_sweep | ✓ | ✓ | | | ✓ | ✓ | | |
-| signal_flash | ✓ | | | ✓ | ✓ | | | ✓ |
-
-> Empty cells indicate the preset is not in the preset's `recommended_categories`
-> list.  It will still work if applied — these are recommendations, not restrictions.
+Numeric types should include `"min"` and `"max"` bounds.
+String types with a fixed set of values should include `"options": [...]`.

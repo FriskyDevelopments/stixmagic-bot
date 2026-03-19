@@ -1,180 +1,102 @@
-# MagicStix — Pack Generation Guide
+# Pack Generation
 
-Product packs group base assets and motion presets together and describe which
-export formats to produce and which platforms to target.  Pack generation is
-entirely metadata-driven — no hardcoded file lists.
+MagicStix packs are metadata-driven product bundles that group assets and
+motion presets for a specific theme and target platform.
 
 ---
 
-## Pack Descriptor Schema
+## Pack Definition Schema
 
-Each pack is described by a `pack.json` file under `packs/<pack_id>/`:
-
-```json
-{
-  "pack_id":                "motion_alphabet",
-  "title":                  "MagicStix Motion Alphabet",
-  "theme":                  "neon",
-  "description":            "Animated neon letters A–Z …",
-  "included_assets":        ["letter_a_neon", "letter_b_neon"],
-  "included_motion_presets":["pulse", "glow"],
-  "export_formats":         ["gif", "webp", "webm", "thumbnails"],
-  "target_platforms":       ["telegram", "overlay"],
-  "use_cases":              ["sticker", "animated_alphabet"]
-}
-```
-
-### Fields
+Each pack is described by a `pack.json` file in `packs/<pack_id>/`:
 
 | Field | Type | Description |
 |---|---|---|
-| `pack_id` | string | Unique identifier — must match the directory name |
-| `title` | string | Human-readable display title |
-| `theme` | string | Visual theme (`neon`, `cloud`, `dj`, `abstract`, …) |
-| `description` | string | What this pack is for |
-| `included_assets` | array | Asset IDs to include (from the `AssetRegistry`) |
-| `included_motion_presets` | array | Preset IDs to apply to every asset |
-| `export_formats` | array | Target formats (`gif`, `webp`, `webm`, `mov`, `png_sequences`, `thumbnails`) |
-| `target_platforms` | array | Deployment targets (`telegram`, `overlay`, `virtual_camera`, `browser_extension`) |
-| `use_cases` | array | High-level labels (`sticker`, `stream_overlay`, etc.) |
+| `pack_id` | `string` | Unique slug (matches directory name) |
+| `title` | `string` | Human-readable pack title |
+| `theme` | `string` | Stylistic theme |
+| `included_assets` | `string[]` | Asset IDs to include (empty = all) |
+| `included_motion_presets` | `string[]` | Preset IDs to apply (empty = all) |
+| `export_formats` | `string[]` | Formats to produce |
+| `target_platforms` | `string[]` | Where assets will be used |
+| `use_cases` | `string[]` | Description of intended use |
+| `notes` | `string` | Free-form remarks |
 
 ---
 
-## Running the Pack Generator
+## Available Packs
+
+| Pack ID | Title | Theme |
+|---|---|---|
+| `motion_alphabet` | MagicStix Motion Alphabet | neon |
+| `neon_signals` | MagicStix Neon Signals | neon |
+| `dj_pack` | MagicStix DJ Pack | dj |
+| `cloud_pack` | MagicStix Cloud Pack | cloud |
+| `overlay_starter` | MagicStix Overlay Starter Pack | abstract |
+
+---
+
+## Building a Pack Manifest
+
+`build_pack()` resolves all assets and presets for a pack and returns the
+expected output paths, without running the exporters:
 
 ```python
-from pipeline.metadata.registry import AssetRegistry
-from pipeline.packager.generator import PackGenerator
+from pipeline.packager import PackDefinition, build_pack
+from pipeline.metadata import AssetCatalog
 
-registry  = AssetRegistry()
-generator = PackGenerator(registry)
+catalog = AssetCatalog(auto_load=True)
+pack    = PackDefinition.from_file("packs/motion_alphabet/pack.json")
+manifest = build_pack(pack, catalog)
 
-# Generate one pack
-results = generator.generate("motion_alphabet")
-for r in results:
-    status = "✓" if r.success else "✗"
-    print(f"  [{status}] {r.format}: {r.path}")
+print(manifest.summary())
+# Pack 'motion_alphabet': 36 asset×preset combinations, 144 total expected output files.
 
-# Generate ALL packs
-all_results = generator.generate_all()
-for pack_id, pack_results in all_results.items():
-    ok  = sum(1 for r in pack_results if r.success)
-    err = sum(1 for r in pack_results if not r.success)
-    print(f"{pack_id}: {ok} ok, {err} failed")
+for entry in manifest.entries[:3]:
+    print(entry.asset_id, entry.preset_id, entry.expected_outputs)
 ```
 
 ---
 
-## Pre-defined Packs
+## Running a Full Pack Export
 
-### `motion_alphabet` — MagicStix Motion Alphabet
+```python
+from pipeline.packager import PackDefinition, build_pack
+from pipeline.metadata import AssetCatalog
+from pipeline.exporters import export_all
+from pipeline.motion_presets import get_preset
 
-Animated neon letters A–Z with pulse, glow, and glitch effects.
+catalog  = AssetCatalog(auto_load=True)
+pack     = PackDefinition.from_file("packs/motion_alphabet/pack.json")
+manifest = build_pack(pack, catalog)
 
-- **Theme:** neon
-- **Presets:** pulse, glow, glitch
-- **Formats:** gif, webp, webm, thumbnails
-- **Platforms:** telegram, overlay, virtual_camera
-
-### `neon_signals` — MagicStix Neon Signals
-
-Neon signal icons (WiFi, radio waves, arrows) with laser sweep and signal flash.
-
-- **Theme:** neon
-- **Presets:** laser_sweep, signal_flash, glow
-- **Formats:** gif, webp, webm, mov, thumbnails
-- **Platforms:** telegram, overlay, browser_extension
-
-### `dj_pack` — MagicStix DJ Pack
-
-DJ-themed animated icons with bounce, pulse, and laser effects.
-
-- **Theme:** dj
-- **Presets:** bounce, pulse, laser_sweep
-- **Formats:** gif, webp, webm, thumbnails
-- **Platforms:** telegram, overlay, virtual_camera
-
-### `cloud_pack` — MagicStix Cloud Pack
-
-Cloud and sky motifs with orbit, sparkle, and wobble effects.
-
-- **Theme:** cloud
-- **Presets:** orbit, sparkle, wobble
-- **Formats:** gif, webp, webm, thumbnails
-- **Platforms:** telegram, browser_extension
-
-### `overlay_starter` — MagicStix Overlay Starter Pack
-
-Overlay-safe animated elements for OBS and virtual camera setups.
-
-- **Theme:** abstract
-- **Presets:** pulse, particle_burst, glow, laser_sweep
-- **Formats:** webm, mov, png_sequences, thumbnails
-- **Platforms:** overlay, virtual_camera, obs
-
----
-
-## Adding a New Pack
-
-1. Create the directory: `packs/<pack_id>/`
-2. Write `packs/<pack_id>/pack.json` following the schema above.
-3. Add the asset IDs to `included_assets` (they must be registered in the `AssetRegistry`).
-4. Choose presets from the [motion preset catalog](motion_system.md).
-5. Run `PackGenerator.generate("<pack_id>")` to test.
-
----
-
-## Generation Output Structure
-
-For a pack with 26 letter assets × 3 presets × 4 export formats, the generator
-will attempt to write 312 files:
-
-```
-renders/
-├── gif/
-│   ├── letter_a_neon_pulse.gif
-│   ├── letter_a_neon_glow.gif
-│   ├── letter_a_neon_glitch.gif
-│   ├── letter_b_neon_pulse.gif
-│   └── …
-├── webp/        (same structure)
-├── webm/        (same structure)
-└── thumbnails/
-    ├── letter_a_neon_pulse_preview.jpg
-    └── …
+for entry in manifest.entries:
+    asset  = catalog.get(entry.asset_id)
+    preset = get_preset(entry.preset_id)
+    result = export_all(
+        asset_id     = asset.id,
+        source_path  = asset.source_path,
+        preset       = preset,
+        renders_root = "renders",
+        formats      = pack.export_formats,
+    )
+    if result.errors:
+        print(f"Errors for {asset.id}+{preset.id}: {result.errors}")
 ```
 
 ---
 
-## Selective Export via `animation_compatible_presets`
+## Creating a New Pack
 
-If an asset's JSON descriptor restricts `animation_compatible_presets`, the
-generator automatically skips incompatible (asset, preset) pairs:
-
-```json
-{
-  "id": "wifi_signal",
-  "animation_compatible_presets": ["signal_flash", "laser_sweep"]
-}
-```
-
-With this descriptor, applying `pulse` to `wifi_signal` will be silently
-skipped even if `pulse` appears in the pack's `included_motion_presets`.
+1. Create a directory: `packs/<pack_id>/`
+2. Write a `pack.json` using the schema above.
+3. Optionally populate `included_assets` with specific asset IDs.
+   Leave empty to include all catalog assets.
+4. Run `build_pack()` to verify the manifest before exporting.
 
 ---
 
-## Selective Export via `export_targets`
+## Pack Metadata Principle
 
-Similarly, an asset can restrict which output formats it produces:
-
-```json
-{
-  "id": "overlay_frame_01",
-  "export_targets": ["webm", "mov", "thumbnails"]
-}
-```
-
-This overrides the pack's `export_formats` for this specific asset.
-*(Note: asset-level `export_targets` filtering is implemented in the `Asset`
-dataclass but the `PackGenerator` currently uses the pack-level
-`export_formats` only.  Asset-level filtering can be added in a future sprint.)*
+Pack contents are **never** hardcoded in Python source.  All pack membership
+is declared in `pack.json` and resolved at runtime from the asset catalog.
+This allows packs to be updated by editing JSON without touching code.

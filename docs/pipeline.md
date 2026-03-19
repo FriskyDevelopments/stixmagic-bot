@@ -1,216 +1,212 @@
-# MagicStix — Pipeline Walkthrough
+# MagicStix Pipeline
 
-> **Layer 2–5 implementation guide**
+## Purpose
 
-This document explains how to use the MagicStix visual asset pipeline to
-transform a base asset into multiple export formats.
-
----
-
-## Quick Start
-
-```python
-from pipeline.metadata.registry import AssetRegistry
-from pipeline.motion_presets.catalog import PRESETS, get_preset
-from pipeline.exporters.gif_exporter import GifExporter
-from pipeline.packager.generator import PackGenerator
-
-# 1. Load the asset registry
-registry = AssetRegistry()          # scans assets/source/**/*.json
-
-# 2. Look up an asset and a preset
-asset  = registry.get("letter_a_neon")
-preset = get_preset("pulse")
-
-# 3. Export one format
-exporter = GifExporter()
-result   = exporter.export(asset, preset)
-print(result.path, result.success)  # renders/gif/letter_a_neon_pulse.gif
-
-# 4. Generate a whole pack
-generator = PackGenerator(registry)
-results   = generator.generate("motion_alphabet")
-for r in results:
-    print(f"[{'OK' if r.success else 'FAIL'}] {r.format}: {r.path}")
-```
+The pipeline transforms base assets (produced by the bot or sourced externally)
+into multiple export formats using reusable motion presets.
 
 ---
 
-## Step-by-Step Pipeline
-
-### Step 1 — Register a base asset
-
-Create a JSON descriptor file under `assets/source/<category>/`:
-
-```json
-// assets/source/letters/letter_a_neon.json
-{
-  "id": "letter_a_neon",
-  "name": "Letter A (Neon)",
-  "category": "letter",
-  "theme": "neon",
-  "source_format": "png",
-  "source_path": "assets/source/letters/letter_a_neon.png",
-  "width": 512,
-  "height": 512,
-  "transparent_background": true,
-  "tags": ["alphabet", "neon", "uppercase"],
-  "animation_compatible_presets": [],
-  "export_targets": ["gif", "webp", "webm", "thumbnails"],
-  "notes": ""
-}
-```
-
-The `AssetRegistry` will pick this up automatically on the next start (or
-after calling `registry.reload()`).
-
-Alternatively, register programmatically:
+## Entry Point
 
 ```python
-from pipeline.asset_model.asset import Asset
-from pipeline.metadata.registry import AssetRegistry
+from pipeline.metadata import AssetCatalog
+from pipeline.motion_presets import get_preset
+from pipeline.exporters import export_all
 
-registry = AssetRegistry()
-asset = Asset(
-    id="letter_a_neon",
-    name="Letter A (Neon)",
-    category="letter",
-    theme="neon",
-    source_format="png",
-    source_path="assets/source/letters/letter_a_neon.png",
-    width=512,
-    height=512,
+catalog = AssetCatalog(auto_load=True)
+asset   = catalog.get("letter_A")
+preset  = get_preset("pulse")
+
+result  = export_all(
+    asset_id    = asset.id,
+    source_path = asset.source_path,
+    preset      = preset,
+    renders_root= "renders",
+    formats     = ["gif", "webp", "webm", "thumbnail"],
 )
-registry.save(asset)   # writes JSON + adds to in-memory registry
+
+print(result.sticker_ready_outputs)
+print(result.overlay_ready_outputs)
+print(result.preview_outputs)
 ```
 
 ---
 
-### Step 2 — Choose a motion preset
+## Pipeline Flow
+
+```
+Bot or external tool
+       │
+       ▼
+assets/source/<category>/<asset_file>
+       │
+       ▼
+pipeline/asset_model  ← Asset dataclass
+       │
+       ▼
+pipeline/metadata     ← AssetCatalog (assets/catalog.json)
+       │
+       ▼
+pipeline/motion_presets ← select MotionPreset(s)
+       │
+       ▼
+pipeline/exporters    ← export_all() runs per-format drivers
+       │
+       ├── renders/gif/       ← .gif
+       ├── renders/webp/      ← .webp (animated)
+       ├── renders/webm/      ← .webm (VP9 + alpha)
+       ├── renders/mov/       ← .mov (ProRes 4444 + alpha)
+       ├── renders/png_sequences/ ← numbered PNG frames
+       └── renders/thumbnails/    ← preview PNG
+              │
+              ▼
+pipeline/packager  ← build_pack() groups outputs into a pack manifest
+```
+
+---
+
+## Adding a New Asset
+
+1. Drop the source file into `assets/source/<category>/`.
+2. Create an `Asset` record and add it to the catalog:
 
 ```python
-from pipeline.motion_presets.catalog import PRESETS, list_presets
+from pipeline.asset_model import Asset, AssetCategory, SourceFormat
+from pipeline.metadata import AssetCatalog
 
-# List all available presets
-for preset in list_presets():
-    print(preset.id, "—", preset.description[:60])
-
-# Use a specific preset
-pulse = PRESETS["pulse"]
-print(pulse.parameter_schema)
+catalog = AssetCatalog(auto_load=True)
+catalog.add(Asset(
+    id="letter_A",
+    name="Letter A",
+    category=AssetCategory.LETTER,
+    source_format=SourceFormat.PNG,
+    source_path="assets/source/letters/A.png",
+    tags=["alphabet", "neon"],
+))
+catalog.save()
 ```
 
-Available built-in presets:
-
-| ID | Name | Loop | Duration |
-|---|---|---|---|
-| `pulse` | Pulse | ✓ | 800 ms |
-| `glow` | Glow | ✓ | 1200 ms |
-| `wobble` | Wobble | ✓ | 600 ms |
-| `bounce` | Bounce | ✓ | 700 ms |
-| `orbit` | Orbit | ✓ | 2000 ms |
-| `glitch` | Glitch | ✓ | 500 ms |
-| `sparkle` | Sparkle | ✓ | 1500 ms |
-| `particle_burst` | Particle Burst | ✗ | 1000 ms |
-| `laser_sweep` | Laser Sweep | ✓ | 1000 ms |
-| `signal_flash` | Signal Flash | ✓ | 400 ms |
-
----
-
-### Step 3 — Export to a specific format
-
-Each exporter inherits from `BaseExporter` and implements `export(asset, preset)`.
+3. Run the exporter:
 
 ```python
-from pipeline.exporters.gif_exporter       import GifExporter
-from pipeline.exporters.webp_exporter      import AnimatedWebpExporter
-from pipeline.exporters.webm_exporter      import WebmExporter
-from pipeline.exporters.mov_exporter       import MovExporter
-from pipeline.exporters.png_sequence_exporter import PngSequenceExporter
-from pipeline.exporters.thumbnail_exporter import ThumbnailExporter
+from pipeline.motion_presets import get_preset
+from pipeline.exporters import export_all
 
-exporters = [
-    GifExporter(),
-    AnimatedWebpExporter(),
-    WebmExporter(),
-    MovExporter(),
-    PngSequenceExporter(),
-    ThumbnailExporter(),
-]
-
-for exp in exporters:
-    result = exp.export(asset, preset)
-    print(result)
+result = export_all("letter_A", "assets/source/letters/A.png", get_preset("pulse"))
 ```
-
-Output files are written to:
-
-```
-renders/
-├── gif/         letter_a_neon_pulse.gif
-├── webp/        letter_a_neon_pulse.webp
-├── webm/        letter_a_neon_pulse.webm
-├── mov/         letter_a_neon_pulse.mov
-├── png_sequences/letter_a_neon_pulse/frame0000.png …
-└── thumbnails/  letter_a_neon_pulse_preview.jpg
-```
-
----
-
-### Step 4 — Generate a product pack
-
-Pack descriptors live in `packs/<pack_id>/pack.json`.  The `PackGenerator`
-reads the descriptor, resolves assets and presets, and runs all exporters.
-
-```python
-from pipeline.metadata.registry import AssetRegistry
-from pipeline.packager.generator import PackGenerator
-
-registry  = AssetRegistry()
-generator = PackGenerator(registry)
-
-# Generate one pack
-results = generator.generate("motion_alphabet")
-
-# Generate all packs
-all_results = generator.generate_all()
-for pack_id, pack_results in all_results.items():
-    ok  = sum(1 for r in pack_results if r.success)
-    err = sum(1 for r in pack_results if not r.success)
-    print(f"{pack_id}: {ok} ok, {err} failed")
-```
-
----
-
-## Output Classification
-
-The pipeline distinguishes three output classes:
-
-| Class | Formats | Use |
-|---|---|---|
-| **Sticker-ready** | GIF, animated WebP | Telegram sticker packs |
-| **Overlay-ready** | WebM + alpha, MOV + alpha | OBS, compositor, virtual camera |
-| **Preview** | JPEG thumbnail | Catalog listings, pack covers |
-
-Pack descriptors specify which classes to produce via `export_formats`.
-
----
-
-## Adding a New Exporter
-
-1. Create `pipeline/exporters/my_format_exporter.py`.
-2. Subclass `BaseExporter`, set `format_id = "my_format"`.
-3. Implement `export(self, asset, preset) -> ExportResult`.
-4. Add the class to `pipeline/exporters/__init__.py`.
-5. Add the format string to `_EXPORTERS` in `pipeline/packager/generator.py`.
-6. Document the format in `docs/export_formats.md`.
 
 ---
 
 ## Adding a New Motion Preset
 
-1. Instantiate a `MotionPreset` in `pipeline/motion_presets/catalog.py`.
-2. Add it to the `PRESETS` dict.
-3. Implement the visual effect in each relevant exporter's `_render_frames` /
-   `_render` method.
-4. Document the preset in `docs/motion_system.md`.
+Add a `MotionPreset` entry to the `BUILTIN_PRESETS` list in
+`pipeline/motion_presets/__init__.py`.
+
+The preset will automatically be available to all exporters and pack builders.
+
+---
+
+## Implementing an Exporter
+
+Each unimplemented exporter in `pipeline/exporters/__init__.py` has a
+`# TODO:` comment describing what needs to be built.  Replace the
+`_write_placeholder()` + `_log_placeholder()` calls with real rendering logic.
+
+Example for GIF:
+
+```python
+def export_gif(source_path, preset, output_dir, **kwargs):
+    # Real implementation using Pillow
+    frames = render_frames(source_path, preset)
+    out_path = os.path.join(output_dir, ...)
+    frames[0].save(out_path, save_all=True, append_images=frames[1:], loop=0)
+    return out_path
+```
+
+---
+
+## Where Real Renderers Should Live
+
+To keep `pipeline/exporters/__init__.py` from becoming overly complex, real
+rendering implementations should be factored out into a dedicated
+`pipeline/renderers/` sub-package.  Each renderer module handles one output
+format; the exporter functions in `exporters/__init__.py` become thin
+wrappers that delegate to the renderer.
+
+Recommended structure:
+
+```
+pipeline/
+├── renderers/              ← Real rendering implementations (future)
+│   ├── __init__.py
+│   ├── gif_renderer.py     ← Pillow-based animated GIF renderer
+│   ├── webp_renderer.py    ← Pillow-based animated WebP renderer
+│   ├── webm_renderer.py    ← ffmpeg VP9/yuva420p renderer
+│   ├── mov_renderer.py     ← ffmpeg ProRes 4444 renderer
+│   └── png_renderer.py     ← Pillow-based PNG frame sequence renderer
+└── exporters/
+    └── __init__.py         ← Thin wrappers that call pipeline/renderers/
+```
+
+Renderer modules should:
+- Accept a source image path + `MotionPreset` + output path as arguments
+- Return the output path on success, or raise an exception on failure
+- Be importable and testable independently of the exporter layer
+- Not import from `main.py` or any bot module
+
+When a renderer is ready, replace the `_write_placeholder()` call in the
+corresponding exporter with a call to the renderer:
+
+```python
+# Before (placeholder):
+_write_placeholder(out_path, f"GIF placeholder | ...")
+_log_placeholder("export_gif", out_path)
+
+# After (real renderer):
+from pipeline.renderers.gif_renderer import render_gif
+render_gif(source_path, preset, out_path)
+```
+
+---
+
+## Generating the Pipeline Manifest
+
+After a pack build, generate a machine-readable manifest for web and
+extension consumers:
+
+```python
+from pipeline.manifest import generate_pipeline_manifest
+
+manifest = generate_pipeline_manifest(output_path="pipeline_manifest.json")
+print(f"{manifest['total_packs']} packs, {manifest['total_assets']} assets")
+```
+
+Or from the command line:
+
+```bash
+python -m pipeline.manifest
+```
+
+---
+
+## Bot Integration (Optional)
+
+The bot can optionally register assets and trigger exports via `pipeline_adapter.py`:
+
+```python
+from pipeline_adapter import register_asset, generate_exports
+
+# After creating a sticker, register it in the pipeline catalog:
+register_asset(
+    asset_id="sticker_xyz",
+    name="My Sticker",
+    category="sticker",
+    source_path="assets/source/stickers/my_sticker.webp",
+)
+
+# Kick off an export run:
+result = generate_exports("sticker_xyz", "assets/source/stickers/my_sticker.webp", preset_id="pulse")
+if result:
+    print(result.sticker_ready_outputs)
+```

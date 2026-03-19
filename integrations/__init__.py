@@ -1,16 +1,16 @@
 """
-integrations – Scaffolding for future MagicStix integration modules.
+integrations/ – MagicStix future integration scaffolding.
 
-This package contains placeholder modules for three planned integrations:
+This package contains stub modules for planned integrations that will
+consume assets from the MagicStix pipeline without depending on the bot.
 
-  extension/       – Browser / Nebulosa extension
-  overlay_engine/  – Lightweight OBS-style compositor
-  virtual_camera/  – Virtual camera output for Zoom / Meet / OBS
+Sub-packages
+------------
+extension       – Browser / Nebulosa extension integration (future)
+overlay_engine  – Lightweight OBS-style compositor integration (future)
+virtual_camera  – Virtual camera output integration (future)
 
-None of these are implemented yet.  This package exists to:
-1. Reserve the import namespace.
-2. Document the planned integration points.
-3. Allow future contributors to add implementations without restructuring.
-
-See ``docs/future_integrations.md`` for the full integration roadmap.
+None of these sub-packages contain functional implementations yet.
+They exist to reserve the package namespace and document the intended
+integration surface.
 """

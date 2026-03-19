@@ -1,27 +1,51 @@
 """
-integrations/extension – Browser / Nebulosa extension integration scaffold.
+integrations/extension/__init__.py – Browser / Nebulosa extension scaffold.
 
-STATUS: not yet implemented.
+FUTURE INTEGRATION — not yet implemented.
 
-Planned functionality
----------------------
-This module will provide the backend hooks required by the Nebulosa browser
-extension to trigger MagicStix visual effects in response to browser events:
+This module will provide the interface between the MagicStix asset pipeline
+and a browser extension (codenamed "Nebulosa") that triggers visual assets
+during chat events.
 
-- Chat events (new message, mention)
-- Hand-raise signals
-- DJ cues
-- Moderation signals (ban, timeout, highlight)
+Planned trigger events
+----------------------
+- chat_message   : Display an animated sticker in response to a message
+- hand_raise     : Overlay a signal asset when a user raises their hand
+- dj_cue         : Fire a DJ-pack animation on a DJ event
+- moderation     : Show a moderation signal on kick / mute events
 
-Integration points
-------------------
-The extension will communicate with MagicStix via:
+Planned interface
+-----------------
+The extension will communicate with a local or remote MagicStix service
+endpoint to fetch pre-rendered assets by pack_id, asset_id, and preset_id.
 
-1. A WebSocket endpoint (``/ws/extension``) served by the Flask API.
-2. REST endpoints for asset/preset discovery (``/api/assets``, ``/api/presets``).
-3. A shared event schema (``ExtensionEvent``) defined in this module.
+Example future call
+-------------------
+>>> from integrations.extension import trigger_asset
+>>> trigger_asset(event="hand_raise", pack_id="neon_signals", asset_id="signal_hand")
 
-See ``docs/future_integrations.md`` for the full specification.
+Implementation notes
+--------------------
+- Assets must already be rendered and accessible via HTTP or local path.
+- The extension communicates over WebSocket or REST with a MagicStix server.
+- Authentication / API key integration will use the existing STIXMAGIC_API_KEY.
 """
 
-# Future: define ExtensionEvent dataclass and WebSocket handler here.
+# TODO: implement browser extension integration
+
+
+def trigger_asset(
+    event: str,
+    pack_id: str,
+    asset_id: str,
+    preset_id: str = "pulse",
+) -> None:
+    """
+    Trigger a visual asset in response to a browser/extension event.
+
+    NOT YET IMPLEMENTED.
+    """
+    raise NotImplementedError(
+        "integrations.extension.trigger_asset is not yet implemented. "
+        "See the module docstring for the planned interface."
+    )

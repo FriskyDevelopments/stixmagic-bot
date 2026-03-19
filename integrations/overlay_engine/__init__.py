@@ -1,30 +1,49 @@
 """
-integrations/overlay_engine – Lightweight compositor integration scaffold.
+integrations/overlay_engine/__init__.py – OBS-style compositor scaffold.
 
-STATUS: not yet implemented.
+FUTURE INTEGRATION — not yet implemented.
 
-Planned functionality
----------------------
-This module will provide an OBS-style lightweight compositor that uses
-MagicStix assets as compositable layers:
+This module will provide the interface between the MagicStix asset pipeline
+and a lightweight compositor that layers MagicStix assets over a video feed,
+similar to OBS Studio scenes and sources.
 
-- Load WebM / MOV files with alpha channels from the ``renders/`` directory.
-- Stack layers by z-index with configurable opacity and blend modes.
-- Apply motion presets in real-time (or pre-render to cache).
-- Output a composited RGBA frame stream.
+Planned capabilities
+--------------------
+- Load a PackDefinition and expose its assets as overlay *sources*
+- Composite multiple asset layers at configurable positions and scales
+- Apply real-time motion presets to overlay sources
+- Output a composited frame stream (e.g. as MJPEG or piped WebM)
 
-Integration points
-------------------
-The overlay engine will expose:
+Planned interface
+-----------------
+>>> from integrations.overlay_engine import OverlayCompositor
+>>> compositor = OverlayCompositor()
+>>> compositor.load_pack("overlay_starter")
+>>> compositor.add_layer("symbol_cloud", preset="sparkle", x=100, y=50)
+>>> compositor.start()
 
-1. ``OverlayScene`` – a named collection of layers with a fixed canvas size.
-2. ``OverlayLayer`` – one MagicStix asset on a scene with position/opacity.
-3. ``OverlayRenderer`` – renders frames on demand or as a live stream.
-
-These will integrate with the virtual camera (``integrations/virtual_camera/``)
-to send the composited output to software like Zoom or OBS.
-
-See ``docs/future_integrations.md`` for the full specification.
+Implementation notes
+--------------------
+- Actual rendering will use Pillow for static layers and ffmpeg for video.
+- The compositor should be runnable standalone without the Telegram bot.
+- Asset sources will be resolved from the local ``renders/`` directory.
 """
 
-# Future: define OverlayScene, OverlayLayer, OverlayRenderer here.
+# TODO: implement overlay compositor
+
+
+class OverlayCompositor:
+    """
+    Lightweight OBS-style compositor for MagicStix assets.
+
+    NOT YET IMPLEMENTED.
+    """
+
+    def load_pack(self, pack_id: str) -> None:
+        raise NotImplementedError("OverlayCompositor.load_pack is not yet implemented.")
+
+    def add_layer(self, asset_id: str, preset: str = "pulse", **kwargs) -> None:
+        raise NotImplementedError("OverlayCompositor.add_layer is not yet implemented.")
+
+    def start(self) -> None:
+        raise NotImplementedError("OverlayCompositor.start is not yet implemented.")

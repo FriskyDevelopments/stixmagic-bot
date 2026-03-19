@@ -1,0 +1,32 @@
+[
+  {
+    "id": "letter_A",
+    "name": "Letter A",
+    "category": "letter",
+    "source_format": "png",
+    "source_path": "assets/source/letters/A.png",
+    "width": 512,
+    "height": 512,
+    "transparent_background": true,
+    "theme": null,
+    "tags": [],
+    "animation_compatible_presets": [],
+    "export_targets": [],
+    "notes": ""
+  },
+  {
+    "id": "adapter_test",
+    "name": "Adapter Test",
+    "category": "sticker",
+    "source_format": "png",
+    "source_path": "/tmp/tmpmjn9yv5e.png",
+    "width": 512,
+    "height": 512,
+    "transparent_background": true,
+    "theme": null,
+    "tags": [],
+    "animation_compatible_presets": [],
+    "export_targets": [],
+    "notes": ""
+  }
+]

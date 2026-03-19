@@ -2,10 +2,14 @@
   "pack_id": "motion_alphabet",
   "title": "MagicStix Motion Alphabet",
   "theme": "neon",
-  "description": "Animated neon letters A–Z with pulse, glow, and glitch effects. Suitable for Telegram stickers and stream overlays.",
   "included_assets": [],
-  "included_motion_presets": ["pulse", "glow", "glitch"],
-  "export_formats": ["gif", "webp", "webm", "thumbnails"],
-  "target_platforms": ["telegram", "overlay", "virtual_camera"],
-  "use_cases": ["sticker", "animated_alphabet", "stream_overlay"]
+  "included_motion_presets": ["pulse", "glow", "wobble", "bounce"],
+  "export_formats": ["gif", "webp", "webm", "thumbnail"],
+  "target_platforms": ["telegram", "browser_extension"],
+  "use_cases": [
+    "animated letter stickers for Telegram",
+    "alphabet overlays for virtual camera",
+    "browser extension chat reactions"
+  ],
+  "notes": "All 26 letters (A-Z) and 10 digits (0-9) paired with motion presets."
 }
