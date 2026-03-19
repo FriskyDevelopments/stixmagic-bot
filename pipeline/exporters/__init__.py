@@ -401,3 +401,19 @@ def _log_placeholder(exporter_name: str, out_path: str) -> None:
         exporter_name,
         out_path,
     )
+
+
+# ── Class-based exporter backends ────────────────────────────
+# base.py and the format-specific exporter files provide OOP wrappers
+# around the functional API above.  Imported lazily so this module
+# remains loadable even if individual backends are absent.
+try:
+    from .base import BaseExporter  # noqa: F401
+    from .gif_exporter import GifExporter  # noqa: F401
+    from .webp_exporter import AnimatedWebpExporter  # noqa: F401
+    from .webm_exporter import WebmExporter  # noqa: F401
+    from .mov_exporter import MovExporter  # noqa: F401
+    from .png_sequence_exporter import PngSequenceExporter  # noqa: F401
+    from .thumbnail_exporter import ThumbnailExporter  # noqa: F401
+except ImportError:
+    pass

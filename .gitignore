@@ -27,4 +27,18 @@ replit.nix
 
 # Archives
 *.zip
+
+# Pipeline render outputs (generated files — keep directory structure via .gitkeep)
+renders/gif/*.gif
+renders/webp/*.webp
+renders/webm/*.webm
+renders/mov/*.mov
+renders/png_sequences/*/
+renders/thumbnails/*.jpg
+
+# Asset processed outputs
+assets/processed/*
+!assets/processed/.gitkeep
+assets/previews/*
+!assets/previews/.gitkeep
   

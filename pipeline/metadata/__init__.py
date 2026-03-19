@@ -220,3 +220,12 @@ class AssetCatalog:
 
     def __repr__(self) -> str:
         return f"AssetCatalog(path={self._path!r}, count={len(self._assets)})"
+
+
+# ── AssetRegistry alias ───────────────────────────────────────
+# registry.py provides a file-scan-based registry as an alternative to the
+# JSON-catalog approach above.  Both are exposed from this package.
+try:
+    from .registry import AssetRegistry  # noqa: F401
+except ImportError:
+    pass

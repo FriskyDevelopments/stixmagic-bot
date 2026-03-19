@@ -300,3 +300,12 @@ def list_presets(
         result = [p for p in result if p.overlay_safe is overlay_safe]
 
     return result
+
+
+# ── Catalog helpers ───────────────────────────────────────────
+# catalog.py and preset.py provide a dict-based preset registry that wraps
+# the dataclass above.  Both APIs are exposed from this package.
+try:
+    from .catalog import PRESETS, get_preset as _catalog_get_preset, list_presets  # noqa: F401
+except ImportError:
+    pass

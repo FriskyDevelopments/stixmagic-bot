@@ -303,3 +303,13 @@ def build_pack(
 
     logger.info("build_pack: %s", manifest.summary())
     return manifest
+
+
+# ── OOP pack generator ────────────────────────────────────────
+# pack.py and generator.py provide a class-based alternative to the
+# functional PackDefinition / build_pack API above.
+try:
+    from .pack import Pack  # noqa: F401
+    from .generator import PackGenerator  # noqa: F401
+except ImportError:
+    pass
