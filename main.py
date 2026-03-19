@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 import sqlite3
@@ -144,9 +145,13 @@ def grant_premium(user_id, days=None):
     if days is None:
         expires_at = None
     else:
-        # If already premium, extend from current expiry; otherwise start from now
+        # If the user already has a lifetime subscription, never overwrite it.
         c.execute('SELECT expires_at FROM premium_users WHERE user_id = ?', (user_id,))
         row = c.fetchone()
+        if row and row[0] is None:
+            conn.close()
+            return  # already lifetime — paid plan cannot downgrade
+        # Extend from current expiry if still active; otherwise start from now
         now = int(time.time())
         if row and row[0] and row[0] > now:
             base = row[0]
@@ -904,7 +909,8 @@ async def show_premium_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "◦ 3 Months  —  <b>599 ⭐</b>  <i>(save 20%)</i>\n"
         "◦ Lifetime  —  <b>999 ⭐</b>  <i>(best value)</i>\n\n"
         "<i>Stars are Telegram's native currency.\n"
-        "No credit card, no signup — pay in one tap.</i>"
+        "No credit card, no signup — pay in one tap.\n"
+        "Stars payments are final and non-refundable per Telegram policy.</i>"
     )
 
     if premium:
@@ -945,6 +951,7 @@ async def buy_premium_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "Describe any idea and get a Telegram sticker in seconds."
         ),
         payload=plan_key,
+        provider_token="",  # empty string for Telegram Stars (XTR) — no external provider
         currency="XTR",
         prices=[LabeledPrice(label=f"Premium {plan['label']}", amount=plan["stars"])],
     )
@@ -966,6 +973,17 @@ async def successful_payment_handler(update: Update, context: ContextTypes.DEFAU
     plan = PREMIUM_PLANS.get(plan_key)
     if not plan:
         logger.error(f"Received payment for unknown plan: {plan_key}")
+        return
+
+    # Validate currency and amount before granting access
+    if payment.currency != "XTR":
+        logger.error(f"Unexpected currency {payment.currency!r} for plan {plan_key}")
+        return
+    if payment.total_amount != plan["stars"]:
+        logger.error(
+            f"Amount mismatch for plan {plan_key}: expected {plan['stars']} Stars, "
+            f"got {payment.total_amount}"
+        )
         return
 
     user = update.effective_user
@@ -1079,6 +1097,7 @@ async def generate_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def generate_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
     prompt = update.message.text.strip()
     if not prompt:
         await update.message.reply_text("⚠ Please describe the sticker.", reply_markup=cancel_keyboard())
@@ -1091,9 +1110,28 @@ async def generate_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return WAITING_GENERATE_PROMPT
 
+    # Re-check premium here in case subscription expired/was revoked since the
+    # conversation started — this ensures OpenAI is never called for non-premium users.
+    if not is_premium_user(user.id):
+        context.user_data.clear()
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("⭐ See Plans & Subscribe", callback_data="menu_premium")],
+            [InlineKeyboardButton("✦ Home", callback_data="nav:home")],
+        ])
+        await update.message.reply_text(
+            f"⭐ <b>PREMIUM FEATURE</b>\n{DIV}\n\n"
+            "Your subscription is no longer active.\n"
+            "<i>Tap below to renew.</i>",
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+        return ConversationHandler.END
+
     progress = await update.message.reply_text("🤖 <i>The AI wizard is painting...</i>", parse_mode="HTML")
 
-    image_bytes = generate_sticker_image(prompt)
+    # Run the blocking OpenAI call + HTTP download in a thread to avoid blocking the event loop
+    loop = asyncio.get_event_loop()
+    image_bytes = await loop.run_in_executor(None, generate_sticker_image, prompt)
 
     if image_bytes is None:
         await progress.edit_text(
@@ -1109,6 +1147,9 @@ async def generate_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.clear()
         return ConversationHandler.END
 
+    # Keep a copy of the PNG bytes for the preview before convert_to_sticker consumes them
+    preview_png_bytes = image_bytes.getvalue()
+
     converted = convert_to_sticker(image_bytes)
     if converted is None:
         await progress.edit_text(
@@ -1121,13 +1162,14 @@ async def generate_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['generated_sticker'] = converted.getvalue()
 
     await progress.delete()
+    # Send the PNG from DALL-E as the visual preview — reliable across all clients
     await update.message.reply_photo(
-        photo=io.BytesIO(context.user_data['generated_sticker']),
+        photo=io.BytesIO(preview_png_bytes),
         caption=f"🤖 <b>Preview</b> — <i>{prompt}</i>",
         parse_mode="HTML"
     )
 
-    packs = get_user_packs(update.effective_user.id)
+    packs = get_user_packs(user.id)
     keyboard_rows = []
     if packs:
         for name, title in packs:
