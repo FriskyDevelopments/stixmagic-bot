@@ -30,11 +30,25 @@ import sys
 
 _RAW_ENV = os.environ.get("APP_ENV", "development").lower().strip()
 
-if _RAW_ENV in ("production", "prod"):
-    ENVIRONMENT = "production"
+# Explicit allow-list for environment aliases. Anything else is considered invalid.
+_ALLOWED_ENV_ALIASES = {
+    "production": "production",
+    "prod": "production",
+    "development": "development",
+    "dev": "development",
+    "local": "development",
+    "qa": "development",
+}
+
+if _RAW_ENV in _ALLOWED_ENV_ALIASES:
+    ENVIRONMENT = _ALLOWED_ENV_ALIASES[_RAW_ENV]
 else:
-    # development / dev / local / qa → all treated as "development"
-    ENVIRONMENT = "development"
+    sys.stderr.write(
+        f"ERROR: Invalid APP_ENV value: {repr(_RAW_ENV)}. "
+        "Allowed values are: "
+        "'production', 'prod', 'development', 'dev', 'local', 'qa'.\n"
+    )
+    raise SystemExit(1)
 
 IS_PRODUCTION = ENVIRONMENT == "production"
 IS_DEVELOPMENT = not IS_PRODUCTION
