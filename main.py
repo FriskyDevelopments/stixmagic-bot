@@ -112,12 +112,10 @@ async def nav_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     first_name = user.first_name or "there"
-
-    dev_notice = ""
-    if config.is_feature_enabled("dev_banner"):
-        dev_notice = "🔬 <i>[DEV] You are on the development bot.</i>\n\n"
+    dev_banner = config.is_feature_enabled("dev_banner")
 
     if is_new_user(user.id):
+        dev_notice = "🔬 <i>[DEV] You are on the development bot.</i>\n\n" if dev_banner else ""
         welcome = (
             f"{dev_notice}"
             f"⚗️ <b>The laboratory opens, {first_name}.</b>\n"
@@ -131,6 +129,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = build_keyboard("home")
         await update.message.reply_text(welcome, reply_markup=keyboard, parse_mode="HTML")
     else:
+        if dev_banner:
+            await update.message.reply_text(
+                "🔬 <i>[DEV] You are on the development bot.</i>",
+                parse_mode="HTML",
+            )
         await send_menu(update, "home")
 
 
@@ -192,7 +195,7 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     bot_username = context.bot.username
     suffix = "".join(random.choices(string.ascii_lowercase, k=5))
-    pack_name = f"{config.PACK_NAME_PREFIX}stix_{user.id}_{suffix}_by_{bot_username}"
+    pack_name = config.build_pack_name(user.id, suffix, bot_username)
 
     try:
         sticker_file = await download_file_bytes(context.bot, file_id)
@@ -677,17 +680,30 @@ async def show_about(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def show_env(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin-only command: show current environment, active feature flags, and pack prefix."""
+    """Show current environment, active feature flags, and pack prefix.
+
+    Access rules:
+    - In development with no ADMIN_USER_IDS: open to any user (useful for QA).
+    - In production with no ADMIN_USER_IDS: command is blocked.
+    - When ADMIN_USER_IDS is set: restricted to those IDs in all environments.
+    """
     user = update.effective_user
 
-    if config.ADMIN_USER_IDS and user.id not in config.ADMIN_USER_IDS:
-        await update.message.reply_text("⚠ This command is restricted to admins.")
+    if config.ADMIN_USER_IDS:
+        if user.id not in config.ADMIN_USER_IDS:
+            await update.message.reply_text("⚠ This command is restricted to admins.")
+            return
+    elif config.IS_PRODUCTION:
+        await update.message.reply_text(
+            "⚠ This command is disabled in production. "
+            "Set ADMIN_USER_IDS to enable it for specific users."
+        )
         return
 
     active_flags = [name for name, enabled in config.FEATURES.items() if enabled]
-    flags_text = "\n".join(f"  ✓ {f}" for f in active_flags) if active_flags else "  <i>none</i>"
+    flags_text = "\n".join(f"• ✓ {f}" for f in active_flags) if active_flags else "<i>none</i>"
     inactive_flags = [name for name, enabled in config.FEATURES.items() if not enabled]
-    inactive_text = "\n".join(f"  ✗ {f}" for f in inactive_flags) if inactive_flags else "  <i>none</i>"
+    inactive_text = "\n".join(f"• ✗ {f}" for f in inactive_flags) if inactive_flags else "<i>none</i>"
 
     text = (
         f"🔬 <b>ENVIRONMENT STATUS</b>\n"

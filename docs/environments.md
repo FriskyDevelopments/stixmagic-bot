@@ -18,24 +18,26 @@ production users:
 
 ### development (default)
 
-- Uses `DEV_BOT_TOKEN` (falls back to `TELEGRAM_BOT_TOKEN` if `DEV_BOT_TOKEN`
-  is not set).
+- Uses `DEV_BOT_TOKEN` (required — no fallback to `TELEGRAM_BOT_TOKEN`).
+  If `DEV_BOT_TOKEN` is not set the app refuses to start.
 - Sticker pack names are prefixed with `dev_` so they are clearly separate from
   production packs (e.g. `dev_stix_123_abcde_by_stixmagicdevbot`).
 - Debug logging is enabled (`DEBUG` level).
 - The `dev_banner` feature flag is active by default, showing a visible
-  `[DEV]` notice in the `/start` welcome message so testers know they are on
+  `[DEV]` notice every time `/start` is called so testers know they are on
   the dev bot.
 - Additional feature flags can be enabled freely without risk to production.
 
 ### production
 
-- Uses `TELEGRAM_BOT_TOKEN`.
+- Uses `TELEGRAM_BOT_TOKEN` (required).
 - Pack names have no prefix.
 - `INFO`-level logging only.
 - No experimental flags active by default.
-- **Safety check**: if `APP_ENV=production` but the loaded token matches
-  `DEV_BOT_TOKEN`, the app refuses to start.
+- **Safety checks**:
+  - If `APP_ENV=production` but the loaded token matches `DEV_BOT_TOKEN`, the
+    app refuses to start.
+  - The `/env` command is blocked unless `ADMIN_USER_IDS` is set.
 
 ---
 
@@ -119,13 +121,10 @@ default values set in `config.py`.
 APP_ENV=development DEV_BOT_TOKEN="<dev token>" python main.py
 ```
 
-Or with a `.env` file (not committed):
-
-```bash
-cp .env.example .env
-# fill in DEV_BOT_TOKEN and other values
-python main.py
-```
+> **Note:** The app reads environment variables directly — it does not
+> auto-load a `.env` file.  Export the variables in your shell or use a
+> helper like `env $(cat .env | xargs)` to load them from `.env.example`
+> (which you can copy and fill in locally).
 
 ### Production
 
@@ -138,7 +137,12 @@ APP_ENV=production TELEGRAM_BOT_TOKEN="<prod token>" python main.py
 ## Admin commands
 
 `/env` — Displays the current environment, active/inactive feature flags, and
-pack prefix. Restricted to `ADMIN_USER_IDS` if set.
+pack prefix.
+
+Access rules:
+- In **development** with no `ADMIN_USER_IDS`: open to any user (useful for QA).
+- In **production** with no `ADMIN_USER_IDS`: **blocked** (disabled by default).
+- When `ADMIN_USER_IDS` is set: restricted to those IDs in all environments.
 
 ---
 

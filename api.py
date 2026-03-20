@@ -1,5 +1,4 @@
 import os
-import re
 import sqlite3
 import time
 import asyncio
@@ -154,11 +153,9 @@ def miniapp_packs():
         return err("Missing or invalid user_id", 400, "missing_param")
     uid = int(user_id)
 
-    raw_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    token_match = re.search(r'\d+:[A-Za-z0-9_-]{35,}', raw_token)
-    if token_match:
+    if config.BOT_TOKEN:
         try:
-            packs = _run_async(_validate_packs_async(token_match.group(0), uid))
+            packs = _run_async(_validate_packs_async(config.BOT_TOKEN, uid))
             return ok(packs)
         except Exception:
             pass
