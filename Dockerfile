@@ -1,5 +1,5 @@
 # ── Build stage ──────────────────────────────────────────────
-FROM python:3.12-slim AS base
+FROM python:3.11-slim AS base
 
 # Install ffmpeg (required for animated sticker conversion)
 RUN apt-get update && apt-get install -y --no-install-recommends \
