@@ -37,7 +37,7 @@ stixmagic-bot/
 │   ├── index.html   # Landing page
 │   ├── api.html     # Interactive API docs
 │   └── miniapp.html # Telegram Mini App
-├── Dockerfile       # Container build (Python 3.12-slim + ffmpeg)
+├── Dockerfile       # Container build (Python 3.11-slim + ffmpeg)
 ├── .env.example     # Environment variable template
 ├── ARCHITECTURE.md  # Platform architecture decision record
 ├── requirements.txt
