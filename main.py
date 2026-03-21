@@ -1001,11 +1001,20 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
         user_id = update.effective_user.id
     exc = context.error
     exc_info = (type(exc), exc, exc.__traceback__) if exc is not None else None
-    logger.error(
-        "Unhandled exception update_id=%s user_id=%s",
-        update_id, user_id,
-        exc_info=exc_info,
-    )
+    exc = getattr(context, "error", None)
+    if exc is not None:
+        logger.error(
+            "Unhandled exception update_id=%s user_id=%s",
+            update_id,
+            user_id,
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
+    else:
+        logger.error(
+            "Unhandled exception update_id=%s user_id=%s (no exception object)",
+            update_id,
+            user_id,
+        )
 
 
 # ── MAIN ─────────────────────────────────────────────────────
