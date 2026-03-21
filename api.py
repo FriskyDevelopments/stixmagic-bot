@@ -6,13 +6,17 @@ import asyncio
 from functools import wraps
 from flask import Flask, jsonify, request, send_from_directory
 
+from config.runtime import get_settings
+
 DB_FILE = "bot.db"
 
 app = Flask(__name__, static_folder="static")
 
-API_KEY = os.environ.get("STIXMAGIC_API_KEY", "")
+settings = get_settings()
+API_KEY = settings.api_key
 API_VERSION = "1.1"
 PAGE_SIZE = 20
+app.secret_key = settings.session_secret or "dev-session-secret-not-for-production"
 
 
 def get_db():
@@ -152,7 +156,7 @@ def miniapp_packs():
         return err("Missing or invalid user_id", 400, "missing_param")
     uid = int(user_id)
 
-    raw_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    raw_token = settings.telegram_bot_token
     token_match = re.search(r'\d+:[A-Za-z0-9_-]{35,}', raw_token)
     if token_match:
         try:
@@ -627,5 +631,4 @@ def server_error(e):
 
 
 def run_api():
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+    app.run(host="0.0.0.0", port=settings.port, debug=False, use_reloader=False)

@@ -1,0 +1,35 @@
+name: Development Bot Readiness
+
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore:
+      - main
+
+jobs:
+  development-smoke:
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Validate development configuration
+        env:
+          APP_ENV: development
+          BOT_TOKEN_DEV: ${{ secrets.BOT_TOKEN_DEV }}
+          STIXMAGIC_API_KEY_DEV: ${{ secrets.STIXMAGIC_API_KEY_DEV != '' && secrets.STIXMAGIC_API_KEY_DEV || secrets.STIXMAGIC_API_KEY }}
+          SESSION_SECRET_DEV: ${{ secrets.SESSION_SECRET_DEV != '' && secrets.SESSION_SECRET_DEV || secrets.SESSION_SECRET }}
+          MINIAPP_URL_DEV: ${{ secrets.MINIAPP_URL_DEV != '' && secrets.MINIAPP_URL_DEV || secrets.MINIAPP_URL }}
+        run: |
+          python scripts/check_config.py
+          python scripts/smoke_test.py

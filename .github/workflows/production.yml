@@ -1,0 +1,32 @@
+name: Production Deployment Preparation
+
+on:
+  workflow_dispatch:
+
+jobs:
+  production-validate:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Validate production configuration
+        env:
+          APP_ENV: production
+          BOT_TOKEN_PROD: ${{ secrets.BOT_TOKEN_PROD }}
+          STIXMAGIC_API_KEY_PROD: ${{ secrets.STIXMAGIC_API_KEY_PROD != '' && secrets.STIXMAGIC_API_KEY_PROD || secrets.STIXMAGIC_API_KEY }}
+          SESSION_SECRET_PROD: ${{ secrets.SESSION_SECRET_PROD != '' && secrets.SESSION_SECRET_PROD || secrets.SESSION_SECRET }}
+          MINIAPP_URL_PROD: ${{ secrets.MINIAPP_URL_PROD != '' && secrets.MINIAPP_URL_PROD || secrets.MINIAPP_URL }}
+        run: |
+          python scripts/check_config.py
+          python scripts/smoke_test.py
