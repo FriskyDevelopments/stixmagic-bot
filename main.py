@@ -7,8 +7,8 @@ import re
 import string
 import threading
 
-from dotenv import load_dotenv
-load_dotenv()
+from config.runtime import ConfigError, get_settings
+
 
 from telegram import (
     InputSticker, InlineKeyboardButton, InlineKeyboardMarkup,
@@ -1411,17 +1411,13 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── MAIN ─────────────────────────────────────────────────────
 
 def main():
-    raw_token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    if not raw_token:
-        logger.error("No TELEGRAM_BOT_TOKEN set. Add it in Secrets.")
+    try:
+        settings = get_settings()
+    except ConfigError as exc:
+        logger.error("Configuration error: %s", exc)
         return
 
-    token_match = re.search(r'\d+:[A-Za-z0-9_-]+', raw_token)
-    if not token_match:
-        logger.error("Invalid token format in TELEGRAM_BOT_TOKEN.")
-        return
-
-    token = token_match.group(0)
+    token = settings.telegram_bot_token
 
     from menus import MINIAPP_URL
 

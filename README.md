@@ -217,66 +217,77 @@
 
   ## Environment Variables
 
-  | Variable | Required | Description |
-  |---|---|---|
-  | `TELEGRAM_BOT_TOKEN` | ✅ | Bot token from [@BotFather](https://t.me/BotFather) |
-  | `STIXMAGIC_API_KEY` | ✅ | Secret key for authenticating REST API requests |
-  | `SESSION_SECRET` | Recommended | Flask session secret (random string) |
-  | `MINIAPP_URL` | Optional | URL of the Telegram Mini App |
+| Variable | Required | Description |
+|---|---|---|
+| `APP_ENV` | ✅ | Runtime target: `development`, `production`, or `test` |
+| `BOT_TOKEN_DEV` / `BOT_TOKEN_PROD` | ✅ | Telegram bot token for the selected environment |
+| `STIXMAGIC_API_KEY_DEV` / `STIXMAGIC_API_KEY_PROD` | ✅ | REST API authentication key for the selected environment |
+| `SESSION_SECRET_DEV` / `SESSION_SECRET_PROD` | Recommended | Flask session secret; production should always set one |
+| `MINIAPP_URL_DEV` / `MINIAPP_URL_PROD` | Optional | Telegram Mini App URL for the selected environment |
 
-  ---
+Legacy aliases remain supported for compatibility: `TELEGRAM_BOT_TOKEN`, `STIXMAGIC_API_KEY`, `SESSION_SECRET`, and `MINIAPP_URL`.
 
-  ## Setup & Deployment
+---
 
-  ### Local Development
+## Setup & Development Workflows
 
-  1. **Clone the repository** and install dependencies:
-     ```bash
-     git clone https://github.com/FriskyDevelopments/stixmagic-bot.git
-     cd stixmagic-bot
-     pip install -r requirements.txt
-     ```
+### Local development
 
-  2. **Create a `.env` file** from the template:
-     ```bash
-     cp .env.example .env
-     ```
-     Then fill in your values in `.env`. The file is git-ignored and will never be committed.
+1. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. Copy the example environment file and fill in only development values:
+   ```bash
+   cp .env.example .env
+   ```
+3. Validate configuration before starting the bot:
+   ```bash
+   APP_ENV=development python scripts/check_config.py
+   ```
+4. Run the bundled smoke test (config + DB init):
+   ```bash
+   APP_ENV=development python scripts/smoke_test.py
+   ```
+5. Start the bot and bundled Flask API together:
+   ```bash
+   APP_ENV=development python main.py
+   ```
 
-  3. **Run the bot:**
-     ```bash
-     python main.py
-     ```
-     The Flask API and the bot polling loop start together.
+### GitHub Actions
 
-  ### Automated Deployment (GitHub Actions)
+The repository now uses three workflows:
 
-  The repository includes a GitHub Actions workflow (`.github/workflows/deploy.yml`) that
-  triggers automatically on every push to `main`. It:
-  - Sets up Python 3.11 and installs all dependencies (including `ffmpeg`)
-  - Validates the `TELEGRAM_BOT_TOKEN` format
-  - Launches `main.py`
+- `ci.yml` — runs on pull requests and pushes to `main`; installs dependencies, runs a syntax check, validates runtime config, and performs the local smoke test.
+- `development.yml` — manual/on-branch development workflow that validates the development secret set using `BOT_TOKEN_DEV`.
+- `production.yml` — manual production-prep workflow that validates the production secret set using `BOT_TOKEN_PROD` without auto-deploying.
 
-  **Required GitHub Secrets** — add these under *Settings → Secrets → Actions*:
+### Required GitHub Actions secrets
 
-  | Secret | Description |
-  |---|---|
-  | `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather |
-  | `STIXMAGIC_API_KEY` | API authentication key |
-  | `SESSION_SECRET` | Flask session secret |
-  | `MINIAPP_URL` | (Optional) Mini App URL |
+Required now:
 
-  ### Hosting on Replit
+| Secret | Purpose |
+|---|---|
+| `BOT_TOKEN_DEV` | Development Telegram bot token |
+| `BOT_TOKEN_PROD` | Production Telegram bot token |
 
-  1. Import the repo via *Create Repl → Import from GitHub*.
-  2. Open the **Secrets** tab (🔒) and add the environment variables listed above.
-  3. Click **Run** — the bot and API start automatically.
-  4. To keep the bot alive on a free Replit plan, use [UptimeRobot](https://uptimerobot.com/)
-     to ping your Repl URL every 5 minutes, or enable *Always On* in your Replit settings.
+Recommended environment-specific secrets:
 
-  ---
+| Secret | Purpose |
+|---|---|
+| `STIXMAGIC_API_KEY_DEV` / `STIXMAGIC_API_KEY_PROD` | Separate API keys per environment |
+| `SESSION_SECRET_DEV` / `SESSION_SECRET_PROD` | Separate Flask session secrets per environment |
+| `MINIAPP_URL_DEV` / `MINIAPP_URL_PROD` | Separate Mini App URLs per environment |
 
-  ## License
+If your repository still only has the legacy unsuffixed API, session, or Mini App secrets, the workflows and runtime still accept them as fallbacks. Bot token handling is now normalized around `BOT_TOKEN_DEV` and `BOT_TOKEN_PROD`.
+
+### Automated verification scope
+
+CI and the dev/prod workflows intentionally stop at safe validation and smoke testing. They do **not** start long-running Telegram polling in GitHub Actions, and they do **not** attempt flaky live Telegram end-to-end interactions. Manual verification is still required for: sticker creation, animated/video sticker uploads, Mini App button behavior, and production deployment wiring.
+
+---
+
+## License
 
   MIT
   
