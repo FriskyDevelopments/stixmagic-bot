@@ -33,31 +33,46 @@ class _RateLimiter:
     """Sliding-window rate limiter keyed by (IP, endpoint).
 
     Thread-safe; uses a deque per key to track request timestamps.
-    Empty deques are pruned from the key map to prevent unbounded growth
-    under high-cardinality IPs or bot traffic.
+    Stale keys (IPs that have gone quiet) are swept out every ``_EVICT_EVERY``
+    calls to keep memory bounded under high-cardinality traffic.
     """
+    _EVICT_EVERY = 1000  # how often to run a full sweep
+
     def __init__(self):
         self._lock = threading.Lock()
         self._windows: dict[str, collections.deque] = {}
+        self._calls: int = 0
+
+    def _drain_expired(self, dq: collections.deque, cutoff: float) -> None:
+        """Pop timestamps older than ``cutoff`` from the left of ``dq``."""
+        while dq and dq[0] < cutoff:
+            dq.popleft()
+
+    def _evict_stale(self, cutoff: float) -> None:
+        """Remove keys whose entire request history has expired.
+
+        Must be called while ``self._lock`` is held.
+        """
+        for key, dq in list(self._windows.items()):
+            self._drain_expired(dq, cutoff)
+            if not dq:
+                del self._windows[key]
 
     def is_allowed(self, key: str, limit: int, window: float) -> bool:
         now = time.monotonic()
         cutoff = now - window
         with self._lock:
+            self._calls += 1
+            if self._calls % self._EVICT_EVERY == 0:
+                self._evict_stale(cutoff)
+
             dq = self._windows.get(key)
             if dq is None:
                 dq = collections.deque()
                 self._windows[key] = dq
-            # Drain timestamps that have expired out of the window
-            while dq and dq[0] < cutoff:
-                dq.popleft()
+            self._drain_expired(dq, cutoff)
             if len(dq) >= limit:
                 return False
-            # If the window fully drained this is a fresh start — replace the deque
-            # so the old (empty) object can be garbage-collected (implicit eviction).
-            if not dq:
-                dq = collections.deque()
-                self._windows[key] = dq
             dq.append(now)
             return True
 

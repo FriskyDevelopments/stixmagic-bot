@@ -54,6 +54,20 @@ ADMIN_USER_IDS: frozenset[int] = frozenset(
 
 init_db()
 
+
+def _log_event_bg(loop: asyncio.AbstractEventLoop, user_id: int, event: str, detail: str | None = None) -> None:
+    """Schedule log_event() in a thread and attach a done-callback that logs
+    any unexpected exception so asyncio never emits 'Future exception was never
+    retrieved' warnings from fire-and-forget tasks."""
+    future = loop.run_in_executor(None, log_event, user_id, event, detail)
+
+    def _on_done(fut: asyncio.Future) -> None:
+        exc = fut.exception() if not fut.cancelled() else None
+        if exc is not None:
+            logger.error("log_event failed in executor (event=%s)", event, exc_info=exc)
+
+    future.add_done_callback(_on_done)
+
 async def validate_and_sync_packs(bot, user_id):
     """Check each DB pack against Telegram. Prune deleted packs, sync renamed titles."""
     packs = get_user_packs(user_id)
@@ -223,7 +237,7 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         add_pack_to_db(user.id, pack_name, title)
-        asyncio.get_running_loop().run_in_executor(None, log_event, user.id, "pack_created", pack_name)
+        _log_event_bg(asyncio.get_running_loop(), user.id, "pack_created", pack_name)
 
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("✦ Inscribe More Stickers", callback_data=f"addto_{pack_name}")],
@@ -391,7 +405,7 @@ async def addsticker_receive(update: Update, context: ContextTypes.DEFAULT_TYPE)
             name=pack_name,
             sticker=input_sticker
         )
-        asyncio.get_running_loop().run_in_executor(None, log_event, user.id, "sticker_added", pack_name)
+        _log_event_bg(asyncio.get_running_loop(), user.id, "sticker_added", pack_name)
 
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("✦ Bind Another", callback_data=f"addto_{pack_name}")],
@@ -985,10 +999,12 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     user_id = None
     if hasattr(update, "effective_user") and update.effective_user:
         user_id = update.effective_user.id
+    exc = context.error
+    exc_info = (type(exc), exc, exc.__traceback__) if exc is not None else None
     logger.error(
         "Unhandled exception update_id=%s user_id=%s",
         update_id, user_id,
-        exc_info=context.error,
+        exc_info=exc_info,
     )
 
 
