@@ -16,6 +16,7 @@ Quick reference:
   config.IS_DEVELOPMENT       bool
   config.BOT_TOKEN            resolved bot token string
   config.PACK_NAME_PREFIX     "" (prod) | "dev_" (dev)
+  config.DB_FILE              "bot.db" (prod) | "bot_dev.db" (dev)
   config.LOG_LEVEL            logging.INFO (prod) | logging.DEBUG (dev)
   config.FEATURES             dict of feature-flag name → bool
   config.is_feature_enabled() helper
@@ -89,6 +90,10 @@ BOT_TOKEN: str = _resolve_token()
 # Sticker pack names created in development get this prefix so they are
 # clearly isolated from production packs (e.g. "dev_stix_...").
 PACK_NAME_PREFIX: str = "" if IS_PRODUCTION else "dev_"
+
+# SQLite database file — scoped per environment so dev and prod data never mix
+# even when both run against the same filesystem.
+DB_FILE: str = "bot.db" if IS_PRODUCTION else "bot_dev.db"
 
 
 def build_pack_name(user_id: int, suffix: str, bot_username: str) -> str:

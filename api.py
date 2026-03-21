@@ -7,7 +7,7 @@ from flask import Flask, jsonify, request, send_from_directory
 
 import config
 
-DB_FILE = "bot.db"
+DB_FILE = config.DB_FILE
 
 app = Flask(__name__, static_folder="static")
 

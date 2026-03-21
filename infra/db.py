@@ -9,7 +9,9 @@ same DB_FILE constant; both sides read from the same file on disk.
 import logging
 import sqlite3
 
-DB_FILE = "bot.db"
+import config
+
+DB_FILE = config.DB_FILE
 
 logger = logging.getLogger(__name__)
 

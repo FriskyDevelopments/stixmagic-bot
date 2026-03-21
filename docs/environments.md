@@ -53,6 +53,7 @@ and exposes constants that the rest of the app imports:
 | `config.IS_DEVELOPMENT` | `bool` | shorthand |
 | `config.BOT_TOKEN` | `str` | resolved bot token |
 | `config.PACK_NAME_PREFIX` | `str` | `""` (prod) or `"dev_"` (dev) |
+| `config.DB_FILE` | `str` | `"bot.db"` (prod) or `"bot_dev.db"` (dev) |
 | `config.LOG_LEVEL` | `int` | `logging.INFO` / `logging.DEBUG` |
 | `config.FEATURES` | `dict` | feature-flag name → bool |
 | `config.ADMIN_USER_IDS` | `list[int]` | Telegram IDs allowed admin commands |
@@ -168,6 +169,7 @@ Access rules:
 |---|---|---|
 | Bot token | `DEV_BOT_TOKEN` | `TELEGRAM_BOT_TOKEN` |
 | Sticker pack names | `dev_stix_...` prefix | `stix_...` (no prefix) |
+| Database file | `bot_dev.db` | `bot.db` |
 | Log level | `DEBUG` | `INFO` |
 | Feature flags | dev-friendly defaults | conservative defaults |
 
