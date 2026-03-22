@@ -98,6 +98,17 @@ stixmagic-bot/
 
 ---
 
+
+## Core vs Plugin Boundary
+
+The repository now distinguishes between the shared Stix Magic runtime and partner/community plugins:
+
+- `src/bot`, `src/stickers`, and `src/animations` own shared bot, sticker, timing, sphere, and export behavior.
+- `src/core` and `src/config` define runtime boundaries, plugin registration, and environment namespaces.
+- `src/plugins/truck_club` is reserved for The Truck Club-specific behavior so those rules do not leak into the general bot layer.
+
+Existing top-level modules remain available as entrypoints or compatibility imports, but the architectural source of truth is the `src/` layout.
+
 ## Design Principles
 
 1. **Preserve the bot** — `main.py` and its dependencies are never modified by the pipeline.

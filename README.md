@@ -99,7 +99,17 @@
 
   ---
 
-  ## Project Structure
+  
+## Runtime Boundaries
+
+The repository now separates two related responsibilities:
+
+- **Main bot system** in `src/bot`, `src/stickers`, `src/animations`, `src/core`, and `src/config` for shared sticker, timing, animation, and runtime logic.
+- **The Truck Club plugin** in `src/plugins/truck_club` for community-specific commands, hooks, metrics, and configuration.
+
+Legacy import paths such as `domain/media.py` and `pipeline_adapter.py` remain as compatibility shims, but new work should target the `src/` packages.
+
+## Project Structure
 
   ```
   stixmagic-bot/
