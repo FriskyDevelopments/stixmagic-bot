@@ -1,3 +1,4 @@
+import argparse
 import html
 import io
 import logging
@@ -1430,7 +1431,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ── MAIN ─────────────────────────────────────────────────────
 
-def main():
+def main(start_api: bool = True):
     settings = get_settings()
     raw_token = settings.telegram_bot_token
     if not raw_token:
@@ -1571,13 +1572,21 @@ def main():
     application.add_handler(CallbackQueryHandler(nav_callback, pattern="^nav:"))
     application.add_handler(CallbackQueryHandler(menu_callback))
 
-    from api import run_api
-    web_thread = threading.Thread(target=run_api, daemon=True)
-    web_thread.start()
-    logger.info("API + landing page serving on port 5000")
+    if start_api:
+        from api import run_api
+        web_thread = threading.Thread(target=run_api, daemon=True)
+        web_thread.start()
+        logger.info("API + landing page serving on port 5000")
 
     logger.info("Stix Magic bot is running...")
     application.run_polling()
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Stix Magic bot")
+    parser.add_argument(
+        "--no-api",
+        action="store_true",
+        help="Disable the embedded Flask API server (useful when running api.py separately).",
+    )
+    args = parser.parse_args()
+    main(start_api=not args.no_api)
