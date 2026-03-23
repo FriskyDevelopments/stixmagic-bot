@@ -100,8 +100,27 @@ Legacy `MINIAPP_URL` is still accepted as an override, but the preferred product
 
 ```bash
 python -m compileall main.py api.py stixmagic infra
-python api.py        # serves landing page + Mini App + API
-python main.py       # runs the bot polling worker
+```
+
+**Option A (recommended) — bot + API in a single process:**
+
+```bash
+python main.py       # starts the bot and the embedded Flask API
+```
+
+**Option B — API-only debugging (no bot):**
+
+> ⚠️ Do **not** run `api.py` at the same time as `main.py` on the same host/port —
+> `main.py` already starts the Flask API in a background thread, which would cause a port conflict.
+
+```bash
+python api.py        # serves landing page + Mini App + REST API only
+```
+
+To run the bot **without** the embedded API (e.g. when `api.py` is deployed separately):
+
+```bash
+python main.py --no-api
 ```
 
 ## Additional docs
