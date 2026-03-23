@@ -26,6 +26,14 @@ app = Flask(__name__, static_folder="static")
 API_KEY = SETTINGS.stixmagic_api_key
 PAGE_SIZE = 20
 
+# Pre-compute the CORS allowlist for Mini App routes once at startup.
+_MINIAPP_CORS_ORIGINS: frozenset[str] = frozenset(
+    filter(None, [
+        SETTINGS.public_base_url.rstrip("/") if SETTINGS.public_base_url else None,
+        os.environ.get("MINIAPP_URL", "").rstrip("/") or None,
+    ])
+)
+
 
 def get_db():
     conn = sqlite3.connect(DB_FILE)
@@ -64,7 +72,17 @@ def get_miniapp_session():
 
 @app.after_request
 def add_headers(response):
-    response.headers["Access-Control-Allow-Origin"] = "*"
+    origin = request.headers.get("Origin")
+    is_miniapp_api = request.path.startswith("/api/miniapp/")
+
+    if is_miniapp_api and origin:
+        # Only allow trusted origins to access Mini App API responses.
+        if origin.rstrip("/") in _MINIAPP_CORS_ORIGINS:
+            response.headers["Access-Control-Allow-Origin"] = origin
+    else:
+        # Preserve existing wildcard CORS behavior for non-Mini App routes.
+        response.headers["Access-Control-Allow-Origin"] = "*"
+
     response.headers["Access-Control-Allow-Headers"] = f"X-API-Key, Content-Type, Authorization, {MINIAPP_AUTH_HEADER}"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, DELETE, OPTIONS"
     response.headers["X-API-Version"] = API_VERSION
