@@ -15,9 +15,11 @@ from stixmagic.contracts import (
     START_PAYLOAD_MAGIC,
     START_PAYLOAD_MANAGE,
 )
+from dotenv import load_dotenv
 from stixmagic.settings import get_settings
 from stixmagic.telegram_auth import TelegramInitDataError, validate_init_data
 
+load_dotenv()
 SETTINGS = get_settings()
 DB_FILE = SETTINGS.database_path
 
