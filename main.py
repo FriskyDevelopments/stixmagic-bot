@@ -999,8 +999,6 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     user_id = None
     if hasattr(update, "effective_user") and update.effective_user:
         user_id = update.effective_user.id
-    exc = context.error
-    exc_info = (type(exc), exc, exc.__traceback__) if exc is not None else None
     exc = getattr(context, "error", None)
     if exc is not None:
         logger.error(
