@@ -1,16 +1,12 @@
-"""
-infra/db.py – SQLite persistence layer for Stix Magic.
-
-All raw SQL lives here so the rest of the application never touches
-sqlite3 directly.  api.py has its own get_db() helper that mirrors the
-same DB_FILE constant; both sides read from the same file on disk.
-"""
+"""SQLite persistence layer for the shared bot + mini app product backend."""
 
 import logging
 import sqlite3
 import time
 
-DB_FILE = "bot.db"
+from stixmagic.settings import get_settings
+
+DB_FILE = get_settings().database_path
 
 logger = logging.getLogger(__name__)
 

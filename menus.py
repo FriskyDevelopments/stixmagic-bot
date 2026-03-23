@@ -1,15 +1,14 @@
 import os
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from stixmagic.settings import get_settings
 
 DIVIDER = "◈ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ◈"
 
 def _resolve_miniapp_url():
-    url = os.environ.get("MINIAPP_URL", "")
-    if not url:
-        domains = os.environ.get("REPLIT_DOMAINS", "")
-        if domains:
-            url = f"https://{domains.split(',')[0]}/miniapp"
-    return url
+    legacy_url = os.environ.get("MINIAPP_URL", "").strip()
+    if legacy_url:
+        return legacy_url.rstrip("/")
+    return get_settings().miniapp_url
 
 MINIAPP_URL = _resolve_miniapp_url()
 

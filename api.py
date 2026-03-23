@@ -1,17 +1,29 @@
 import os
-import re
 import sqlite3
 import time
 import asyncio
 from functools import wraps
 from flask import Flask, jsonify, request, send_from_directory
+from stixmagic.contracts import (
+    API_VERSION,
+    MINIAPP_AUTH_HEADER,
+    PACK_TYPES,
+    PRODUCT_NAME,
+    START_PAYLOAD_ADD,
+    START_PAYLOAD_CREATE,
+    START_PAYLOAD_FEATURE,
+    START_PAYLOAD_MAGIC,
+    START_PAYLOAD_MANAGE,
+)
+from stixmagic.settings import get_settings
+from stixmagic.telegram_auth import TelegramInitDataError, validate_init_data
 
-DB_FILE = "bot.db"
+SETTINGS = get_settings()
+DB_FILE = SETTINGS.database_path
 
 app = Flask(__name__, static_folder="static")
 
-API_KEY = os.environ.get("STIXMAGIC_API_KEY", "")
-API_VERSION = "1.1"
+API_KEY = SETTINGS.stixmagic_api_key
 PAGE_SIZE = 20
 
 
@@ -38,10 +50,22 @@ def err(message, status=400, code=None):
     return resp
 
 
+def _telegram_init_data_from_request() -> str:
+    auth_header = request.headers.get("Authorization", "").strip()
+    if auth_header.lower().startswith("tma "):
+        return auth_header[4:].strip()
+    return request.headers.get(MINIAPP_AUTH_HEADER, "").strip()
+
+
+def get_miniapp_session():
+    init_data = _telegram_init_data_from_request()
+    return validate_init_data(init_data, SETTINGS.telegram_bot_token)
+
+
 @app.after_request
 def add_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Headers"] = "X-API-Key, Content-Type"
+    response.headers["Access-Control-Allow-Headers"] = f"X-API-Key, Content-Type, Authorization, {MINIAPP_AUTH_HEADER}"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, DELETE, OPTIONS"
     response.headers["X-API-Version"] = API_VERSION
     return response
@@ -60,6 +84,17 @@ def require_api_key(f):
         key = request.headers.get("X-API-Key") or request.args.get("api_key")
         if not API_KEY or key != API_KEY:
             return err("Valid API key required. Pass it as X-API-Key header or api_key param.", 401, "unauthorized")
+        return f(*args, **kwargs)
+    return decorated
+
+
+def require_miniapp_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        try:
+            request.miniapp_session = get_miniapp_session()
+        except TelegramInitDataError as exc:
+            return err(str(exc), 401, "miniapp_unauthorized")
         return f(*args, **kwargs)
     return decorated
 
@@ -145,18 +180,46 @@ async def _validate_packs_async(token, user_id):
         await bot.close()
 
 
-@app.route("/api/miniapp/packs")
-def miniapp_packs():
-    user_id = request.args.get("user_id", "").strip()
-    if not user_id or not user_id.isdigit():
-        return err("Missing or invalid user_id", 400, "missing_param")
-    uid = int(user_id)
+@app.route("/api/miniapp/bootstrap")
+@require_miniapp_auth
+def miniapp_bootstrap():
+    session = request.miniapp_session
+    user = session["user"]
+    bot_username = SETTINGS.telegram_bot_username
+    return ok({
+        "product": PRODUCT_NAME,
+        "api_version": API_VERSION,
+        "user": user,
+        "launch": {
+            "surface": "miniapp",
+            "start_param": session.get("start_param"),
+        },
+        "bot": {
+            "username": bot_username,
+            "links": {
+                "create_pack": f"https://t.me/{bot_username}?start={START_PAYLOAD_CREATE}",
+                "add_sticker": f"https://t.me/{bot_username}?start={START_PAYLOAD_ADD}",
+                "manage_packs": f"https://t.me/{bot_username}?start={START_PAYLOAD_MANAGE}",
+                "magic_cut": f"https://t.me/{bot_username}?start={START_PAYLOAD_MAGIC}",
+                "feature_pack": f"https://t.me/{bot_username}?start={START_PAYLOAD_FEATURE}",
+            },
+        },
+        "deployment": {
+            "public_base_url": SETTINGS.public_base_url,
+            "miniapp_url": SETTINGS.miniapp_url,
+            "bot_mode": SETTINGS.bot_mode,
+        },
+    })
 
-    raw_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    token_match = re.search(r'\d+:[A-Za-z0-9_-]{35,}', raw_token)
-    if token_match:
+
+@app.route("/api/miniapp/packs")
+@require_miniapp_auth
+def miniapp_packs():
+    uid = int(request.miniapp_session["user"]["id"])
+
+    if SETTINGS.telegram_bot_token:
         try:
-            packs = _run_async(_validate_packs_async(token_match.group(0), uid))
+            packs = _run_async(_validate_packs_async(SETTINGS.telegram_bot_token, uid))
             return ok(packs)
         except Exception:
             pass
@@ -174,23 +237,21 @@ def miniapp_packs():
 
 
 @app.route("/api/miniapp/settings")
+@require_miniapp_auth
 def miniapp_settings_get():
-    user_id = request.args.get("user_id", "").strip()
-    if not user_id or not user_id.isdigit():
-        return err("Missing or invalid user_id", 400, "missing_param")
+    user_id = int(request.miniapp_session["user"]["id"])
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT mask_inverted FROM user_settings WHERE user_id = ?", (int(user_id),))
+    c.execute("SELECT mask_inverted FROM user_settings WHERE user_id = ?", (user_id,))
     row = c.fetchone()
     conn.close()
-    return ok({"user_id": int(user_id), "mask_inverted": bool(row["mask_inverted"]) if row else False})
+    return ok({"user_id": user_id, "mask_inverted": bool(row["mask_inverted"]) if row else False})
 
 
 @app.route("/api/miniapp/settings", methods=["PATCH"])
+@require_miniapp_auth
 def miniapp_settings_patch():
-    user_id = request.args.get("user_id", "").strip()
-    if not user_id or not user_id.isdigit():
-        return err("Missing or invalid user_id", 400, "missing_param")
+    user_id = int(request.miniapp_session["user"]["id"])
     data = request.get_json(silent=True)
     if not data:
         return err("JSON body required", 400, "invalid_body")
@@ -201,13 +262,13 @@ def miniapp_settings_patch():
         c.execute(
             "INSERT INTO user_settings (user_id, mask_inverted) VALUES (?, ?) "
             "ON CONFLICT(user_id) DO UPDATE SET mask_inverted = ?",
-            (int(user_id), val, val)
+            (user_id, val, val)
         )
     conn.commit()
-    c.execute("SELECT mask_inverted FROM user_settings WHERE user_id = ?", (int(user_id),))
+    c.execute("SELECT mask_inverted FROM user_settings WHERE user_id = ?", (user_id,))
     row = c.fetchone()
     conn.close()
-    return ok({"user_id": int(user_id), "mask_inverted": bool(row["mask_inverted"]) if row else False})
+    return ok({"user_id": user_id, "mask_inverted": bool(row["mask_inverted"]) if row else False})
 
 
 @app.route("/api/health")
@@ -222,10 +283,11 @@ def health():
         conn.close()
     return ok({
         "status": "ok",
-        "service": "stixmagic",
+        "service": "stixmagic-product-backend",
         "version": API_VERSION,
         "db": "ok" if db_ok else "error",
         "timestamp": int(time.time()),
+        "bot_mode": SETTINGS.bot_mode,
     })
 
 
@@ -586,7 +648,7 @@ def catalog_pack_feature(pack_name):
         return err("Missing or invalid user_id", 400, "missing_param")
     if not title:
         return err("title is required", 400, "missing_param")
-    if pack_type not in ("image", "animated", "video"):
+    if pack_type not in PACK_TYPES:
         pack_type = "image"
 
     conn = get_db()
@@ -629,3 +691,7 @@ def server_error(e):
 def run_api():
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+
+
+if __name__ == "__main__":
+    run_api()

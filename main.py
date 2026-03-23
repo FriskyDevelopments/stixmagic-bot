@@ -49,6 +49,14 @@ from domain.media import (
 )
 from loaders import LoaderController, get_loader_for_context
 from menus import build_keyboard, get_menu_text
+from stixmagic.contracts import (
+    START_PAYLOAD_ADD,
+    START_PAYLOAD_CREATE,
+    START_PAYLOAD_FEATURE,
+    START_PAYLOAD_MAGIC,
+    START_PAYLOAD_MANAGE,
+)
+from stixmagic.settings import get_settings
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -123,6 +131,18 @@ async def nav_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    start_payload = (context.args[0] if context.args else "").strip().lower()
+    if start_payload == START_PAYLOAD_CREATE:
+        return await create_start(update, context)
+    if start_payload == START_PAYLOAD_ADD:
+        return await addsticker_start(update, context)
+    if start_payload == START_PAYLOAD_MANAGE:
+        return await manage_stickers(update, context)
+    if start_payload == START_PAYLOAD_MAGIC:
+        return await magic_start(update, context)
+    if start_payload == START_PAYLOAD_FEATURE:
+        return await feature_start(update, context)
+
     user = update.effective_user
     first_name = user.first_name or "there"
 
@@ -1411,7 +1431,8 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── MAIN ─────────────────────────────────────────────────────
 
 def main():
-    raw_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    settings = get_settings()
+    raw_token = settings.telegram_bot_token
     if not raw_token:
         logger.error("No TELEGRAM_BOT_TOKEN set. Add it in Secrets.")
         return
@@ -1422,6 +1443,13 @@ def main():
         return
 
     token = token_match.group(0)
+
+    if settings.bot_mode != "polling":
+        logger.warning(
+            "TELEGRAM_BOT_MODE=%s but this runtime only starts polling. "
+            "Webhook deployment still needs an HTTP update ingress.",
+            settings.bot_mode,
+        )
 
     from menus import MINIAPP_URL
 

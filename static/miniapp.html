@@ -810,25 +810,13 @@
 
             <div class="info-row">
                 <i class="fa-solid fa-circle-info"></i>
-                <span>Give your pack a name, then send a photo or video to the bot — and your sticker pack is live on Telegram! ✨</span>
-            </div>
-
-            <div class="form-group">
-                <label for="cp-name">
-                    <i class="fa-solid fa-tag"></i>
-                    Pack Name <span style="color:var(--hint);font-weight:400">(unique ID — letters, numbers, _)</span>
-                </label>
-                <input type="text" id="cp-name"
-                       placeholder="e.g. my_cool_pack"
-                       maxlength="64"
-                       autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-                <div class="char-counter" id="cp-name-count">0 / 64</div>
+                <span>The Mini App now prepares the pack metadata, then hands you into the bot for the actual Telegram-native creation flow.</span>
             </div>
 
             <div class="form-group">
                 <label for="cp-title">
                     <i class="fa-solid fa-pen-to-square"></i>
-                    Display Title <span style="color:var(--hint);font-weight:400">(shown to everyone)</span>
+                    Pack Title <span style="color:var(--hint);font-weight:400">(used when you continue in the bot)</span>
                 </label>
                 <input type="text" id="cp-title"
                        placeholder="e.g. My Cool Stickers"
@@ -836,13 +824,23 @@
                 <div class="char-counter" id="cp-title-count">0 / 64</div>
             </div>
 
-            <div class="info-row">
-                <i class="fa-solid fa-triangle-exclamation"></i>
-                The Pack Name can only contain letters, numbers and underscores — and cannot be changed later.
+            <div class="form-group">
+                <label for="cp-notes">
+                    <i class="fa-solid fa-note-sticky"></i>
+                    Prep Notes <span style="color:var(--hint);font-weight:400">(optional, local only)</span>
+                </label>
+                <input type="text" id="cp-notes"
+                       placeholder="e.g. start with my logo sticker"
+                       maxlength="120">
             </div>
 
-            <button class="btn btn-primary" id="btn-create-pack" data-tooltip="Send pack creation request to bot">
-                🪄 Create Pack
+            <div class="info-row">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                Pack creation still happens in the bot because Telegram sticker publishing requires the bot surface.
+            </div>
+
+            <button class="btn btn-primary" id="btn-create-pack" data-tooltip="Continue in bot to create the pack">
+                🪄 Continue in Bot
             </button>
         </section>
 
@@ -854,7 +852,7 @@
 
             <div class="info-row">
                 <i class="fa-solid fa-circle-info"></i>
-                <span>Pick one of your packs below, upload an image, and it'll be added as a new sticker. PNG or JPG work best!</span>
+                <span>Select one of your synced packs, then jump into the bot to upload media. The Mini App stays focused on browsing, prep, and account state.</span>
             </div>
 
             <div class="form-group">
@@ -871,28 +869,13 @@
                 </p>
             </div>
 
-            <div class="form-group">
-                <label>
-                    <i class="fa-solid fa-image"></i>
-                    Image / File
-                </label>
-                <div class="file-upload-area" id="file-drop-zone">
-                    <input type="file" id="as-file" accept="image/*,.webp,.png,.jpg,.jpeg,.gif,.tgs" aria-label="Upload sticker image">
-                    <i class="fa-solid fa-cloud-arrow-up file-upload-icon"></i>
-                    <div class="file-upload-text">
-                        <strong>Tap to browse</strong> or drag &amp; drop<br>
-                        PNG, WebP, JPG, GIF, TGS supported
-                    </div>
-                    <div class="file-upload-name" id="file-name-display"></div>
-                </div>
-                <p class="helper-text">
-                    <i class="fa-solid fa-triangle-exclamation"></i>
-                    Best size: 512 × 512 px. Larger images are resized automatically.
-                </p>
+            <div class="info-row">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                <span>Need the cutout flow instead? Use the bot's magic-cut ritual from the same account.</span>
             </div>
 
-            <button class="btn btn-primary" id="btn-add-sticker" data-tooltip="Send sticker to selected pack">
-                ✨ Add Sticker
+            <button class="btn btn-primary" id="btn-add-sticker" data-tooltip="Continue in bot to add a sticker">
+                ✨ Continue in Bot
             </button>
         </section>
 
@@ -904,7 +887,7 @@
 
             <div class="info-row">
                 <i class="fa-solid fa-circle-info"></i>
-                All your sticker packs in one place. Tap a pack link to open it in Telegram, or use the buttons to manage it.
+                All your sticker packs in one place. Browse them here, then hand off to the bot for destructive or media-heavy actions.
             </div>
 
             <button class="btn btn-ghost" style="margin-bottom:1rem" id="btn-refresh-packs"
@@ -916,7 +899,7 @@
             <div id="my-packs-list">
                 <div class="state-box">
                     <div class="spinner"></div>
-                    <p style="margin-top:0.85rem">Loading your packs…</p>
+                    <p style="margin-top:0.85rem">Authenticating with Telegram…</p>
                 </div>
             </div>
         </section>
@@ -929,7 +912,7 @@
 
             <div class="info-row">
                 <i class="fa-solid fa-circle-info"></i>
-                <span>Discover community sticker packs. Like, add to Telegram, or feature your own!</span>
+                <span>Discover community sticker packs from the same product backend the bot uses.</span>
             </div>
 
             <!-- Sort + Search bar -->
@@ -1024,20 +1007,73 @@
         });
     }
 
-    // ── User info ────────────────────────────────────────────────
-    function initUser() {
-        if (!tg) return;
+    // ── Product bootstrap / Telegram auth ───────────────────────
+    var bootstrapData = null;
+    var miniappSession = null;
+
+    function getTelegramInitData() {
+        return tg && typeof tg.initData === 'string' ? tg.initData : '';
+    }
+
+    function getTelegramUser() {
+        if (bootstrapData && bootstrapData.user) return bootstrapData.user;
         try {
-            var user = (tg.initDataUnsafe || {}).user;
-            if (user) {
-                var badge   = document.getElementById('user-badge');
-                var nameEl  = document.getElementById('user-name-display');
-                var display = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || String(user.id);
-                nameEl.textContent = display;
-                badge.title = 'Telegram ID: ' + user.id;
-                badge.style.display = 'flex';
-            }
-        } catch (e) { /* non-critical */ }
+            return tg ? (tg.initDataUnsafe || {}).user || null : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function initUser() {
+        var user = getTelegramUser();
+        if (!user) return;
+        var badge   = document.getElementById('user-badge');
+        var nameEl  = document.getElementById('user-name-display');
+        var display = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || String(user.id);
+        nameEl.textContent = display;
+        badge.title = 'Telegram ID: ' + user.id;
+        badge.style.display = 'flex';
+    }
+
+    function apiFetch(path, options) {
+        options = options || {};
+        var headers = options.headers || {};
+        var initData = getTelegramInitData();
+        if (!initData) {
+            return Promise.reject(new Error('Missing Telegram init data'));
+        }
+        headers['X-Telegram-Init-Data'] = initData;
+        options.headers = headers;
+        return fetch(path, options).then(function (response) {
+            return response.json().then(function (json) {
+                if (!response.ok || !json.ok) {
+                    var message = json && json.error && json.error.message ? json.error.message : 'Request failed';
+                    throw new Error(message);
+                }
+                return json;
+            });
+        });
+    }
+
+    function openBotFlow(kind) {
+        var fallback = 'https://t.me/stixmagicbot';
+        var links = bootstrapData && bootstrapData.bot && bootstrapData.bot.links;
+        var url = links && links[kind] ? links[kind] : fallback;
+        if (tg && tg.openTelegramLink) {
+            tg.openTelegramLink(url);
+            return;
+        }
+        window.location.href = url;
+    }
+
+    function bootstrapMiniApp() {
+        return apiFetch('/api/miniapp/bootstrap')
+            .then(function (json) {
+                bootstrapData = json.data;
+                miniappSession = json.data.launch || null;
+                initUser();
+                return json.data;
+            });
     }
 
     // ── Tab switching ────────────────────────────────────────────
@@ -1095,15 +1131,10 @@
         if (tg && tg.close) { tg.close(); }
     };
 
-    // ── sendData wrapper ─────────────────────────────────────────
-    function sendData(payload) {
-        var json = JSON.stringify(payload);
-        if (tg && tg.sendData) {
-            tg.sendData(json);
-        } else {
-            console.log('[sendData]', json);
-            showAlert('[Dev mode]\n' + json);
-        }
+    // ── bot hand-off wrapper ─────────────────────────────────────
+    function handoffNotice(message, kind) {
+        showAlert(message);
+        openBotFlow(kind);
     }
 
     // ── Pack data (in-memory cache) ──────────────────────────────
@@ -1114,51 +1145,35 @@
     function loadPacks() {
         if (packTimeoutId !== null) { clearTimeout(packTimeoutId); packTimeoutId = null; }
         packsLoaded = false;
-        // Show loading state in My Packs list; the Add Sticker tab uses a <select>
-        // populated by populatePackSelect() once data arrives — no separate container.
         renderPacksLoading('my-packs-list');
-        sendData({ action: 'get_packs' });
         packTimeoutId = setTimeout(function () {
             packTimeoutId = null;
             if (!packsLoaded) {
-                packsLoaded = true;
-                if (packsCache.length === 0) {
-                    renderEmptyPacks('my-packs-list');
-                }
+                renderEmptyPacks('my-packs-list');
             }
         }, 4000);
-    }
 
-    // Trusted origins for postMessage — only explicit Telegram Web App hosts are
-    // accepted; same-origin is intentionally excluded to prevent unvalidated local
-    // messages from populating the pack list in development or embedded contexts.
-    var TRUSTED_ORIGINS = [
-        'https://web.telegram.org',
-        'https://k.web.telegram.org',
-        'https://z.web.telegram.org'
-    ];
-
-    window.addEventListener('message', function (event) {
-        if (!TRUSTED_ORIGINS.includes(event.origin)) return;
-        try {
-            var msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-            // Validate expected shape: { type: 'packs', data: [...] }
-            if (msg && typeof msg === 'object' && msg.type === 'packs' && Array.isArray(msg.data)) {
+        apiFetch('/api/miniapp/packs')
+            .then(function (json) {
                 if (packTimeoutId !== null) { clearTimeout(packTimeoutId); packTimeoutId = null; }
-                packsCache  = msg.data;
+                packsCache = Array.isArray(json.data) ? json.data : [];
                 packsLoaded = true;
                 populatePackSelect();
                 renderMyPacks();
-            }
-        } catch (e) { console.error('[miniapp] message parse error:', e); }
-    });
+            })
+            .catch(function (error) {
+                packsLoaded = true;
+                document.getElementById('my-packs-list').innerHTML =
+                    '<div class="state-box"><span class="state-icon">⚠️</span><p>' + escHtml(error.message) + '</p></div>';
+            });
+    }
 
     // ── Render helpers ───────────────────────────────────────────
     function renderPacksLoading(containerId) {
         var el = document.getElementById(containerId);
         if (!el) return;
         el.innerHTML = '<div class="state-box"><div class="spinner"></div>' +
-            '<p style="margin-top:0.85rem">Loading your packs…</p></div>';
+            '<p style="margin-top:0.85rem">Authenticating with Telegram…</p></div>';
     }
 
     function renderEmptyPacks(containerId) {
@@ -1247,65 +1262,28 @@
         update();
     }
 
-    setupCharCounter('cp-name',  'cp-name-count',  64);
     setupCharCounter('cp-title', 'cp-title-count', 64);
 
     // ── TAB 1: Create Pack ───────────────────────────────────────
     document.getElementById('btn-create-pack').addEventListener('click', function () {
-        var nameInput  = document.getElementById('cp-name');
         var titleInput = document.getElementById('cp-title');
-        var packName   = nameInput.value.trim();
         var packTitle  = titleInput.value.trim();
-
-        if (!packName)  { showAlert('Please enter a pack name.');  nameInput.focus();  return; }
-        if (!packTitle) { showAlert('Please enter a pack title.'); titleInput.focus(); return; }
-        if (!/^[a-zA-Z0-9_]+$/.test(packName)) {
-            showAlert('Pack name may only contain letters, numbers and underscores.');
-            nameInput.focus();
+        if (!packTitle) {
+            showAlert('Please enter a pack title before continuing to the bot.');
+            titleInput.focus();
             return;
         }
-
-        sendData({ action: 'create_pack', pack_name: packName, title: packTitle });
+        handoffNotice('Continue in the bot to publish the pack and upload the first sticker.', 'create_pack');
     });
 
     // ── TAB 2: Add Sticker ───────────────────────────────────────
-    var fileInput    = document.getElementById('as-file');
-    var fileNameEl   = document.getElementById('file-name-display');
-    var dropZone     = document.getElementById('file-drop-zone');
-    var selectedFile = null;
-
-    function handleFileSelect(file) {
-        if (!file) return;
-        selectedFile = file;
-        fileNameEl.textContent = file.name;
-        fileNameEl.style.display = 'block';
-    }
-
-    fileInput.addEventListener('change', function () {
-        if (fileInput.files && fileInput.files[0]) handleFileSelect(fileInput.files[0]);
-    });
-
-    dropZone.addEventListener('dragover',  function (e) { e.preventDefault(); dropZone.classList.add('dragover'); });
-    dropZone.addEventListener('dragleave', function ()  { dropZone.classList.remove('dragover'); });
-    dropZone.addEventListener('drop',      function (e) {
-        e.preventDefault();
-        dropZone.classList.remove('dragover');
-        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
-            handleFileSelect(e.dataTransfer.files[0]);
-        }
-    });
-
     document.getElementById('btn-add-sticker').addEventListener('click', function () {
         var packName = document.getElementById('as-pack-select').value;
-        if (!packName)    { showAlert('Please select a pack first.'); return; }
-        if (!selectedFile){ showAlert('Please choose an image file.'); return; }
-
-        var reader = new FileReader();
-        reader.onload = function (e) {
-            sendData({ action: 'add_sticker', pack_name: packName, file: e.target.result, file_name: selectedFile.name });
-        };
-        reader.onerror = function () { showAlert('Failed to read the file. Please try again.'); };
-        reader.readAsDataURL(selectedFile);
+        if (!packName) {
+            showAlert('Please select a pack first.');
+            return;
+        }
+        handoffNotice('Continue in the bot to upload media into ' + packName + '.', 'add_sticker');
     });
 
     // ── TAB 3: My Packs ─────────────────────────────────────────
@@ -1316,27 +1294,11 @@
     });
 
     window.editPack = function (packName) {
-        var pack = packsCache.find(function (p) { return p.name === packName; });
-        if (!pack) return;
-        sendData({ action: 'edit_pack', pack_name: packName, title: pack.title });
+        handoffNotice('Pack edits are handled in the bot for now: ' + packName, 'manage_packs');
     };
 
     window.deletePack = function (packName) {
-        function doDelete() {
-            sendData({ action: 'delete_pack', pack_name: packName });
-            packsCache  = packsCache.filter(function (p) { return p.name !== packName; });
-            packsLoaded = true;
-            renderMyPacks();
-        }
-
-        if (tg && tg.showConfirm) {
-            tg.showConfirm('Delete pack "' + packName + '"? This cannot be undone.', function (ok) {
-                if (ok) doDelete();
-            });
-        } else {
-            showAlert('Delete pack "' + packName + '"?\nThis action cannot be undone.\n(Sending delete request…)');
-            doDelete();
-        }
+        handoffNotice('Pack deletion stays in the bot until the Mini App has a destructive-action API: ' + packName, 'manage_packs');
     };
 
     // ── Catalog ──────────────────────────────────────────────────
@@ -1349,10 +1311,8 @@
     var CATALOG_PAGE_SIZE = 10;
 
     function getTelegramUserId() {
-        try {
-            var user = tg && (tg.initDataUnsafe || {}).user;
-            return user ? user.id : null;
-        } catch (e) { return null; }
+        var user = getTelegramUser();
+        return user ? user.id : null;
     }
 
     function setCatalogSort(sort, btnEl) {
@@ -1476,17 +1436,17 @@
     };
 
     window.openFeaturePack = function () {
-        // Open the bot with /feature command to publish a pack to the catalog
-        if (tg && tg.openTelegramLink) {
-            tg.openTelegramLink('https://t.me/stixmagicbot?start=feature');
-        } else {
-            showAlert('Send /feature to @stixmagicbot to publish your pack to the catalog!');
-        }
+        openBotFlow('feature_pack');
     };
 
     // ── Boot ─────────────────────────────────────────────────────
-    initUser();
-    loadPacks();
+    bootstrapMiniApp()
+        .then(function () { loadPacks(); })
+        .catch(function (error) {
+            renderCatalogError('Mini App authentication failed. Open this surface from Telegram.');
+            document.getElementById('my-packs-list').innerHTML =
+                '<div class="state-box"><span class="state-icon">🔐</span><p>' + escHtml(error.message) + '</p></div>';
+        });
 
     // ── Magical star particles ────────────────────────────────────
     (function () {
