@@ -3,10 +3,13 @@ import re
 import sqlite3
 import time
 import asyncio
+import json
+import uuid
 from functools import wraps
 from flask import Flask, jsonify, request, send_from_directory
 
 from config.runtime import get_settings
+from infra.db import cleanup_expired_creator_drafts
 
 DB_FILE = "bot.db"
 
@@ -82,6 +85,22 @@ def paginate(query_result):
     start = (page - 1) * limit
     items = query_result[start:start + limit]
     return items, {"page": page, "limit": limit, "total": total, "pages": max(1, -(-total // limit))}
+
+
+def _creator_flags() -> dict:
+    return {
+        "creator_enabled": settings.creator_enabled,
+        "shape_enabled": settings.feature_creator_shape,
+        "enchant_enabled": settings.feature_creator_enchant,
+        "publish_enabled": settings.feature_creator_publish,
+        "draft_ttl_hours": settings.creator_draft_ttl_hours,
+    }
+
+
+def _creator_guard():
+    if not settings.creator_enabled:
+        return err("Forge is currently disabled.", 503, "creator_disabled")
+    return None
 
 
 # ── PUBLIC ────────────────────────────────────────────────────
@@ -372,6 +391,154 @@ def user_settings_update(user_id):
         "user_id": user_id,
         "mask_inverted": bool(row["mask_inverted"]) if row else False,
     })
+
+
+# ── CREATOR FORGE ────────────────────────────────────────────
+
+@app.route("/api/creator/flags")
+def creator_flags():
+    return ok(_creator_flags())
+
+
+@app.route("/api/debug/creator/flags")
+@require_api_key
+def creator_flags_debug():
+    return ok({"env": settings.app_env, "flags": _creator_flags()})
+
+
+@app.route("/api/creator/flow")
+def creator_flow():
+    flow = [
+        {"id": "start", "label": "Forge", "description": "Upload your source and start the artifact."},
+        {"id": "shape", "label": "Shape", "description": "Apply mask logic and cut geometry."},
+        {"id": "enchant", "label": "Enchant", "description": "Layer controlled visual effects."},
+        {"id": "preview", "label": "Preview", "description": "Inspect outputs before publication."},
+        {"id": "save_draft", "label": "Save Draft", "description": "Persist work-in-progress for later."},
+        {"id": "publish", "label": "Publish", "description": "Activate artifact and lock a version."},
+    ]
+    return ok({"flow": flow, "flags": _creator_flags()})
+
+
+@app.route("/api/creator/drafts", methods=["POST"])
+@require_api_key
+def creator_draft_create():
+    if (guard := _creator_guard()) is not None:
+        return guard
+    data = request.get_json(silent=True) or {}
+    owner_user_id = data.get("owner_user_id")
+    project_name = (data.get("project_name") or "Untitled Forge").strip()
+    artifact_name = (data.get("artifact_name") or "Untitled Artifact").strip()
+    if not owner_user_id or not str(owner_user_id).isdigit():
+        return err("owner_user_id is required.", 400, "missing_param")
+
+    now = int(time.time())
+    expires_at = now + settings.creator_draft_ttl_hours * 3600
+    draft_id = f"drf_{uuid.uuid4().hex[:12]}"
+    conn = get_db()
+    c = conn.cursor()
+    c.execute(
+        "INSERT INTO creator_users (telegram_user_id, created_at, updated_at) VALUES (?, ?, ?) "
+        "ON CONFLICT(telegram_user_id) DO UPDATE SET updated_at = excluded.updated_at",
+        (int(owner_user_id), now, now),
+    )
+    c.execute("SELECT id FROM creator_users WHERE telegram_user_id = ?", (int(owner_user_id),))
+    creator_user_id = c.fetchone()["id"]
+
+    c.execute(
+        "INSERT INTO creator_workspaces (owner_user_id, name, created_at, updated_at) VALUES (?, ?, ?, ?)",
+        (creator_user_id, "Default Forge", now, now),
+    )
+    workspace_id = c.lastrowid
+    c.execute(
+        "INSERT INTO creator_projects (workspace_id, owner_user_id, name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (workspace_id, creator_user_id, project_name, "draft", now, now),
+    )
+    project_id = c.lastrowid
+    c.execute(
+        "INSERT INTO creator_artifacts (project_id, owner_user_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        (project_id, creator_user_id, artifact_name, now, now),
+    )
+    artifact_id = c.lastrowid
+    c.execute(
+        "INSERT INTO creator_drafts (id, project_id, artifact_id, owner_user_id, stage, payload, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (draft_id, project_id, artifact_id, creator_user_id, "start", "{}", expires_at, now, now),
+    )
+    conn.commit()
+    conn.close()
+    return ok({"draft_id": draft_id, "stage": "start", "expires_at": expires_at}, status=201)
+
+
+@app.route("/api/creator/drafts/<draft_id>", methods=["GET"])
+@require_api_key
+def creator_draft_get(draft_id):
+    if (guard := _creator_guard()) is not None:
+        return guard
+    conn = get_db()
+    row = conn.execute("SELECT * FROM creator_drafts WHERE id = ?", (draft_id,)).fetchone()
+    conn.close()
+    if not row:
+        return err("Draft not found.", 404, "not_found")
+    return ok(dict(row))
+
+
+@app.route("/api/creator/drafts/<draft_id>", methods=["PATCH"])
+@require_api_key
+def creator_draft_update(draft_id):
+    if (guard := _creator_guard()) is not None:
+        return guard
+    data = request.get_json(silent=True) or {}
+    stage = (data.get("stage") or "").strip()
+    payload = data.get("payload", {})
+    valid_stages = {"start", "shape", "enchant", "preview", "save_draft", "publish"}
+    if stage and stage not in valid_stages:
+        return err("Invalid stage transition.", 400, "invalid_stage")
+    now = int(time.time())
+    conn = get_db()
+    row = conn.execute("SELECT id FROM creator_drafts WHERE id = ?", (draft_id,)).fetchone()
+    if not row:
+        conn.close()
+        return err("Draft not found.", 404, "not_found")
+    conn.execute(
+        "UPDATE creator_drafts SET stage = COALESCE(NULLIF(?, ''), stage), payload = ?, updated_at = ? WHERE id = ?",
+        (stage, json.dumps(payload), now, draft_id),
+    )
+    conn.commit()
+    updated = conn.execute("SELECT * FROM creator_drafts WHERE id = ?", (draft_id,)).fetchone()
+    conn.close()
+    return ok(dict(updated))
+
+
+@app.route("/api/creator/drafts/<draft_id>/publish", methods=["POST"])
+@require_api_key
+def creator_draft_publish(draft_id):
+    if (guard := _creator_guard()) is not None:
+        return guard
+    if not settings.feature_creator_publish:
+        return err("Publishing is currently disabled.", 503, "publish_disabled")
+    now = int(time.time())
+    conn = get_db()
+    row = conn.execute("SELECT * FROM creator_drafts WHERE id = ?", (draft_id,)).fetchone()
+    if not row:
+        conn.close()
+        return err("Draft not found.", 404, "not_found")
+    conn.execute(
+        "UPDATE creator_drafts SET stage = 'publish', published_at = ?, updated_at = ? WHERE id = ?",
+        (now, now, draft_id),
+    )
+    conn.execute(
+        "UPDATE creator_artifacts SET publication_state = 'published', published_at = ?, updated_at = ? WHERE id = ?",
+        (now, now, row["artifact_id"]),
+    )
+    conn.commit()
+    conn.close()
+    return ok({"draft_id": draft_id, "status": "published", "published_at": now})
+
+
+@app.route("/api/admin/creator/cleanup", methods=["POST"])
+@require_api_key
+def creator_cleanup():
+    deleted = cleanup_expired_creator_drafts()
+    return ok({"deleted_drafts": deleted})
 
 
 # ── CATALOG (public) ──────────────────────────────────────────

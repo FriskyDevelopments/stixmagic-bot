@@ -25,6 +25,11 @@ class Settings:
     session_secret: str
     miniapp_url: str
     port: int
+    creator_enabled: bool
+    feature_creator_shape: bool
+    feature_creator_enchant: bool
+    feature_creator_publish: bool
+    creator_draft_ttl_hours: int
 
     @property
     def is_development(self) -> bool:
@@ -105,6 +110,11 @@ def get_settings() -> Settings:
         )
     miniapp_url = _resolve_optional("MINIAPP_URL", app_env)
     port = int(os.environ.get("PORT", "5000"))
+    creator_enabled = _resolve_optional("FEATURE_CREATOR_ENABLED", app_env, "1") == "1"
+    feature_creator_shape = _resolve_optional("FEATURE_CREATOR_SHAPE", app_env, "1") == "1"
+    feature_creator_enchant = _resolve_optional("FEATURE_CREATOR_ENCHANT", app_env, "1") == "1"
+    feature_creator_publish = _resolve_optional("FEATURE_CREATOR_PUBLISH", app_env, "1") == "1"
+    creator_draft_ttl_hours = int(_resolve_optional("CREATOR_DRAFT_TTL_HOURS", app_env, "72"))
     return Settings(
         app_env=app_env,
         telegram_bot_token=token,
@@ -112,6 +122,11 @@ def get_settings() -> Settings:
         session_secret=session_secret,
         miniapp_url=miniapp_url,
         port=port,
+        creator_enabled=creator_enabled,
+        feature_creator_shape=feature_creator_shape,
+        feature_creator_enchant=feature_creator_enchant,
+        feature_creator_publish=feature_creator_publish,
+        creator_draft_ttl_hours=creator_draft_ttl_hours,
     )
 
 
@@ -123,4 +138,9 @@ def describe_expected_variables(app_env: str | None = None) -> list[str]:
         f"STIXMAGIC_API_KEY_{_env_suffix(resolved_env)} (or STIXMAGIC_API_KEY)",
         f"SESSION_SECRET_{_env_suffix(resolved_env)} (or SESSION_SECRET for production)",
         f"MINIAPP_URL_{_env_suffix(resolved_env)} (or MINIAPP_URL)",
+        f"FEATURE_CREATOR_ENABLED_{_env_suffix(resolved_env)} (or FEATURE_CREATOR_ENABLED)",
+        f"FEATURE_CREATOR_SHAPE_{_env_suffix(resolved_env)} (or FEATURE_CREATOR_SHAPE)",
+        f"FEATURE_CREATOR_ENCHANT_{_env_suffix(resolved_env)} (or FEATURE_CREATOR_ENCHANT)",
+        f"FEATURE_CREATOR_PUBLISH_{_env_suffix(resolved_env)} (or FEATURE_CREATOR_PUBLISH)",
+        f"CREATOR_DRAFT_TTL_HOURS_{_env_suffix(resolved_env)} (or CREATOR_DRAFT_TTL_HOURS)",
     ]
