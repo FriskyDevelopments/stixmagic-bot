@@ -224,6 +224,11 @@
 | `STIXMAGIC_API_KEY_DEV` / `STIXMAGIC_API_KEY_PROD` | ✅ | REST API authentication key for the selected environment |
 | `SESSION_SECRET_DEV` / `SESSION_SECRET_PROD` | Recommended | Flask session secret; production should always set one |
 | `MINIAPP_URL_DEV` / `MINIAPP_URL_PROD` | Optional | Telegram Mini App URL for the selected environment |
+| `FEATURE_CREATOR_ENABLED_DEV` / `FEATURE_CREATOR_ENABLED_PROD` | Optional | Master switch for Creator Forge APIs (`1` default) |
+| `FEATURE_CREATOR_SHAPE_DEV` / `FEATURE_CREATOR_SHAPE_PROD` | Optional | Enables Shape stage behavior (`1` default) |
+| `FEATURE_CREATOR_ENCHANT_DEV` / `FEATURE_CREATOR_ENCHANT_PROD` | Optional | Enables Enchant stage behavior (`1` default) |
+| `FEATURE_CREATOR_PUBLISH_DEV` / `FEATURE_CREATOR_PUBLISH_PROD` | Optional | Enables Publish endpoint (`1` default) |
+| `CREATOR_DRAFT_TTL_HOURS_DEV` / `CREATOR_DRAFT_TTL_HOURS_PROD` | Optional | Draft expiration window in hours (`72` default) |
 
 Legacy aliases remain supported for compatibility: `TELEGRAM_BOT_TOKEN`, `STIXMAGIC_API_KEY`, `SESSION_SECRET`, and `MINIAPP_URL`.
 

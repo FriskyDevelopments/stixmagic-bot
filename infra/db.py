@@ -65,8 +65,104 @@ def init_db() -> None:
         )
         """
     )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS creator_users (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_user_id INTEGER UNIQUE NOT NULL,
+            display_name    TEXT    DEFAULT '',
+            created_at      INTEGER NOT NULL,
+            updated_at      INTEGER NOT NULL
+        )
+        """
+    )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS creator_workspaces (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_user_id   INTEGER NOT NULL,
+            name            TEXT    NOT NULL,
+            visibility      TEXT    NOT NULL DEFAULT 'private',
+            created_at      INTEGER NOT NULL,
+            updated_at      INTEGER NOT NULL,
+            FOREIGN KEY(owner_user_id) REFERENCES creator_users(id)
+        )
+        """
+    )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS creator_projects (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            workspace_id    INTEGER NOT NULL,
+            owner_user_id   INTEGER NOT NULL,
+            name            TEXT    NOT NULL,
+            status          TEXT    NOT NULL DEFAULT 'draft',
+            created_at      INTEGER NOT NULL,
+            updated_at      INTEGER NOT NULL,
+            FOREIGN KEY(workspace_id) REFERENCES creator_workspaces(id),
+            FOREIGN KEY(owner_user_id) REFERENCES creator_users(id)
+        )
+        """
+    )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS creator_artifacts (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id          INTEGER NOT NULL,
+            owner_user_id       INTEGER NOT NULL,
+            name                TEXT    NOT NULL,
+            source_media_path   TEXT    DEFAULT '',
+            mask_config         TEXT    NOT NULL DEFAULT '{}',
+            effect_config       TEXT    NOT NULL DEFAULT '{}',
+            spell_slot          TEXT    NOT NULL DEFAULT '{}',
+            permission_scope    TEXT    NOT NULL DEFAULT 'workspace',
+            publication_state   TEXT    NOT NULL DEFAULT 'draft',
+            published_at        INTEGER,
+            created_at          INTEGER NOT NULL,
+            updated_at          INTEGER NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES creator_projects(id),
+            FOREIGN KEY(owner_user_id) REFERENCES creator_users(id)
+        )
+        """
+    )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS creator_drafts (
+            id                  TEXT PRIMARY KEY,
+            project_id          INTEGER NOT NULL,
+            artifact_id         INTEGER NOT NULL,
+            owner_user_id       INTEGER NOT NULL,
+            stage               TEXT    NOT NULL DEFAULT 'start',
+            payload             TEXT    NOT NULL DEFAULT '{}',
+            expires_at          INTEGER NOT NULL,
+            created_at          INTEGER NOT NULL,
+            updated_at          INTEGER NOT NULL,
+            published_at        INTEGER,
+            FOREIGN KEY(project_id) REFERENCES creator_projects(id),
+            FOREIGN KEY(artifact_id) REFERENCES creator_artifacts(id),
+            FOREIGN KEY(owner_user_id) REFERENCES creator_users(id)
+        )
+        """
+    )
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_creator_drafts_expires_at ON creator_drafts(expires_at)"
+    )
     conn.commit()
     conn.close()
+
+
+def cleanup_expired_creator_drafts(now_ts: int | None = None) -> int:
+    """Delete expired creator drafts. Returns number of deleted rows."""
+    now = now_ts or int(time.time())
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM creator_drafts WHERE expires_at <= ? AND published_at IS NULL", (now,))
+    deleted = cursor.rowcount
+    conn.commit()
+    conn.close()
+    if deleted:
+        logger.info("creator.cleanup_deleted=%s", deleted)
+    return deleted
 
 
 # ── User Settings ─────────────────────────────────────────────
