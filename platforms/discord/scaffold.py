@@ -2,13 +2,17 @@ from __future__ import annotations
 
 from core.contracts import StixCoreContract
 from core.types import PackGenerationInput, ReactionRenderInput
+from platforms.discord.wizard_renderer import DiscordWizardRenderer
+from wizard.model import WizardEvent
+from wizard.rendering import RenderInstruction
 
 
 class DiscordStixAdapter:
-    """Discord-ready scaffold using the same core contract as Telegram."""
+    """Discord-ready scaffold using the same core and shared wizard contract as Telegram."""
 
     def __init__(self, core_engine: StixCoreContract):
         self.core_engine = core_engine
+        self.wizard_renderer = DiscordWizardRenderer()
 
     async def generate_pack(self, file_bytes, media_type: str):
         return await self.core_engine.generate_pack(
@@ -26,6 +30,10 @@ class DiscordStixAdapter:
             user_reaction=user_reaction,
         )
         return self.core_engine.generate_reactions(payload).text
+
+    def render_wizard_event(self, event: WizardEvent) -> RenderInstruction:
+        """Boundary where Discord-specific rendering starts."""
+        return self.wizard_renderer.render(event)
 
     async def handle_slash_generate(self, interaction) -> None:
         """Placeholder command flow to mirror Telegram media->core->response lifecycle."""

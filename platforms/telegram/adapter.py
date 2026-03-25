@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from core.contracts import StixCoreContract
 from core.types import PackGenerationInput, ReactionRenderInput
 from domain.media import extract_file_info
+from platforms.telegram.wizard_renderer import TelegramWizardRenderer
+from wizard.model import WizardEvent
+from wizard.rendering import RenderInstruction
 
 
 @dataclass(slots=True)
@@ -15,10 +18,11 @@ class TelegramMediaEnvelope:
 
 
 class TelegramStixAdapter:
-    """Telegram transport adapter delegating business logic to the shared core engine."""
+    """Telegram transport adapter delegating business logic to shared core + shared wizard engine."""
 
     def __init__(self, core_engine: StixCoreContract):
         self.core_engine = core_engine
+        self.wizard_renderer = TelegramWizardRenderer()
 
     def parse_message_media(self, message) -> TelegramMediaEnvelope | None:
         file_id, media_type, sticker_format = extract_file_info(message)
@@ -46,3 +50,7 @@ class TelegramStixAdapter:
             user_reaction=user_reaction,
         )
         return self.core_engine.generate_reactions(payload).text
+
+    def render_wizard_event(self, event: WizardEvent) -> RenderInstruction:
+        """Boundary where Telegram-specific rendering starts."""
+        return self.wizard_renderer.render(event)
