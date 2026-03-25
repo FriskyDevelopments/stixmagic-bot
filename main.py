@@ -2,9 +2,7 @@ import html
 import io
 import logging
 import os
-import random
 import re
-import string
 import threading
 
 from config.runtime import ConfigError, get_settings
@@ -40,13 +38,11 @@ from infra.db import (
 )
 from domain.media import (
     apply_mask_to_image,
-    async_convert_to_sticker,
-    async_convert_video_to_sticker,
-    convert_to_sticker,
-    convert_video_to_sticker,
     download_file_bytes,
     extract_file_info,
 )
+from core import StixCoreEngine
+from platforms.telegram import TelegramAdapter
 from loaders import LoaderController, get_loader_for_context
 from menus import build_keyboard, get_menu_text
 
@@ -83,6 +79,7 @@ WAITING_CATALOG_SEARCH = 10
 STICKER_EMOJI = ["✨"]
 
 DIV = "◈ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ◈"
+telegram_adapter = TelegramAdapter(StixCoreEngine(), sticker_emoji=STICKER_EMOJI, divider=DIV)
 
 def cancel_keyboard():
     return InlineKeyboardMarkup([[InlineKeyboardButton("✕ Cancel", callback_data="nav:home")]])
@@ -188,8 +185,8 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     title = context.user_data.get('newpack_title', 'My Pack')
 
-    file_id, media_type, sticker_format = extract_file_info(update.message)
-    if not file_id:
+    event = telegram_adapter.parse_update(update)
+    if not event.media:
         await update.message.reply_text(
             "⚠ The ingredient is unrecognised — send an image, video, GIF, or sticker.",
             reply_markup=cancel_keyboard()
@@ -197,7 +194,7 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return WAITING_STICKER
 
     # Select loader and send initial static caption as the progress message.
-    loader = get_loader_for_context("create_pack" if media_type != "video" else "video_convert")
+    loader = get_loader_for_context("create_pack" if event.media.media_type != "video" else "video_convert")
     initial_caption = loader["captions"][0]
     progress = await update.message.reply_text(initial_caption)
 
@@ -205,54 +202,22 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ctrl = LoaderController(progress, loader)
     await ctrl.start()
 
-    bot_username = context.bot.username
-    suffix = "".join(random.choices(string.ascii_lowercase, k=5))
-    pack_name = f"stix_{user.id}_{suffix}_by_{bot_username}"
-
     try:
-        sticker_file = await download_file_bytes(context.bot, file_id)
-        if not sticker_file:
+        ok, payload = await telegram_adapter.create_pack_from_event(update=update, context=context, title=title)
+        if not ok:
             await ctrl.stop()
-            await progress.edit_text("⚠ Download failed. Please try again.")
+            await progress.edit_text(payload["error"])
             return WAITING_STICKER
 
-        if media_type == "image":
-            converted = await async_convert_to_sticker(sticker_file)
-            if converted:
-                sticker_file = converted
-        elif media_type == "video":
-            converted = await async_convert_video_to_sticker(sticker_file)
-            if converted:
-                sticker_file = converted
-
-        input_sticker = InputSticker(sticker=sticker_file, emoji_list=STICKER_EMOJI, format=sticker_format)
-
-        await context.bot.create_new_sticker_set(
-            user_id=user.id,
-            name=pack_name,
-            title=title,
-            stickers=[input_sticker],
-        )
+        pack_name = payload["pack_name"]
 
         add_pack_to_db(user.id, pack_name, title)
 
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("✦ Inscribe More Stickers", callback_data=f"addto_{pack_name}")],
-            [InlineKeyboardButton("🔗 Open the Vessel", url=f"https://t.me/addstickers/{pack_name}")],
-            [
-                InlineKeyboardButton("📖 Grimoire", callback_data="menu_packs"),
-                InlineKeyboardButton("✦ Home", callback_data="nav:home"),
-            ],
-        ])
-
         await ctrl.stop()
         await progress.edit_text(
-            f"⚗️ <b>Pack forged!</b>\n"
-            f"{DIV}\n\n"
-            f"<b>{html.escape(title)}</b>\n"
-            f"<i>The first sticker is sealed within.</i>",
+            telegram_adapter.render_create_success_text(title),
             parse_mode="HTML",
-            reply_markup=keyboard
+            reply_markup=telegram_adapter.render_create_success_keyboard(pack_name),
         )
     except Exception as e:
         logger.error(f"Error creating sticker set: {e}")
@@ -262,17 +227,13 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
             friendly = "The ingredient is too large — try a smaller image (under 512px)."
         elif "invalid" in err.lower():
             friendly = "The form was rejected by Telegram. Try a PNG or JPG."
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 Try Again", callback_data="menu_create")],
-            [InlineKeyboardButton("✦ Home", callback_data="nav:home")],
-        ])
         await ctrl.stop()
         await progress.edit_text(
             f"⚠ <b>The transmutation failed</b>\n"
             f"{DIV}\n\n"
             f"{friendly}",
             parse_mode="HTML",
-            reply_markup=keyboard
+            reply_markup=telegram_adapter.render_failure_keyboard("menu_create"),
         )
 
     context.user_data.clear()
@@ -367,13 +328,12 @@ async def addsticker_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def addsticker_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.message.from_user
     pack_name = context.user_data.get('selected_pack')
     packs = context.user_data.get('user_packs', [])
     pack_title = next((t for n, t in packs if n == pack_name), pack_name)
 
-    file_id, media_type, sticker_format = extract_file_info(update.message)
-    if not file_id:
+    event = telegram_adapter.parse_update(update)
+    if not event.media:
         await update.message.reply_text(
             "⚠ The ingredient is unrecognised — send an image, video, GIF, or sticker.",
             reply_markup=cancel_keyboard()
@@ -383,56 +343,28 @@ async def addsticker_receive(update: Update, context: ContextTypes.DEFAULT_TYPE)
     progress = await update.message.reply_text("⚗️ <i>Binding the sticker...</i>", parse_mode="HTML")
 
     try:
-        sticker_file = await download_file_bytes(context.bot, file_id)
-        if not sticker_file:
-            await progress.edit_text("⚠ Download failed. Please try again.")
-            return WAITING_STICKER_ADD
-
-        if media_type == "image":
-            converted = convert_to_sticker(sticker_file)
-            if converted:
-                sticker_file = converted
-        elif media_type == "video":
+        if event.media.media_type == "video":
             await progress.edit_text("⚗️ <i>Distilling the animation...</i>", parse_mode="HTML")
-            converted = convert_video_to_sticker(sticker_file)
-            if converted:
-                sticker_file = converted
-
-        input_sticker = InputSticker(sticker=sticker_file, emoji_list=STICKER_EMOJI, format=sticker_format)
-        await context.bot.add_sticker_to_set(
-            user_id=user.id,
-            name=pack_name,
-            sticker=input_sticker
-        )
-
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("✦ Bind Another", callback_data=f"addto_{pack_name}")],
-            [InlineKeyboardButton("🔗 Open the Vessel", url=f"https://t.me/addstickers/{pack_name}")],
-            [
-                InlineKeyboardButton("📖 Grimoire", callback_data="menu_packs"),
-                InlineKeyboardButton("✦ Home", callback_data="nav:home"),
-            ],
-        ])
+        ok, payload = await telegram_adapter.add_sticker_from_event(update=update, context=context, pack_name=pack_name)
+        if not ok:
+            await progress.edit_text(payload["error"])
+            return WAITING_STICKER_ADD
 
         await progress.edit_text(
             f"✦ <b>Sticker sealed</b>\n"
             f"{DIV}\n\n"
             f"<b>{html.escape(pack_title)}</b> grows stronger.",
             parse_mode="HTML",
-            reply_markup=keyboard
+            reply_markup=telegram_adapter.render_add_success_keyboard(pack_name),
         )
     except Exception as e:
         logger.error(f"Error adding sticker: {e}")
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 Try Again", callback_data=f"addto_{pack_name}")],
-            [InlineKeyboardButton("✦ Home", callback_data="nav:home")],
-        ])
         await progress.edit_text(
             f"⚠ <b>The binding failed</b>\n"
             f"{DIV}\n\n"
             f"<i>{html.escape(str(e))}</i>",
             parse_mode="HTML",
-            reply_markup=keyboard
+            reply_markup=telegram_adapter.render_failure_keyboard(f"addto_{pack_name}"),
         )
 
     context.user_data.clear()
@@ -1410,15 +1342,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ── MAIN ─────────────────────────────────────────────────────
 
-def main():
-    try:
-        settings = get_settings()
-    except ConfigError as exc:
-        logger.error("Configuration error: %s", exc)
-        return
-
-    token = settings.telegram_bot_token
-
+def build_post_init():
     from menus import MINIAPP_URL
 
     async def post_init(app):
@@ -1451,9 +1375,10 @@ def main():
             logger.info("Bot commands registered")
         except Exception as e:
             logger.warning(f"Could not set bot commands: {e}")
+    return post_init
 
-    application = Application.builder().token(token).post_init(post_init).build()
 
+def register_handlers(application):
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("packs", show_packs))
     application.add_handler(CommandHandler("manage", manage_stickers))
@@ -1538,6 +1463,22 @@ def main():
     application.add_handler(InlineQueryHandler(inline_query_handler))
     application.add_handler(CallbackQueryHandler(nav_callback, pattern="^nav:"))
     application.add_handler(CallbackQueryHandler(menu_callback))
+
+
+def build_application(token: str) -> Application:
+    application = Application.builder().token(token).post_init(build_post_init()).build()
+    register_handlers(application)
+    return application
+
+
+def main():
+    try:
+        settings = get_settings()
+    except ConfigError as exc:
+        logger.error("Configuration error: %s", exc)
+        return
+
+    application = build_application(settings.telegram_bot_token)
 
     from api import run_api
     web_thread = threading.Thread(target=run_api, daemon=True)
