@@ -40,13 +40,10 @@ from infra.db import (
 )
 from domain.media import (
     apply_mask_to_image,
-    async_convert_to_sticker,
-    async_convert_video_to_sticker,
-    convert_to_sticker,
-    convert_video_to_sticker,
     download_file_bytes,
-    extract_file_info,
 )
+from core.engine import StixCoreEngine
+from platforms.telegram import TelegramStixAdapter
 from loaders import LoaderController, get_loader_for_context
 from menus import build_keyboard, get_menu_text
 
@@ -56,6 +53,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 init_db()
+
+core_engine = StixCoreEngine()
+telegram_adapter = TelegramStixAdapter(core_engine)
 
 async def validate_and_sync_packs(bot, user_id):
     """Check each DB pack against Telegram. Prune deleted packs, sync renamed titles."""
@@ -188,8 +188,8 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     title = context.user_data.get('newpack_title', 'My Pack')
 
-    file_id, media_type, sticker_format = extract_file_info(update.message)
-    if not file_id:
+    media = telegram_adapter.parse_message_media(update.message)
+    if not media:
         await update.message.reply_text(
             "⚠ The ingredient is unrecognised — send an image, video, GIF, or sticker.",
             reply_markup=cancel_keyboard()
@@ -197,7 +197,7 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return WAITING_STICKER
 
     # Select loader and send initial static caption as the progress message.
-    loader = get_loader_for_context("create_pack" if media_type != "video" else "video_convert")
+    loader = get_loader_for_context("create_pack" if media.media_type != "video" else "video_convert")
     initial_caption = loader["captions"][0]
     progress = await update.message.reply_text(initial_caption)
 
@@ -210,22 +210,23 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pack_name = f"stix_{user.id}_{suffix}_by_{bot_username}"
 
     try:
-        sticker_file = await download_file_bytes(context.bot, file_id)
+        sticker_file = await download_file_bytes(context.bot, media.file_id)
         if not sticker_file:
             await ctrl.stop()
             await progress.edit_text("⚠ Download failed. Please try again.")
             return WAITING_STICKER
 
-        if media_type == "image":
-            converted = await async_convert_to_sticker(sticker_file)
-            if converted:
-                sticker_file = converted
-        elif media_type == "video":
-            converted = await async_convert_video_to_sticker(sticker_file)
-            if converted:
-                sticker_file = converted
+        generated = await telegram_adapter.generate_pack(sticker_file, media.media_type)
+        if not generated:
+            await ctrl.stop()
+            await progress.edit_text("⚠ Conversion failed. Please try again.")
+            return WAITING_STICKER
 
-        input_sticker = InputSticker(sticker=sticker_file, emoji_list=STICKER_EMOJI, format=sticker_format)
+        input_sticker = InputSticker(
+            sticker=generated.sticker_file,
+            emoji_list=STICKER_EMOJI,
+            format=generated.sticker_format,
+        )
 
         await context.bot.create_new_sticker_set(
             user_id=user.id,
@@ -372,8 +373,8 @@ async def addsticker_receive(update: Update, context: ContextTypes.DEFAULT_TYPE)
     packs = context.user_data.get('user_packs', [])
     pack_title = next((t for n, t in packs if n == pack_name), pack_name)
 
-    file_id, media_type, sticker_format = extract_file_info(update.message)
-    if not file_id:
+    media = telegram_adapter.parse_message_media(update.message)
+    if not media:
         await update.message.reply_text(
             "⚠ The ingredient is unrecognised — send an image, video, GIF, or sticker.",
             reply_markup=cancel_keyboard()
@@ -383,22 +384,24 @@ async def addsticker_receive(update: Update, context: ContextTypes.DEFAULT_TYPE)
     progress = await update.message.reply_text("⚗️ <i>Binding the sticker...</i>", parse_mode="HTML")
 
     try:
-        sticker_file = await download_file_bytes(context.bot, file_id)
+        sticker_file = await download_file_bytes(context.bot, media.file_id)
         if not sticker_file:
             await progress.edit_text("⚠ Download failed. Please try again.")
             return WAITING_STICKER_ADD
 
-        if media_type == "image":
-            converted = convert_to_sticker(sticker_file)
-            if converted:
-                sticker_file = converted
-        elif media_type == "video":
+        if media.media_type == "video":
             await progress.edit_text("⚗️ <i>Distilling the animation...</i>", parse_mode="HTML")
-            converted = convert_video_to_sticker(sticker_file)
-            if converted:
-                sticker_file = converted
 
-        input_sticker = InputSticker(sticker=sticker_file, emoji_list=STICKER_EMOJI, format=sticker_format)
+        generated = await telegram_adapter.generate_pack(sticker_file, media.media_type)
+        if not generated:
+            await progress.edit_text("⚠ Conversion failed. Please try again.")
+            return WAITING_STICKER_ADD
+
+        input_sticker = InputSticker(
+            sticker=generated.sticker_file,
+            emoji_list=STICKER_EMOJI,
+            format=generated.sticker_format,
+        )
         await context.bot.add_sticker_to_set(
             user_id=user.id,
             name=pack_name,
@@ -462,15 +465,15 @@ async def magic_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def magic_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    file_id, _, _ = extract_file_info(update.message)
-    if not file_id:
+    media = telegram_adapter.parse_message_media(update.message)
+    if not media:
         await update.message.reply_text(
             "⚠ The form is unrecognised — send a photo or image file.",
             reply_markup=cancel_keyboard()
         )
         return WAITING_SOURCE_IMAGE
 
-    source_bytes = await download_file_bytes(context.bot, file_id)
+    source_bytes = await download_file_bytes(context.bot, media.file_id)
     if not source_bytes:
         await update.message.reply_text("⚠ The ingredient could not be summoned. Try again.", reply_markup=cancel_keyboard())
         return WAITING_SOURCE_IMAGE
@@ -492,15 +495,15 @@ async def magic_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def magic_mask(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    file_id, _, _ = extract_file_info(update.message)
-    if not file_id:
+    media = telegram_adapter.parse_message_media(update.message)
+    if not media:
         await update.message.reply_text(
             "⚠ The mask form is unrecognised — send a black & white image.",
             reply_markup=cancel_keyboard()
         )
         return WAITING_MASK_IMAGE
 
-    mask_bytes = await download_file_bytes(context.bot, file_id)
+    mask_bytes = await download_file_bytes(context.bot, media.file_id)
     if not mask_bytes:
         await update.message.reply_text("⚠ Download failed. Try again.", reply_markup=cancel_keyboard())
         return WAITING_MASK_IMAGE
@@ -636,22 +639,7 @@ CATALOG_PAGE_SIZE = 5
 
 
 def _catalog_pack_text(pack: dict, user_reaction: str | None = None) -> str:
-    likes = pack.get("likes", 0)
-    dislikes = pack.get("dislikes", 0)
-    views = pack.get("view_count", 0)
-    desc = pack.get("description", "")
-    like_mark = " ◀" if user_reaction == "like" else ""
-    dislike_mark = " ◀" if user_reaction == "dislike" else ""
-    text = (
-        f"🔍 <b>{html.escape(pack['title'])}</b>\n"
-        f"<code>{html.escape(pack['name'])}</code>\n"
-    )
-    if desc:
-        text += f"\n<i>{html.escape(desc)}</i>\n"
-    text += (
-        f"\n👁 {views}  ·  👍 {likes}{like_mark}  ·  👎 {dislikes}{dislike_mark}"
-    )
-    return text
+    return telegram_adapter.generate_reactions(pack, user_reaction)
 
 
 async def catalog_show_page(update: Update, sort: str, query: str, page: int):
@@ -887,12 +875,8 @@ async def pack_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     if catalog_pack:
         catalog_increment_views(pack_name)
-        likes = catalog_pack.get("likes", 0)
-        dislikes = catalog_pack.get("dislikes", 0)
-        views = catalog_pack.get("view_count", 0)
-        like_mark = " ◀" if user_reaction == "like" else ""
-        dislike_mark = " ◀" if user_reaction == "dislike" else ""
-        text += f"\n👁 {views}  ·  👍 {likes}{like_mark}  ·  👎 {dislikes}{dislike_mark}\n"
+        stats_text = telegram_adapter.generate_reactions(catalog_pack, user_reaction)
+        text += "\n" + stats_text.split("\n")[-1] + "\n"
         if catalog_pack.get("description"):
             text += f"\n<i>{html.escape(catalog_pack['description'])}</i>\n"
         rows = [

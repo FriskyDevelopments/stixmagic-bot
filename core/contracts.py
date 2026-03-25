@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from core.capabilities import PlatformCapabilities
-from core.types import (
+from .capabilities import PlatformCapabilities
+from .types import (
     PackGenerationRequest,
     PackGenerationResult,
     PlatformEventContext,
+    ReactionRenderInput,
+    ReactionRenderResult,
     StickerGenerationInput,
     StickerGenerationOutput,
     UserSessionContext,
@@ -114,3 +116,13 @@ class SupportsPackGeneration(Protocol):
         capabilities: PlatformCapabilities,
     ) -> PackGenerationResult:
         ...
+
+
+class StixCoreContract(Protocol):
+    """Legacy contract for platform adapters using the simpler generation API."""
+
+    async def generate_pack(self, payload: Any) -> Any:
+        """Convert incoming media into a platform-ready sticker payload."""
+
+    def generate_reactions(self, payload: ReactionRenderInput) -> ReactionRenderResult:
+        """Render a normalized reaction + metadata text block for platform adapters."""

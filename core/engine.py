@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from core.capabilities import PlatformCapabilities
-from core.contracts import MediaNormalizer, PackFormatter
-from core.types import (
+from .capabilities import PlatformCapabilities
+from .contracts import MediaNormalizer, PackFormatter
+from .types import (
     PackGenerationRequest,
     PackGenerationResult,
     PackItemResult,
@@ -31,7 +31,8 @@ class StixCoreEngine:
     def normalize_generation_request(self, request: PackGenerationRequest) -> PackGenerationRequest:
         """Normalize core pack requests to keep adapter logic thin."""
 
-        normalized_title = request.title.strip()[:64] if request.title else "My Pack"
+        raw_title = (request.title or "").strip()
+        normalized_title = (raw_title or "My Pack")[:64]
         normalized_inputs = [
             replace(
                 item,

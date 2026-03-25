@@ -6,21 +6,36 @@ adapters can use the same contracts without duplicating business logic.
 
 from __future__ import annotations
 
+import io
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass(slots=True)
 class PlatformEventContext:
-    """Event envelope passed from adapters into the core engine."""
+    """Event envelope passed from adapters into the core engine.
+
+    Notes:
+        - ``chat_id`` is kept for backwards compatibility / Telegram semantics.
+        - ``conversation_id`` is the preferred, platform-agnostic identifier.
+    """
 
     platform: str
     event_id: str | None
-    chat_id: str | int | None
     user_id: str | int
+    chat_id: str | int | None = None
+    conversation_id: str | int | None = None
     message_id: str | int | None = None
     command: str | None = None
     raw_event: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # Keep ``chat_id`` and ``conversation_id`` in sync for callers that
+        # may use either name depending on the adapter (Telegram, Discord, ...).
+        if self.conversation_id is None and self.chat_id is not None:
+            self.conversation_id = self.chat_id
+        elif self.conversation_id is not None and self.chat_id is None:
+            self.chat_id = self.conversation_id
 
 
 @dataclass(slots=True)
@@ -119,3 +134,41 @@ class PackGenerationResult:
     items: list[PackItemResult]
     warnings: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Legacy DTOs — kept for backward compatibility with existing adapters that
+# pre-date the richer core type system.  New code should use the types above.
+# ---------------------------------------------------------------------------
+
+MediaType = Literal["image", "video", "sticker"]
+StickerFormat = Literal["static", "video"]
+ReactionType = Literal["like", "dislike"]
+
+
+@dataclass(slots=True)
+class PackGenerationInput:
+    """Legacy request DTO used by the simplified Telegram adapter path."""
+
+    file_bytes: io.BytesIO
+    media_type: MediaType
+
+
+@dataclass(slots=True)
+class ReactionRenderInput:
+    """Legacy request DTO for catalog/reaction text rendering."""
+
+    title: str
+    name: str
+    description: str = ""
+    likes: int = 0
+    dislikes: int = 0
+    views: int = 0
+    user_reaction: ReactionType | None = None
+
+
+@dataclass(slots=True)
+class ReactionRenderResult:
+    """Legacy result DTO for catalog/reaction text rendering."""
+
+    text: str

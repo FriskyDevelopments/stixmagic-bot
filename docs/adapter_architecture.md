@@ -18,8 +18,10 @@ The `core/` package is platform-agnostic and must not import Telegram or Discord
 - `core/types.py`
   - DTOs for sticker input/output, reaction input/output, pack request/result.
   - DTOs for platform event context and user/session context.
+  - Legacy `PackGenerationInput` / `ReactionRenderInput` kept for backward compatibility.
 - `core/contracts.py`
   - Explicit protocols for platform adapter, media normalization, trigger execution entry, and wizard/flow rendering hooks.
+  - Legacy `StixCoreContract` kept for existing adapter wiring.
 - `core/engine.py`
   - `StixCoreEngine` with shared methods:
     - `normalize_generation_request(...)`
@@ -42,11 +44,13 @@ Each platform package is intentionally thin and should mostly:
 Current boundaries:
 
 - `platforms/telegram/adapter.py`
-  - Telegram capability surface.
-  - Telegram-specific publish hooks.
+  - `TelegramPlatformAdapter`: new capability-aware adapter boundary.
+  - `TelegramStixAdapter`: legacy adapter retained for the existing `main.py` wiring.
 - `platforms/discord/adapter.py`
   - Discord capability surface.
   - Discord-specific publish hooks (stubbed for integration wiring).
+- `platforms/discord/scaffold.py`
+  - Legacy Discord scaffold retained for parity with the legacy Telegram adapter path.
 
 ## What remains Telegram-specific for now
 
@@ -66,5 +70,13 @@ Discord integration can now be added as a minimal adapter track:
 2. Provide a Discord media normalizer implementation satisfying `MediaNormalizer`.
 3. Invoke `StixCoreEngine.generate_pack(...)` / `generate_reactions(...)`.
 4. Render responses using Discord-native components (buttons/modals/ephemeral response), guided by `PlatformCapabilities`.
+
+Activation steps:
+
+1. Wire `DiscordPlatformAdapter` into `discord.py` slash command handlers.
+2. Implement Discord transport response builders (ephemeral + attachment upload).
+3. Add Discord bot token/env plumbing to runtime config.
+4. Add integration smoke tests for Discord attachment upload + core invocation.
+5. Deploy with feature flag and monitor conversion/error rates against Telegram baseline.
 
 This path keeps one magical STIX MΛGIC brain with multiple platform paws.
