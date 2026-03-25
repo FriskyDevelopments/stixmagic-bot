@@ -1,4 +1,13 @@
-from core.contracts import StixCoreContract
-from core.engine import StixCoreEngine
+"""Shared STIX MΛGIC platform-agnostic core package."""
 
-__all__ = ["StixCoreContract", "StixCoreEngine"]
+from .capabilities import DISCORD_CAPABILITIES, TELEGRAM_CAPABILITIES, PlatformCapabilities
+from .contracts import StixCoreContract
+from .engine import StixCoreEngine
+
+__all__ = [
+    "DISCORD_CAPABILITIES",
+    "TELEGRAM_CAPABILITIES",
+    "PlatformCapabilities",
+    "StixCoreContract",
+    "StixCoreEngine",
+]

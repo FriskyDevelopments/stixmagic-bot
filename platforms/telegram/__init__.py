@@ -1,3 +1,5 @@
-from platforms.telegram.adapter import TelegramStixAdapter
+"""Telegram adapter layer for STIX MΛGIC shared core."""
 
-__all__ = ["TelegramStixAdapter"]
+from .adapter import TelegramPlatformAdapter, TelegramStixAdapter
+
+__all__ = ["TelegramPlatformAdapter", "TelegramStixAdapter"]

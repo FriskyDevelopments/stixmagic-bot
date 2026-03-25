@@ -1,3 +1,5 @@
-from platforms.discord.scaffold import DiscordStixAdapter
+"""Discord adapter layer for STIX MΛGIC shared core."""
 
-__all__ = ["DiscordStixAdapter"]
+from .adapter import DiscordPlatformAdapter
+
+__all__ = ["DiscordPlatformAdapter"]
