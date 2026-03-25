@@ -35,3 +35,13 @@
 3. Add Discord bot token/env plumbing to runtime config.
 4. Add integration smoke tests for Discord attachment upload + core invocation.
 5. Deploy with feature flag and monitor conversion/error rates against Telegram baseline.
+
+
+## Shared wizard/flow engine boundary
+
+- Shared flow runtime: `wizard/`.
+- Shared wizard definitions: `examples/wizards/`.
+- Platform renderers: `platforms/telegram/wizard_renderer.py` and `platforms/discord/wizard_renderer.py`.
+
+Rule: all step logic, validation, transitions, session state, and completion rules stay in shared wizard definitions/engine.
+Only rendering mappings (inline keyboard vs buttons/modals) live in platform renderer/adapters.
