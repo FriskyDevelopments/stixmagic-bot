@@ -1,0 +1,40 @@
+name: Validate Repository
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Import/runtime smoke test
+        run: |
+          python - <<'PY'
+          from src.bot import build_runtime_summary
+          from src.animations import describe_animation_stack
+          summary = build_runtime_summary()
+          stack = describe_animation_stack()
+          assert any(item["owner"] == "src/stickers" for item in summary["core"])
+          assert any(plugin["slug"] == "truck-club" for plugin in summary["plugins"])
+          assert "pipeline.motion_presets" in stack["pipeline_modules"]
+          print("Runtime summary and animation stack validated")
+          PY
+
+      - name: Compile Python sources
+        run: python -m compileall src main.py api.py menus.py domain infra loaders pipeline pipeline_adapter.py
