@@ -43,9 +43,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-config.validate_config()
-init_db()
-
 async def validate_and_sync_packs(bot, user_id):
     """Check each DB pack against Telegram. Prune deleted packs, sync renamed titles."""
     packs = get_user_packs(user_id)
@@ -679,25 +676,42 @@ async def show_about(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
 
 
+def _is_admin(user_id: int) -> bool:
+    """Return True if *user_id* is allowed to run admin-only commands.
+
+    Rules (fail-closed in production):
+    - Production, ADMIN_USER_IDS set   → user must be in the list.
+    - Production, ADMIN_USER_IDS empty → deny everyone (gate sealed).
+    - Development, ADMIN_USER_IDS set  → user must be in the list.
+    - Development, ADMIN_USER_IDS empty → allow everyone (QA convenience).
+    """
+    admins = config.ADMIN_USER_IDS
+    if config.IS_PRODUCTION:
+        return bool(admins) and user_id in admins
+    return (not admins) or user_id in admins
+
+
 async def show_env(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show current environment, active feature flags, and pack prefix.
 
+    Admin-only command.
+
     Access rules:
-    - In development with no ADMIN_USER_IDS: open to any user (useful for QA).
-    - In production with no ADMIN_USER_IDS: command is blocked.
-    - When ADMIN_USER_IDS is set: restricted to those IDs in all environments.
+    - Production, ADMIN_USER_IDS set:   restricted to those IDs.
+    - Production, ADMIN_USER_IDS empty: blocked for everyone (fail-closed).
+    - Development, ADMIN_USER_IDS set:  restricted to those IDs.
+    - Development, ADMIN_USER_IDS empty: open to all users (QA convenience).
     """
     user = update.effective_user
 
-    if config.ADMIN_USER_IDS:
-        if user.id not in config.ADMIN_USER_IDS:
-            await update.message.reply_text("⚠ This command is restricted to admins.")
-            return
-    elif config.IS_PRODUCTION:
-        await update.message.reply_text(
-            "⚠ This command is disabled in production. "
-            "Set ADMIN_USER_IDS to enable it for specific users."
-        )
+    if not _is_admin(user.id):
+        if config.IS_PRODUCTION and not config.ADMIN_USER_IDS:
+            await update.message.reply_text(
+                "⛔ This command is disabled in production. "
+                "Set ADMIN_USER_IDS to enable it for specific users."
+            )
+        else:
+            await update.message.reply_text("⛔ Admin only.")
         return
 
     active_flags = [name for name, enabled in config.FEATURES.items() if enabled]
@@ -971,7 +985,10 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── MAIN ─────────────────────────────────────────────────────
 
 def main():
-    # Token and config are already validated at module load via config.validate_config().
+    config.validate_config()
+    init_db()
+
+    # Token and config are already validated above.
     token = config.BOT_TOKEN
 
     from menus import MINIAPP_URL

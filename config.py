@@ -157,7 +157,23 @@ def _resolve_admin_ids() -> list[int]:
 ADMIN_USER_IDS: list[int] = _resolve_admin_ids()
 
 
-# ── Startup Validation ────────────────────────────────────────────────────────
+# ── Expected Bot Identity (optional, for deterministic startup safety) ────────
+
+# Optional numeric bot IDs that must match the resolved token's bot ID.
+# When set, validate_config() rejects a mismatched token even when the
+# opposite-environment token is not present (e.g. DEV_BOT_TOKEN absent in prod).
+# Example: EXPECTED_PROD_BOT_ID=123456789
+EXPECTED_PROD_BOT_ID: str = os.environ.get("EXPECTED_PROD_BOT_ID", "").strip()
+EXPECTED_DEV_BOT_ID: str = os.environ.get("EXPECTED_DEV_BOT_ID", "").strip()
+
+
+def _extract_bot_id(token: str) -> str:
+    """Return the numeric bot-ID prefix of a Telegram bot token, or ''."""
+    if not token or ":" not in token:
+        return ""
+    bot_id, _ = token.split(":", 1)
+    return bot_id if bot_id.isdigit() else ""
+
 
 def validate_config() -> None:
     """
@@ -169,6 +185,11 @@ def validate_config() -> None:
        accidentally running the dev bot as production.
     3. In development, the active token must NOT match TELEGRAM_BOT_TOKEN —
        prevents accidentally running the production bot under dev settings.
+    4. If EXPECTED_PROD_BOT_ID / EXPECTED_DEV_BOT_ID is set, the resolved
+       token's numeric bot ID must match — deterministic identity check that
+       works even when the opposite-environment token is absent.
+    5. In production, a warning is emitted when ADMIN_USER_IDS is empty so
+       operators know the /env command will be inaccessible.
     """
     _log = logging.getLogger(__name__)
     errors: list[str] = []
@@ -222,10 +243,39 @@ def validate_config() -> None:
                 "is not allowed. Use a separate @StixMagicdevBot token for DEV_BOT_TOKEN."
             )
 
+    # 4. Deterministic bot-identity check (independent of opposite-env token).
+    if BOT_TOKEN:
+        actual_id = _extract_bot_id(BOT_TOKEN)
+        if IS_PRODUCTION and EXPECTED_PROD_BOT_ID:
+            if actual_id != EXPECTED_PROD_BOT_ID:
+                errors.append(
+                    f"SAFETY VIOLATION: APP_ENV=production but the resolved token's "
+                    f"bot ID ({actual_id!r}) does not match EXPECTED_PROD_BOT_ID "
+                    f"({EXPECTED_PROD_BOT_ID!r}). "
+                    "Set TELEGRAM_BOT_TOKEN to the correct production token."
+                )
+        if IS_DEVELOPMENT and EXPECTED_DEV_BOT_ID:
+            if actual_id != EXPECTED_DEV_BOT_ID:
+                errors.append(
+                    f"SAFETY VIOLATION: APP_ENV=development but the resolved token's "
+                    f"bot ID ({actual_id!r}) does not match EXPECTED_DEV_BOT_ID "
+                    f"({EXPECTED_DEV_BOT_ID!r}). "
+                    "Set DEV_BOT_TOKEN to the correct dev bot token."
+                )
+
     if errors:
         for msg in errors:
             _log.critical("[config] %s", msg)
         sys.exit(1)
+
+    # 5. Warn (don't fail) when production has no admin IDs — /env will be
+    #    inaccessible and operators should know.
+    if IS_PRODUCTION and not ADMIN_USER_IDS:
+        _log.warning(
+            "[config] ADMIN_USER_IDS is not set. "
+            "The /env command will be disabled in production until at least one "
+            "admin ID is configured."
+        )
 
     _log.info(
         "[config] Environment: %s | Pack prefix: '%s' | Features: %s",

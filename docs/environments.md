@@ -37,7 +37,9 @@ production users:
 - **Safety checks**:
   - If `APP_ENV=production` but the loaded token matches `DEV_BOT_TOKEN`, the
     app refuses to start.
-  - The `/env` command is blocked unless `ADMIN_USER_IDS` is set.
+  - If `EXPECTED_PROD_BOT_ID` is set, the token's numeric bot ID must match —
+    deterministic identity check independent of `DEV_BOT_TOKEN` being present.
+  - The `/env` command is blocked (fail-closed) when `ADMIN_USER_IDS` is empty.
 
 ---
 
@@ -57,6 +59,8 @@ and exposes constants that the rest of the app imports:
 | `config.LOG_LEVEL` | `int` | `logging.INFO` / `logging.DEBUG` |
 | `config.FEATURES` | `dict` | feature-flag name → bool |
 | `config.ADMIN_USER_IDS` | `list[int]` | Telegram IDs allowed admin commands |
+| `config.EXPECTED_PROD_BOT_ID` | `str` | expected numeric bot ID for production (optional) |
+| `config.EXPECTED_DEV_BOT_ID` | `str` | expected numeric bot ID for development (optional) |
 | `config.is_feature_enabled(name)` | `bool` | check a flag |
 | `config.validate_config()` | `None` | fail-fast startup check |
 
@@ -71,6 +75,8 @@ APP_ENV=development          # or "production"
 TELEGRAM_BOT_TOKEN=...       # production bot token
 DEV_BOT_TOKEN=...            # development bot token (@StixMagicdevBot)
 ADMIN_USER_IDS=123456,789012 # comma-separated Telegram user IDs
+EXPECTED_PROD_BOT_ID=...     # (optional) numeric bot ID for production safety
+EXPECTED_DEV_BOT_ID=...      # (optional) numeric bot ID for development safety
 ```
 
 ---
@@ -138,12 +144,19 @@ APP_ENV=production TELEGRAM_BOT_TOKEN="<prod token>" python main.py
 ## Admin commands
 
 `/env` — Displays the current environment, active/inactive feature flags, and
-pack prefix.
+pack prefix. Admin-only command.
 
-Access rules:
-- In **development** with no `ADMIN_USER_IDS`: open to any user (useful for QA).
-- In **production** with no `ADMIN_USER_IDS`: **blocked** (disabled by default).
-- When `ADMIN_USER_IDS` is set: restricted to those IDs in all environments.
+Access rules (fail-closed in production):
+
+| Environment | `ADMIN_USER_IDS` | Result |
+|---|---|---|
+| production | empty | **blocked for everyone** (gate sealed) |
+| production | set | restricted to those IDs |
+| development | empty | open to any user (QA convenience) |
+| development | set | restricted to those IDs |
+
+> ⚠ Always set `ADMIN_USER_IDS` in production. A startup warning is logged
+> when it is missing.
 
 ---
 
