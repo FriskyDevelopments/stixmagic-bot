@@ -31,6 +31,12 @@ class WizardEngine:
         if session.completed:
             raise ValueError("Cannot submit to a completed wizard session.")
 
+        if session.current_step_id not in self.definition.steps:
+            available_steps = list(self.definition.steps.keys())
+            raise ValueError(
+                f"Invalid current_step_id '{session.current_step_id}'. "
+                f"Available step ids: {available_steps}"
+            )
         step = self.definition.steps[session.current_step_id]
 
         if step.validation:
