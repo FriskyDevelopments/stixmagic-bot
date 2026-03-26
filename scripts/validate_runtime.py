@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-TOKEN_PATTERN = re.compile(r"\d+:[A-Za-z0-9_-]{20,}")
+TOKEN_PATTERN = re.compile(r"\d{5,}:[A-Za-z0-9_-]{35,}")
 
 
 def require_env(var_names: Iterable[str]) -> None:
@@ -25,11 +25,10 @@ def validate_token(env_name: str) -> str:
     if not raw_value:
         raise SystemExit(f"{env_name} is required but was not provided.")
 
-    match = TOKEN_PATTERN.search(raw_value)
-    if not match:
+    if not TOKEN_PATTERN.fullmatch(raw_value):
         raise SystemExit(f"{env_name} does not look like a valid Telegram bot token.")
 
-    return match.group(0)
+    return raw_value
 
 
 def run_smoke_tests() -> None:
@@ -57,8 +56,6 @@ def run_smoke_tests() -> None:
     if not callable(bot_main.main):
         raise SystemExit("main.main is not callable")
 
-    print("Local smoke tests passed.")
-
 
 async def telegram_get_me(token: str) -> None:
     from telegram import Bot
@@ -67,7 +64,9 @@ async def telegram_get_me(token: str) -> None:
     try:
         me = await bot.get_me()
     except Exception as exc:  # pragma: no cover - network dependent safeguard
-        raise SystemExit(f"Telegram API smoke test failed: {exc}") from exc
+        raise SystemExit(
+            f"Telegram API smoke test failed with {type(exc).__name__}."
+        ) from exc
     finally:
         await bot.close()
 
@@ -92,6 +91,8 @@ def main() -> None:
             asyncio.run(telegram_get_me(token))
     else:
         print("CI mode selected; production secrets are not required.")
+
+    print("All checks passed.")
 
 
 if __name__ == "__main__":

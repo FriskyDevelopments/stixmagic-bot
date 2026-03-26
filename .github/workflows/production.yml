@@ -56,4 +56,4 @@ jobs:
       - name: Record operator reminder
         run: |
           echo "Production preflight passed for ref ${{ inputs.git_ref }}."
-          echo "Next: deploy or restart the persistent production host with BOT_TOKEN_PROD and the production app secrets."
+          echo "Next: deploy or restart the persistent production host with TELEGRAM_BOT_TOKEN (from the BOT_TOKEN_PROD secret) and the production app secrets."
