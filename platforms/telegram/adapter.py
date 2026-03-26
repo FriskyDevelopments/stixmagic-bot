@@ -67,11 +67,30 @@ class TelegramStixAdapter:
 
             source_bytes = file_bytes.getvalue() if hasattr(file_bytes, 'getvalue') else file_bytes
 
+            # For stickers, preserve format; for video, use video/mp4
+            if media_type == "sticker":
+                # Animated stickers should keep their native format, not be treated as raw video
+                if sticker_format == "animated":
+                    source_mime_type = "image/webp"  # Animated WebP sticker
+                    prefer_format = "webp"
+                elif sticker_format == "video":
+                    source_mime_type = "video/webm"  # Video sticker
+                    prefer_format = "webm"
+                else:  # static
+                    source_mime_type = "image/webp"
+                    prefer_format = "webp"
+            elif media_type == "video":
+                source_mime_type = "video/mp4"
+                prefer_format = "webm"
+            else:  # image or unknown
+                source_mime_type = "image/png"
+                prefer_format = "webp"
+
             sticker_input = StickerGenerationInput(
                 source_bytes=source_bytes,
-                source_mime_type=f"video/mp4" if is_animated else "image/png",
+                source_mime_type=source_mime_type,
                 is_animated_source=is_animated,
-                prefer_format="webm" if is_animated else "webp",
+                prefer_format=prefer_format,
             )
 
             request = PackGenerationRequest(
@@ -105,6 +124,7 @@ class TelegramStixAdapter:
         else:
             normalized_format = "video" if media_type == "video" else "static"
 
+        converted = None
         if media_type == "image":
             converted = await async_convert_to_sticker(sticker_file)
             if converted:
@@ -115,15 +135,26 @@ class TelegramStixAdapter:
                 sticker_file = converted
 
         # Build new structure with PackItemResult
-        sticker_output = StickerGenerationOutput(
-            sticker_bytes=sticker_file.getvalue() if hasattr(sticker_file, 'getvalue') else sticker_file,
-            sticker_format=normalized_format
-        )
-        item = PackItemResult(
-            index=0,
-            success=True,
-            sticker=sticker_output
-        )
+        # Only mark as success if conversion succeeded (or no conversion was needed)
+        conversion_succeeded = (media_type in ("image", "video") and converted is not None) or media_type == "sticker"
+
+        if conversion_succeeded:
+            sticker_output = StickerGenerationOutput(
+                sticker_bytes=sticker_file.getvalue() if hasattr(sticker_file, 'getvalue') else sticker_file,
+                sticker_format=normalized_format
+            )
+            item = PackItemResult(
+                index=0,
+                success=True,
+                sticker=sticker_output
+            )
+        else:
+            # Conversion failed
+            item = PackItemResult(
+                index=0,
+                success=False,
+                sticker=None
+            )
 
         return PackGenerationResult(
             pack_id="",
