@@ -1,26 +1,51 @@
-name: Production Deployment Preparation
+name: Production Promotion
 
 on:
   workflow_dispatch:
+    inputs:
+      git_ref:
+        description: 'Branch, tag, or commit to promote (use main after merge).'
+        required: true
+        default: 'main'
+
+concurrency:
+  group: production-promotion
+  cancel-in-progress: false
 
 jobs:
-  production-validate:
+  promote-production:
+    name: Validate production release candidate
     runs-on: ubuntu-latest
-    environment: production
+    environment:
+      name: production
+    permissions:
+      contents: read
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Install system dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y ffmpeg
+
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Validate production configuration
+
+      - name: Compile Python sources
+        run: python -m compileall .
+
+      - name: Validate production configuration and runtime
         env:
           APP_ENV: production
           BOT_TOKEN_PROD: ${{ secrets.BOT_TOKEN_PROD }}
@@ -30,3 +55,8 @@ jobs:
         run: |
           python scripts/check_config.py
           python scripts/smoke_test.py
+
+      - name: Record operator reminder
+        run: |
+          echo "Production preflight passed for ref ${{ inputs.git_ref }}."
+          echo "Next: deploy or restart the persistent production host with TELEGRAM_BOT_TOKEN (from the BOT_TOKEN_PROD secret) and the production app secrets."
