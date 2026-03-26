@@ -20,7 +20,7 @@ class TelegramMediaEnvelope:
 class TelegramStixAdapter:
     """Telegram transport adapter delegating business logic to shared core + shared wizard engine."""
 
-    def __init__(self, core_engine: StixCoreContract):
+    def __init__(self, core_engine: StixCoreContract) -> None:
         self.core_engine = core_engine
         self.wizard_renderer = TelegramWizardRenderer()
 

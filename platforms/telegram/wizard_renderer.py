@@ -8,6 +8,10 @@ class TelegramWizardRenderer(WizardRenderer):
     """Maps shared wizard events to Telegram-friendly prompt + inline keyboard metadata."""
 
     def render(self, event: WizardEvent) -> RenderInstruction:
+        if event.completed:
+            text = event.completion_message or event.prompt
+            return RenderInstruction(text=text, buttons=[])
+
         text = event.prompt
         if event.validation_error:
             text = f"⚠ {event.validation_error}\n\n{event.prompt}"

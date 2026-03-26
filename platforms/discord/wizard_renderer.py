@@ -8,6 +8,10 @@ class DiscordWizardRenderer(WizardRenderer):
     """Maps shared wizard events to Discord follow-up/button/modal metadata."""
 
     def render(self, event: WizardEvent) -> RenderInstruction:
+        if event.completed:
+            text = event.completion_message or event.prompt
+            return RenderInstruction(text=text, buttons=[], is_modal=False)
+
         text = event.prompt
         if event.validation_error:
             text = f"⚠ {event.validation_error}\n\n{event.prompt}"

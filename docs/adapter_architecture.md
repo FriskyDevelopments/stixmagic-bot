@@ -39,8 +39,8 @@
 
 ## Shared wizard/flow engine boundary
 
-- Shared flow runtime: `wizard/`.
-- Shared wizard definitions: `examples/wizards/`.
+- Runtime: `wizard/` for the shared flow runtime.
+- Wizard definitions: `examples/wizards/` for shared wizard definitions.
 - Platform renderers: `platforms/telegram/wizard_renderer.py` and `platforms/discord/wizard_renderer.py`.
 
 Rule: all step logic, validation, transitions, session state, and completion rules stay in shared wizard definitions/engine.

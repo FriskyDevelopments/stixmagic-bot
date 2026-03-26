@@ -10,7 +10,7 @@ from wizard.rendering import RenderInstruction
 class DiscordStixAdapter:
     """Discord-ready scaffold using the same core and shared wizard contract as Telegram."""
 
-    def __init__(self, core_engine: StixCoreContract):
+    def __init__(self, core_engine: StixCoreContract) -> None:
         self.core_engine = core_engine
         self.wizard_renderer = DiscordWizardRenderer()
 

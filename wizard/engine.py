@@ -20,6 +20,9 @@ class WizardEngine:
         return session, WizardEvent(prompt=step.prompt, step_id=step.id, completed=False)
 
     def submit(self, session: WizardSession, raw_value: Any) -> WizardEvent:
+        if session.completed:
+            raise ValueError("Cannot submit to a completed wizard session")
+
         step = self.definition.steps[session.current_step_id]
 
         if step.validation:
@@ -51,11 +54,13 @@ class WizardEngine:
                 side_effects=step.side_effects,
             )
 
+        if next_step not in self.definition.steps:
+            raise ValueError(f"Invalid step transition: '{next_step}' does not exist in wizard definition")
+
         session.current_step_id = next_step
         upcoming = self.definition.steps[next_step]
         return WizardEvent(
             prompt=upcoming.prompt,
             step_id=upcoming.id,
             completed=False,
-            side_effects=step.side_effects,
         )

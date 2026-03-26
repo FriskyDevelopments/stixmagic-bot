@@ -5,7 +5,7 @@ from typing import Any, Callable
 
 
 ValidationFn = Callable[[Any, dict[str, Any]], tuple[bool, str | None]]
-TransitionFn = Callable[[Any, dict[str, Any]], str]
+TransitionFn = Callable[[Any, dict[str, Any]], str | None]
 
 
 @dataclass(slots=True)
