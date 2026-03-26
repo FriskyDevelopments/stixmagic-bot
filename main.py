@@ -11,6 +11,7 @@ import threading
 import subprocess
 import tempfile
 import time
+from datetime import datetime, timezone
 from PIL import Image, ImageOps
 from telegram import Update, InputSticker, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 from telegram.ext import (
@@ -892,7 +893,6 @@ async def show_premium_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if expiry is None:
             status = "⭐ <b>Lifetime</b>"
         else:
-            from datetime import datetime, timezone
             dt = datetime.fromtimestamp(expiry, tz=timezone.utc)
             status = f"⭐ Active · expires <b>{dt.strftime('%d %b %Y')}</b>"
     else:
@@ -942,13 +942,14 @@ async def show_premium_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def buy_premium_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a Stars invoice when the user taps one of the buy buttons."""
     query = update.callback_query
-    await query.answer()
 
     plan_key = query.data.replace("buy_", "")  # e.g. "premium_1m"
     plan = PREMIUM_PLANS.get(plan_key)
     if not plan:
         await query.answer("Unknown plan.", show_alert=True)
         return
+
+    await query.answer()
 
     await context.bot.send_invoice(
         chat_id=query.message.chat_id,
@@ -1310,7 +1311,7 @@ async def generate_pack_action(update: Update, context: ContextTypes.DEFAULT_TYP
                 reply_markup=keyboard
             )
         except Exception as e:
-            logger.error(f"Error adding generated sticker: {e}")
+            logger.exception("Error adding generated sticker")
             await query.edit_message_text(
                 f"⚠ <b>Couldn't add sticker</b>\n\n"
                 "<i>Something went wrong. Please try again.</i>",

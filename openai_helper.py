@@ -26,6 +26,11 @@ def generate_sticker_image(prompt: str) -> io.BytesIO | None:
 
     Returns the image as a BytesIO object (PNG bytes), or None on failure.
     Only call this function after confirming the user is premium.
+
+    NOTE: DALL-E 3 does not support transparent backgrounds. This function requests
+    a solid white background. To achieve transparency, consider:
+    - Post-processing with a background removal library (e.g., rembg)
+    - TODO: Migrate to GPT Image models when they support the transparent parameter
     """
     client = get_client()
     if client is None:
@@ -37,7 +42,7 @@ def generate_sticker_image(prompt: str) -> io.BytesIO | None:
             model="dall-e-3",
             prompt=(
                 f"{prompt}. "
-                "Style: clean, simple, cartoon sticker with transparent background, "
+                "Style: clean, simple, cartoon sticker with solid white background, "
                 "no text, white outline, vibrant colors."
             ),
             size="1024x1024",
