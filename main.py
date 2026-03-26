@@ -217,7 +217,7 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await progress.edit_text("⚠ Download failed. Please try again.")
             return WAITING_STICKER
 
-        generated = await telegram_adapter.generate_pack(sticker_file, media.media_type)
+        generated = await telegram_adapter.generate_pack(sticker_file, media.media_type, media.sticker_format)
         if not generated or not generated.items or not generated.items[0].success:
             await ctrl.stop()
             await progress.edit_text("⚠ Conversion failed. Please try again.")
@@ -395,7 +395,7 @@ async def addsticker_receive(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if media.media_type == "video":
             await progress.edit_text("⚗️ <i>Distilling the animation...</i>", parse_mode="HTML")
 
-        generated = await telegram_adapter.generate_pack(sticker_file, media.media_type)
+        generated = await telegram_adapter.generate_pack(sticker_file, media.media_type, media.sticker_format)
         if not generated or not generated.items or not generated.items[0].success:
             await progress.edit_text("⚠ Conversion failed. Please try again.")
             return WAITING_STICKER_ADD
@@ -643,8 +643,8 @@ async def magic_pack_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
 CATALOG_PAGE_SIZE = 5
 
 
-def _catalog_pack_text(pack: dict, user_reaction: str | None = None) -> str:
-    return telegram_adapter.generate_reactions(pack, user_reaction)
+async def _catalog_pack_text(pack: dict, user_reaction: str | None = None) -> str:
+    return await telegram_adapter.generate_reactions(pack, user_reaction)
 
 
 async def catalog_show_page(update: Update, sort: str, query: str, page: int):
@@ -682,7 +682,7 @@ async def catalog_show_page(update: Update, sort: str, query: str, page: int):
 
     user_id = update.effective_user.id
     reaction = catalog_get_user_reaction(user_id, pack["name"])
-    text = _catalog_pack_text(pack, reaction)
+    text = await _catalog_pack_text(pack, reaction)
 
     max_page = max(0, (total - 1) // CATALOG_PAGE_SIZE)
     safe_page = min(page, max_page)
@@ -823,7 +823,7 @@ async def catalog_react_callback(update: Update, context: ContextTypes.DEFAULT_T
     pack = catalog_get_pack(pack_name)
     if pack:
         user_reaction = catalog_get_user_reaction(query.from_user.id, pack_name)
-        text = _catalog_pack_text(pack, user_reaction)
+        text = await _catalog_pack_text(pack, user_reaction)
         try:
             await query.edit_message_text(
                 f"🔍 <b>STICKER CATALOG</b>\n{DIV}\n\n" + text,
@@ -880,7 +880,7 @@ async def pack_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     if catalog_pack:
         catalog_increment_views(pack_name)
-        stats_text = telegram_adapter.generate_reactions(catalog_pack, user_reaction)
+        stats_text = await telegram_adapter.generate_reactions(catalog_pack, user_reaction)
         text += "\n" + stats_text.split("\n")[-1] + "\n"
         if catalog_pack.get("description"):
             text += f"\n<i>{html.escape(catalog_pack['description'])}</i>\n"

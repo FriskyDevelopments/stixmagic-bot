@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -32,30 +33,33 @@ class InMemorySessionStore(SessionStore):
         self._store: dict[str, dict[str, Any]] = {}
         self._lock = RLock()
 
-    def get(self, session_id: str) -> dict[str, Any]:
+    def sync_get(self, session_id: str) -> dict[str, Any]:
+        """Synchronous get implementation."""
         with self._lock:
             return deepcopy(self._store.get(session_id, {}))
 
-    def set(self, session_id: str, data: dict[str, Any]) -> None:
+    def sync_set(self, session_id: str, data: dict[str, Any]) -> None:
+        """Synchronous set implementation."""
         with self._lock:
             self._store[session_id] = deepcopy(data)
 
-    def clear(self, session_id: str) -> None:
+    def sync_clear(self, session_id: str) -> None:
+        """Synchronous clear implementation."""
         with self._lock:
             self._store.pop(session_id, None)
 
-    # Async interface methods that delegate to sync implementations
-    async def async_get(self, session_id: str) -> dict[str, Any]:
+    # Async interface (AsyncSessionStore protocol) - delegates to sync implementations using asyncio.to_thread
+    async def get(self, session_id: str) -> dict[str, Any]:
         """Async get that delegates to synchronous implementation."""
-        return self.get(session_id)
+        return await asyncio.to_thread(self.sync_get, session_id)
 
-    async def async_set(self, session_id: str, data: dict[str, Any]) -> None:
+    async def set(self, session_id: str, data: dict[str, Any]) -> None:
         """Async set that delegates to synchronous implementation."""
-        self.set(session_id, data)
+        await asyncio.to_thread(self.sync_set, session_id, data)
 
-    async def async_clear(self, session_id: str) -> None:
+    async def clear(self, session_id: str) -> None:
         """Async clear that delegates to synchronous implementation."""
-        self.clear(session_id)
+        await asyncio.to_thread(self.sync_clear, session_id)
 
 
 def build_session_id(user: UserSessionContext, platform: str) -> str:

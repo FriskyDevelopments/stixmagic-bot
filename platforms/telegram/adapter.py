@@ -40,8 +40,15 @@ class TelegramStixAdapter:
             sticker_format=sticker_format,
         )
 
-    async def generate_pack(self, file_bytes, media_type: str):
-        """Generate pack by delegating to core engine."""
+    async def generate_pack(self, file_bytes, media_type: str, sticker_format: str | None = None):
+        """Generate pack by delegating to core engine.
+
+        Args:
+            file_bytes: Source file bytes or BytesIO object
+            media_type: Media type from extract_file_info ("image", "video", "sticker")
+            sticker_format: Optional sticker format from extract_file_info ("static", "video", "animated")
+                          Used to properly detect animated stickers (e.g., Telegram video stickers)
+        """
         from core.types import (
             PackGenerationRequest,
             StickerGenerationInput,
@@ -52,7 +59,12 @@ class TelegramStixAdapter:
 
         if self._core_engine:
             # Delegate to core engine for shared normalization logic
-            is_animated = media_type == "video"
+            # Determine if animated based on sticker_format (preferred) or fallback to media_type
+            if sticker_format:
+                is_animated = sticker_format in ("video", "animated")
+            else:
+                is_animated = media_type == "video"
+
             source_bytes = file_bytes.getvalue() if hasattr(file_bytes, 'getvalue') else file_bytes
 
             sticker_input = StickerGenerationInput(
@@ -70,13 +82,28 @@ class TelegramStixAdapter:
 
             from core.capabilities import TELEGRAM_CAPABILITIES
             result = await self._core_engine.generate_pack(request, capabilities=TELEGRAM_CAPABILITIES)
+
+            # Normalize sticker_format values: "webp" -> "static", "webm" -> "video"
+            for item in result.items:
+                if item.success and item.sticker:
+                    raw_format = item.sticker.sticker_format
+                    if raw_format == "webp":
+                        item.sticker.sticker_format = "static"
+                    elif raw_format == "webm":
+                        item.sticker.sticker_format = "video"
+                    # Note: animated webp would be handled here if needed
+
             return result
 
         # Fallback: local conversion if no core engine
         from domain.media import async_convert_to_sticker, async_convert_video_to_sticker
 
         sticker_file = file_bytes
-        sticker_format = "video" if media_type == "video" else "static"
+        # Use sticker_format if provided, otherwise infer from media_type
+        if sticker_format:
+            normalized_format = sticker_format
+        else:
+            normalized_format = "video" if media_type == "video" else "static"
 
         if media_type == "image":
             converted = await async_convert_to_sticker(sticker_file)
@@ -90,7 +117,7 @@ class TelegramStixAdapter:
         # Build new structure with PackItemResult
         sticker_output = StickerGenerationOutput(
             sticker_bytes=sticker_file.getvalue() if hasattr(sticker_file, 'getvalue') else sticker_file,
-            sticker_format=sticker_format
+            sticker_format=normalized_format
         )
         item = PackItemResult(
             index=0,
@@ -104,11 +131,10 @@ class TelegramStixAdapter:
             items=[item]
         )
 
-    def generate_reactions(self, pack: dict, user_reaction: str | None = None) -> str:
+    async def generate_reactions(self, pack: dict, user_reaction: str | None = None) -> str:
         """Generate reactions by delegating to core engine."""
         if self._core_engine:
             # Use core engine's format_pack_reactions method
-            import asyncio
             payload = ReactionRenderInput(
                 title=pack['title'],
                 name=pack['name'],
@@ -118,8 +144,7 @@ class TelegramStixAdapter:
                 views=pack.get('view_count', 0),
                 user_reaction=user_reaction,
             )
-            # Run async method synchronously for backward compatibility
-            result = asyncio.run(self._core_engine.format_pack_reactions(payload))
+            result = await self._core_engine.format_pack_reactions(payload)
             return result.text
 
         # Fallback if no core engine
