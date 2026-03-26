@@ -249,22 +249,26 @@
      ```
      The Flask API and the bot polling loop start together.
 
-  ### Automated Deployment (GitHub Actions)
+  ### GitHub Actions release flow
 
-  The repository includes a GitHub Actions workflow (`.github/workflows/deploy.yml`) that
-  triggers automatically on every push to `main`. It:
-  - Sets up Python 3.11 and installs all dependencies (including `ffmpeg`)
-  - Validates the `TELEGRAM_BOT_TOKEN` format
-  - Launches `main.py`
+  The repository now uses a safer three-step promotion model:
 
-  **Required GitHub Secrets** — add these under *Settings → Secrets → Actions*:
+  1. **PR Validation** (`.github/workflows/ci.yml`) runs on pull requests to `main`.
+  2. **Main Branch Validation** (`.github/workflows/deploy.yml`) runs after merge on `main`.
+  3. **Production Promotion** (`.github/workflows/production.yml`) is a manual dispatch that validates the production configuration before you restart the persistent production host.
 
-  | Secret | Description |
+  This repository does **not** attempt to start a long-running production bot on a GitHub-hosted runner. Instead, GitHub Actions performs safe validation and production preflight checks, while the real always-on runtime stays on your production host.
+
+  **Required GitHub Secrets** — add these under *Settings → Secrets → Actions* (or, preferably, the `production` environment for production-only values):
+
+  | Secret | Used for |
   |---|---|
-  | `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather |
-  | `STIXMAGIC_API_KEY` | API authentication key |
-  | `SESSION_SECRET` | Flask session secret |
-  | `MINIAPP_URL` | (Optional) Mini App URL |
+  | `BOT_TOKEN_PROD` | Production Telegram bot authentication during manual promotion |
+  | `STIXMAGIC_API_KEY` | Production API authentication |
+  | `SESSION_SECRET` | Production Flask session signing |
+  | `MINIAPP_URL` | (Optional) Production Mini App URL |
+
+  See [`docs/release.md`](docs/release.md) for the approval flow, promotion steps, rollback guidance, and operator checklist.
 
   ### Hosting on Replit
 

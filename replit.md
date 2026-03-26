@@ -104,3 +104,14 @@ All endpoints except `/` and `/api/health` require API key auth via `X-API-Key` 
 - Tagline: **Sticker Alchemy**
 - Tone: sleek, magical, premium
 - Symbol: ✦
+
+## Promotion to Production
+
+Use GitHub Actions to validate production readiness before restarting your persistent production Replit (or other host):
+
+1. Open a PR and wait for **PR Validation** to pass.
+2. Merge to `main` and wait for **Main Branch Validation** to pass.
+3. Manually run **Production Promotion** in GitHub Actions.
+4. After it passes, restart the production host with `TELEGRAM_BOT_TOKEN` set from the production secret stored in GitHub as `BOT_TOKEN_PROD`.
+
+See `docs/release.md` for the full checklist and rollback guidance.

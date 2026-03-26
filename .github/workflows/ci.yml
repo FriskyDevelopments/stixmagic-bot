@@ -1,13 +1,14 @@
-name: Main Branch Validation
+name: PR Validation
 
 on:
-  push:
+  pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
-  validate-main:
-    name: Validate merged main
+  validate:
+    name: Validate bot changes
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -34,5 +35,5 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall .
 
-      - name: Run post-merge smoke validation
+      - name: Run smoke validation
         run: python scripts/validate_runtime.py --mode ci
