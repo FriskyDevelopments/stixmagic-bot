@@ -6,13 +6,19 @@ import asyncio
 from functools import wraps
 from flask import Flask, jsonify, request, send_from_directory
 
+from config.runtime import get_settings
+from moderation import create_default_harness
+
 DB_FILE = "bot.db"
 
 app = Flask(__name__, static_folder="static")
 
-API_KEY = os.environ.get("STIXMAGIC_API_KEY", "")
+settings = get_settings()
+API_KEY = settings.api_key
 API_VERSION = "1.1"
 PAGE_SIZE = 20
+app.secret_key = settings.session_secret or "dev-session-secret-not-for-production"
+moderation_harness = create_default_harness()
 
 
 def get_db():
@@ -152,7 +158,7 @@ def miniapp_packs():
         return err("Missing or invalid user_id", 400, "missing_param")
     uid = int(user_id)
 
-    raw_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    raw_token = settings.telegram_bot_token
     token_match = re.search(r'\d+:[A-Za-z0-9_-]{35,}', raw_token)
     if token_match:
         try:
@@ -208,6 +214,34 @@ def miniapp_settings_patch():
     row = c.fetchone()
     conn.close()
     return ok({"user_id": int(user_id), "mask_inverted": bool(row["mask_inverted"]) if row else False})
+
+
+
+
+@app.route("/api/moderation/dev/state")
+@require_api_key
+def moderation_dev_state():
+    return ok(moderation_harness.state())
+
+
+@app.route("/api/moderation/dev/events", methods=["POST"])
+@require_api_key
+def moderation_dev_event():
+    payload = request.get_json(silent=True) or {}
+    if "actor_id" not in payload:
+        return err("actor_id is required", 400, "missing_param")
+    try:
+        result = moderation_harness.simulate_event(payload)
+    except ValueError as ex:
+        return err(str(ex), 400, "invalid_actor")
+    return ok(result, status=201)
+
+
+@app.route("/api/moderation/dev/replay")
+@require_api_key
+def moderation_dev_replay():
+    state = moderation_harness.state()
+    return ok({"replay": state["replay"], "count": len(state["replay"])})
 
 
 @app.route("/api/health")
@@ -627,5 +661,4 @@ def server_error(e):
 
 
 def run_api():
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+    app.run(host="0.0.0.0", port=settings.port, debug=False, use_reloader=False)

@@ -47,11 +47,14 @@ jobs:
 
       - name: Validate production configuration and runtime
         env:
+          APP_ENV: production
           BOT_TOKEN_PROD: ${{ secrets.BOT_TOKEN_PROD }}
-          STIXMAGIC_API_KEY: ${{ secrets.STIXMAGIC_API_KEY }}
-          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
-          MINIAPP_URL: ${{ secrets.MINIAPP_URL }}
-        run: python scripts/validate_runtime.py --mode production --check-telegram
+          STIXMAGIC_API_KEY_PROD: ${{ secrets.STIXMAGIC_API_KEY_PROD != '' && secrets.STIXMAGIC_API_KEY_PROD || secrets.STIXMAGIC_API_KEY }}
+          SESSION_SECRET_PROD: ${{ secrets.SESSION_SECRET_PROD != '' && secrets.SESSION_SECRET_PROD || secrets.SESSION_SECRET }}
+          MINIAPP_URL_PROD: ${{ secrets.MINIAPP_URL_PROD != '' && secrets.MINIAPP_URL_PROD || secrets.MINIAPP_URL }}
+        run: |
+          python scripts/check_config.py
+          python scripts/smoke_test.py
 
       - name: Record operator reminder
         run: |

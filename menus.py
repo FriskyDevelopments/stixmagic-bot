@@ -1,10 +1,12 @@
 import os
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
+from config.runtime import get_settings
+
 DIVIDER = "◈ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ◈"
 
 def _resolve_miniapp_url():
-    url = os.environ.get("MINIAPP_URL", "")
+    url = get_settings().miniapp_url
     if not url:
         domains = os.environ.get("REPLIT_DOMAINS", "")
         if domains:
