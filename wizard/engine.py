@@ -12,6 +12,12 @@ class WizardEngine:
         self.definition = definition
 
     def start(self) -> tuple[WizardSession, WizardEvent]:
+        if self.definition.start_step not in self.definition.steps:
+            available_steps = list(self.definition.steps.keys())
+            raise ValueError(
+                f"Invalid start_step '{self.definition.start_step}'. "
+                f"Available step ids: {available_steps}"
+            )
         session = WizardSession(
             wizard_id=self.definition.id,
             current_step_id=self.definition.start_step,
@@ -20,6 +26,8 @@ class WizardEngine:
         return session, WizardEvent(prompt=step.prompt, step_id=step.id, completed=False)
 
     def submit(self, session: WizardSession, raw_value: Any) -> WizardEvent:
+        if session.wizard_id != self.definition.id:
+            raise ValueError("Session does not belong to this wizard engine.")
         if session.completed:
             raise ValueError("Cannot submit to a completed wizard session.")
 
@@ -51,7 +59,7 @@ class WizardEngine:
                 step_id=step.id,
                 completed=True,
                 completion_message=step.completion_message,
-                side_effects=step.side_effects,
+                side_effects=step.side_effects.copy() if step.side_effects else [],
             )
 
         if next_step not in self.definition.steps:
