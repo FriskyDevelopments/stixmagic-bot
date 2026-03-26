@@ -820,7 +820,8 @@
 
             <div class="info-row">
                 <i class="fa-solid fa-circle-info"></i>
-                Pack name must be unique and contain only letters, numbers and underscores. It cannot be changed later.
+                Enter a base name (letters, numbers and underscores only). The bot will automatically append
+                <code>_by_&lt;botname&gt;</code> to meet Telegram's requirements. The name cannot be changed later.
             </div>
 
             <button class="btn btn-primary" id="btn-create-pack" data-tooltip="Send pack creation request to bot">
@@ -856,11 +857,11 @@
                     Image / File
                 </label>
                 <div class="file-upload-area" id="file-drop-zone">
-                    <input type="file" id="as-file" accept="image/*,.webp,.png,.jpg,.jpeg,.gif,.tgs" aria-label="Upload sticker image">
+                    <input type="file" id="as-file" accept=".webp,.png,.tgs,.webm,image/webp,image/png,application/x-tgsticker,video/webm" aria-label="Upload sticker file">
                     <i class="fa-solid fa-cloud-arrow-up file-upload-icon"></i>
                     <div class="file-upload-text">
                         <strong>Tap to browse</strong> or drag &amp; drop<br>
-                        PNG, WebP, JPG, GIF, TGS supported
+                        PNG, WebP, TGS (animated), WEBM (video) supported
                     </div>
                     <div class="file-upload-name" id="file-name-display"></div>
                 </div>
@@ -1059,7 +1060,29 @@
             opts.headers['Content-Type'] = 'application/json';
             opts.body = JSON.stringify(body);
         }
-        return fetch(path, opts).then(function (res) { return res.json(); });
+        return fetch(path, opts).then(function (res) {
+            var ct = res.headers && res.headers.get ? res.headers.get('content-type') : '';
+            var isJson = ct && ct.indexOf('application/json') !== -1;
+            if (isJson) {
+                return res.json().then(function (data) {
+                    if (!res.ok) {
+                        var e = new Error('HTTP ' + res.status);
+                        e.status = res.status;
+                        e.body = data;
+                        throw e;
+                    }
+                    return data;
+                });
+            }
+            return res.text().then(function (text) {
+                if (!res.ok) {
+                    var e = new Error('HTTP ' + res.status + ': ' + text.slice(0, 120));
+                    e.status = res.status;
+                    throw e;
+                }
+                return { ok: true, data: text };
+            });
+        });
     }
 
     // ── Pack data (in-memory cache) ──────────────────────────────
@@ -1241,8 +1264,9 @@
                     showAlert('Pack "' + packTitle + '" created! Switch to Add Sticker to add your first sticker.');
                     nameInput.value  = '';
                     titleInput.value = '';
-                    document.getElementById('cp-name-count').textContent  = '0 / 64';
-                    document.getElementById('cp-title-count').textContent = '0 / 64';
+                    // Dispatch input events so setupCharCounter resets text and CSS class
+                    nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    titleInput.dispatchEvent(new Event('input', { bubbles: true }));
                     // Refresh the pack list so the new pack appears in other tabs
                     packsCache  = [];
                     packsLoaded = false;
@@ -1290,6 +1314,13 @@
         var emoji    = (document.getElementById('as-emoji').value.trim() || '😊');
         if (!packName)    { showAlert('Please select a pack first.'); return; }
         if (!selectedFile){ showAlert('Please choose an image file.'); return; }
+
+        // Client-side emoji sanity check: non-empty and not plain ASCII text
+        if (!emoji || /^[\x00-\x7E]+$/.test(emoji)) {
+            showAlert('Please enter a single emoji (e.g. 😊) in the Emoji field.');
+            document.getElementById('as-emoji').focus();
+            return;
+        }
 
         var btn = document.getElementById('btn-add-sticker');
         btn.disabled = true;

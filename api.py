@@ -1,7 +1,9 @@
+import gzip
 import hashlib
 import hmac
 import json
 import os
+import re
 import sqlite3
 import time
 import urllib.error
@@ -10,21 +12,59 @@ import urllib.request
 from functools import wraps
 
 from flask import Flask, jsonify, request, send_from_directory
+from werkzeug.exceptions import RequestEntityTooLarge
+
+from emoji_utils import validate_emoji
 
 DB_FILE = "bot.db"
 
 app = Flask(__name__, static_folder="static")
 
 API_KEY = os.environ.get("STIXMAGIC_API_KEY", "")
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+
+# ── Bot token: strip whitespace and validate format on startup ─
+_RAW_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+_BOT_TOKEN_RE = re.compile(r"^\d{6,12}:[A-Za-z0-9_-]{30,}$")
+BOT_TOKEN = _RAW_BOT_TOKEN if _BOT_TOKEN_RE.fullmatch(_RAW_BOT_TOKEN) else ""
+
+# ── Dev-mode auth bypass (requires explicit opt-in) ───────────
+APP_ENV = os.environ.get("APP_ENV", "production").lower()
+ALLOW_UNSIGNED = os.environ.get("ALLOW_UNSIGNED_MINIAPP_INIT_DATA", "").lower() in {
+    "1", "true", "yes",
+}
+
+# ── Maximum sticker file size: 2 MB ──────────────────────────
+MAX_STICKER_FILE_BYTES = 2 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = MAX_STICKER_FILE_BYTES
+
+# ── Telegram sticker-set short-name suffix ────────────────────
+_PACK_NAME_SUFFIX_RE = re.compile(r"^[a-zA-Z0-9_]+_by_[a-zA-Z0-9_]+$")
+_MAX_PACK_NAME_LEN = 64
+
 API_VERSION = "1.0"
 PAGE_SIZE = 20
+
+# ── Cache bot username (populated lazily via getMe) ───────────
+_bot_username: str | None = None
 
 
 def get_db():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def get_bot_username() -> str | None:
+    """Return the bot's username, fetching via ``getMe`` if needed."""
+    global _bot_username
+    if _bot_username:
+        return _bot_username
+    if not BOT_TOKEN:
+        return None
+    result = _tg_api_simple("getMe")
+    if result.get("ok"):
+        _bot_username = result["result"].get("username")
+    return _bot_username
 
 
 def ok(data, status=200, **meta):
@@ -42,6 +82,11 @@ def err(message, status=400, code=None):
     resp = jsonify(body)
     resp.status_code = status
     return resp
+
+
+@app.errorhandler(RequestEntityTooLarge)
+def handle_413(_e):
+    return err("File too large (max 2 MB)", 413, "payload_too_large")
 
 
 @app.after_request
@@ -107,13 +152,27 @@ def miniapp():
 
 # ── MINI APP AUTH ─────────────────────────────────────────────
 
-def validate_miniapp_init_data(init_data):
-    """Validate Telegram Mini App initData HMAC.
+# Maximum acceptable age for Telegram initData (seconds).
+_INIT_DATA_MAX_AGE_SECONDS = 86_400  # 24 hours
 
-    Returns the ``user`` dict extracted from initData on success, or ``None``
-    on failure.  When ``BOT_TOKEN`` is not configured (local development) the
-    HMAC check is skipped and the user dict is parsed without verification so
-    that the Mini App can still be tested in a plain browser.
+
+def _is_local_request() -> bool:
+    """Return True when the request originates from localhost."""
+    ip = request.remote_addr or ""
+    return ip in {"127.0.0.1", "::1"}
+
+
+def validate_miniapp_init_data(init_data: str) -> dict | None:
+    """Validate Telegram Mini App initData HMAC and auth_date freshness.
+
+    Returns the ``user`` dict on success, or ``None`` on any failure.
+
+    **Fail-closed by default**: when ``BOT_TOKEN`` is not configured this
+    function returns ``None`` (→ 401) unless *all three* of the following
+    conditions are met:
+    - ``APP_ENV=development``
+    - ``ALLOW_UNSIGNED_MINIAPP_INIT_DATA=true``
+    - The HTTP request comes from localhost (127.0.0.1 / ::1)
     """
     if not init_data:
         return None
@@ -123,12 +182,15 @@ def validate_miniapp_init_data(init_data):
         return None
 
     if not BOT_TOKEN:
-        # Dev mode: accept without HMAC validation
+        # Fail closed unless all three opt-in conditions are satisfied.
+        if not (APP_ENV == "development" and ALLOW_UNSIGNED and _is_local_request()):
+            return None
+        # Dev bypass: parse user without HMAC check
         user_str = params.get("user")
         try:
-            return json.loads(user_str) if user_str else {}
+            return json.loads(user_str) if user_str else {"id": 0, "_dev": True}
         except (TypeError, ValueError):
-            return {}
+            return {"id": 0, "_dev": True}
 
     hash_val = params.pop("hash", None)
     if not hash_val:
@@ -144,6 +206,14 @@ def validate_miniapp_init_data(init_data):
         secret_key, data_check_string.encode("utf-8"), hashlib.sha256
     ).hexdigest()
     if not hmac.compare_digest(computed, hash_val):
+        return None
+
+    # Validate auth_date freshness to mitigate replay attacks.
+    try:
+        auth_date = int(params.get("auth_date", 0))
+    except (TypeError, ValueError):
+        return None
+    if not auth_date or (time.time() - auth_date) > _INIT_DATA_MAX_AGE_SECONDS:
         return None
 
     user_str = params.get("user")
@@ -172,6 +242,18 @@ def _get_miniapp_user():
     if user is None:
         return None, err("Invalid or missing Telegram initData", 401, "unauthorized")
     return user, None
+
+
+def _tg_api_simple(method: str) -> dict:
+    """Call a parameterless Telegram Bot API GET method (e.g. ``getMe``)."""
+    if not BOT_TOKEN:
+        return {"ok": False, "description": "Bot token not configured"}
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
+    try:
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        return {"ok": False, "description": str(exc)}
 
 
 def _tg_api(method, data=None, files=None):
@@ -254,10 +336,14 @@ def miniapp_get_packs():
 
 @app.route("/miniapp/api/packs", methods=["POST"])
 def miniapp_create_pack():
-    """Register a new sticker-pack name in the database.
+    """Register a new sticker-pack in the database.
 
-    The actual Telegram ``createNewStickerSet`` call is deferred until the
-    first sticker is uploaded via ``POST /miniapp/api/stickers``.
+    The client provides a *base name* (letters/numbers/underscores only).
+    The server appends ``_by_<bot_username>`` to form the final Telegram
+    sticker-set short name, ensuring it is always valid.
+
+    The actual ``createNewStickerSet`` Telegram API call is deferred until
+    the first sticker is uploaded via ``POST /miniapp/api/stickers``.
     """
     user, auth_err = _get_miniapp_user()
     if auth_err:
@@ -267,15 +353,33 @@ def miniapp_create_pack():
         return err("User ID not found in initData", 400, "missing_user_id")
 
     data = request.get_json(silent=True) or {}
-    pack_name = str(data.get("pack_name", "")).strip()
+    base_name = str(data.get("pack_name", "")).strip()
     title = str(data.get("title", "")).strip()
-    if not pack_name:
+
+    if not base_name:
         return err("pack_name is required", 400, "missing_param")
     if not title:
         return err("title is required", 400, "missing_param")
-    if not pack_name.replace("_", "").isalnum():
+    if not re.fullmatch(r"[a-zA-Z0-9_]+", base_name):
         return err(
             "pack_name may only contain letters, numbers and underscores",
+            400,
+            "invalid_pack_name",
+        )
+
+    # Build the final Telegram-compliant short name
+    bot_uname = get_bot_username()
+    if not bot_uname:
+        return err(
+            "Bot username could not be determined; cannot build pack name",
+            502,
+            "bot_username_unavailable",
+        )
+    pack_name = f"{base_name}_by_{bot_uname}"
+    if len(pack_name) > _MAX_PACK_NAME_LEN:
+        return err(
+            f"pack_name is too long; the final name '{pack_name}' "
+            f"exceeds {_MAX_PACK_NAME_LEN} characters",
             400,
             "invalid_pack_name",
         )
@@ -355,6 +459,61 @@ def miniapp_delete_pack(pack_name):
     return ok({"deleted": True, "name": pack_name})
 
 
+_STICKER_EXT_MAP = {
+    ".webp": "static",
+    ".png": "static",
+    ".tgs": "animated",
+    ".webm": "video",
+}
+
+
+def _detect_sticker_format(filename: str, content_type: str, file_head: bytes) -> str:
+    """Return a Telegram sticker format string: 'static' | 'animated' | 'video'.
+
+    Detection order:
+    1. ``content_type`` (when unambiguous)
+    2. Filename extension
+    3. Magic-byte sniffing (most reliable for .tgs / .webm / .webp / .png)
+    """
+    ct = content_type.split(";")[0].strip().lower()
+    if ct in ("application/x-tgsticker", "application/tgs"):
+        return "animated"
+    if ct == "video/webm":
+        return "video"
+    if ct in ("image/webp",):
+        return "static"
+    if ct == "image/png":
+        return "static"
+
+    # Fall back to extension
+    if filename and "." in filename:
+        ext = "." + filename.rsplit(".", 1)[-1].lower()
+        if ext in _STICKER_EXT_MAP:
+            return _STICKER_EXT_MAP[ext]
+
+    # Magic-byte sniffing
+    if file_head:
+        # PNG: 8-byte signature
+        if file_head[:8] == b"\x89PNG\r\n\x1a\n":
+            return "static"
+        # WebP: RIFF????WEBP
+        if file_head[:4] == b"RIFF" and len(file_head) >= 12 and file_head[8:12] == b"WEBP":
+            return "static"
+        # WebM / Matroska EBML header
+        if file_head[:4] == b"\x1a\x45\xdf\xa3":
+            return "video"
+        # TGS: gzip-compressed Lottie JSON (gzip magic = 0x1F 0x8B)
+        if file_head[:2] == b"\x1f\x8b":
+            try:
+                head = gzip.decompress(file_head[:4096])
+                if head.lstrip()[:1] == b"{":
+                    return "animated"
+            except Exception:
+                pass
+
+    return "static"
+
+
 @app.route("/miniapp/api/stickers", methods=["POST"])
 def miniapp_add_sticker():
     """Upload a sticker image and add it to an existing pack via Telegram Bot API.
@@ -365,7 +524,7 @@ def miniapp_add_sticker():
 
     Expected multipart/form-data fields:
       - ``file``      – the sticker image (PNG / WebP / WEBM / TGS)
-      - ``pack_name`` – the sticker-set short name
+      - ``pack_name`` – the sticker-set short name (including ``_by_`` suffix)
       - ``emoji``     – single emoji for the sticker (default: 😊)
       - ``initData``  – Telegram WebApp initData string (if not in header)
     """
@@ -377,13 +536,22 @@ def miniapp_add_sticker():
         return err("User ID not found in initData", 400, "missing_user_id")
 
     pack_name = request.form.get("pack_name", "").strip()
-    emoji = request.form.get("emoji", "😊").strip() or "😊"
+    raw_emoji = request.form.get("emoji", "😊")
     uploaded_file = request.files.get("file")
 
     if not pack_name:
         return err("pack_name is required", 400, "missing_param")
     if not uploaded_file:
         return err("file is required", 400, "missing_param")
+
+    # Validate emoji server-side using the shared utility
+    emoji_ok, emoji = validate_emoji(raw_emoji)
+    if not emoji_ok:
+        return err(
+            "emoji must be exactly one valid emoji (e.g. 😊)",
+            400,
+            "invalid_emoji",
+        )
 
     # Verify the pack is registered to this user
     conn = get_db()
@@ -404,17 +572,19 @@ def miniapp_add_sticker():
             "not_implemented",
         )
 
-    file_bytes = uploaded_file.read()
-    content_type = uploaded_file.content_type or "image/png"
-    filename = uploaded_file.filename or "sticker.png"
+    # Enforce file size limit before reading entire body into memory
+    if request.content_length and request.content_length > MAX_STICKER_FILE_BYTES:
+        return err("File too large (max 2 MB)", 413, "payload_too_large")
+    file_bytes = uploaded_file.read(MAX_STICKER_FILE_BYTES + 1)
+    if len(file_bytes) > MAX_STICKER_FILE_BYTES:
+        return err("File too large (max 2 MB)", 413, "payload_too_large")
 
-    # Determine sticker format from content type
-    if content_type in ("application/x-tgsticker", "application/tgs"):
-        sticker_format = "animated"
-    elif content_type == "video/webm":
-        sticker_format = "video"
-    else:
-        sticker_format = "static"
+    content_type = (uploaded_file.content_type or "").strip().lower()
+    filename = uploaded_file.filename or "sticker"
+
+    # Multi-layer sticker format detection:
+    # 1. Content-Type  2. File extension  3. Magic bytes
+    sticker_format = _detect_sticker_format(filename, content_type, file_bytes)
 
     sticker_dict = {
         "sticker": "attach://sticker_file",
@@ -430,7 +600,7 @@ def miniapp_add_sticker():
             "name": pack_name,
             "sticker": json.dumps(sticker_dict),
         },
-        files={"sticker_file": (filename, file_bytes, content_type)},
+        files={"sticker_file": (filename, file_bytes, content_type or "image/png")},
     )
 
     if not result.get("ok") and "STICKERSET_INVALID" in result.get("description", ""):
@@ -444,7 +614,7 @@ def miniapp_add_sticker():
                 "stickers": json.dumps([sticker_dict]),
                 "sticker_type": "regular",
             },
-            files={"sticker_file": (filename, file_bytes, content_type)},
+            files={"sticker_file": (filename, file_bytes, content_type or "image/png")},
         )
 
     if not result.get("ok"):
