@@ -44,15 +44,22 @@ def generate_sticker_image(prompt: str) -> io.BytesIO | None:
             quality="standard",
             n=1,
         )
-        image_url = response.data[0].url
-    except Exception as e:
-        logger.error(f"DALL-E API error: {e}")
+        data = getattr(response, "data", None)
+        if not data:
+            logger.error("DALL-E API error: empty image data in response.")
+            return None
+        image_url = getattr(data[0], "url", None)
+        if not image_url:
+            logger.error("DALL-E API error: missing image URL in response.")
+            return None
+    except Exception:
+        logger.exception("DALL-E API error")
         return None
 
     try:
         img_response = http_requests.get(image_url, timeout=30)
         img_response.raise_for_status()
         return io.BytesIO(img_response.content)
-    except Exception as e:
-        logger.error(f"DALL-E image download error: {e}")
+    except Exception:
+        logger.exception("DALL-E image download error")
         return None

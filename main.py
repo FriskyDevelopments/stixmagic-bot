@@ -1,4 +1,5 @@
 import asyncio
+import html
 import os
 import re
 import sqlite3
@@ -187,9 +188,9 @@ MAX_PROMPT_LENGTH = 500
 # 1 Star ≈ $0.013 USD (as of March 2026) — see https://telegram.org/blog/stars
 # Adjust prices to match your market
 PREMIUM_PLANS = {
-    "premium_1m":   {"label": "1 Month",   "stars": 250,  "days": 30},
-    "premium_3m":   {"label": "3 Months",  "stars": 599,  "days": 90},
-    "premium_life": {"label": "Lifetime",  "stars": 999,  "days": None},
+    "premium_1m":   {"label": "1 Month",   "stars": 250,  "days": 30,   "note": ""},
+    "premium_3m":   {"label": "3 Months",  "stars": 599,  "days": 90,   "note": "  <i>(save 20%)</i>"},
+    "premium_life": {"label": "Lifetime",  "stars": 999,  "days": None, "note": "  <i>(best value)</i>"},
 }
 
 DIV = "─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─"
@@ -897,6 +898,11 @@ async def show_premium_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         status = "— not subscribed"
 
+    # Build pricing lines and buy buttons directly from PREMIUM_PLANS
+    pricing_lines = "\n".join(
+        f"◦ {p['label']}  —  <b>{p['stars']} ⭐</b>{p['note']}"
+        for p in PREMIUM_PLANS.values()
+    )
     text = (
         f"⭐ <b>STIX MAGIC PREMIUM</b>\n"
         f"{DIV}\n\n"
@@ -905,9 +911,7 @@ async def show_premium_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🤖 <b>AI Sticker Generator</b> — describe any idea,\n"
         "   DALL-E 3 draws it as a sticker\n\n"
         "<b>Plans (pay with Telegram ⭐ Stars):</b>\n"
-        "◦ 1 Month  —  <b>250 ⭐</b>\n"
-        "◦ 3 Months  —  <b>599 ⭐</b>  <i>(save 20%)</i>\n"
-        "◦ Lifetime  —  <b>999 ⭐</b>  <i>(best value)</i>\n\n"
+        f"{pricing_lines}\n\n"
         "<i>Stars are Telegram's native currency.\n"
         "No credit card, no signup — pay in one tap.\n"
         "Stars payments are final and non-refundable per Telegram policy.</i>"
@@ -919,12 +923,15 @@ async def show_premium_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("✦ Home", callback_data="nav:home")],
         ])
     else:
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⭐ Buy 1 Month · 250 Stars", callback_data="buy_premium_1m")],
-            [InlineKeyboardButton("⭐ Buy 3 Months · 599 Stars", callback_data="buy_premium_3m")],
-            [InlineKeyboardButton("⭐ Buy Lifetime · 999 Stars", callback_data="buy_premium_life")],
-            [InlineKeyboardButton("✦ Home", callback_data="nav:home")],
-        ])
+        buy_rows = [
+            [InlineKeyboardButton(
+                f"⭐ Buy {p['label']} · {p['stars']} Stars",
+                callback_data=f"buy_{k}"
+            )]
+            for k, p in PREMIUM_PLANS.items()
+        ]
+        buy_rows.append([InlineKeyboardButton("✦ Home", callback_data="nav:home")])
+        keyboard = InlineKeyboardMarkup(buy_rows)
 
     if update.callback_query:
         await update.callback_query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
@@ -958,11 +965,34 @@ async def buy_premium_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Accept all valid Stars pre-checkout queries."""
+    """Validate Stars pre-checkout queries before accepting payment."""
     query = update.pre_checkout_query
-    if query.invoice_payload not in PREMIUM_PLANS:
+    plan_key = query.invoice_payload
+    plan = PREMIUM_PLANS.get(plan_key)
+    if not plan:
         await query.answer(ok=False, error_message="Unknown plan. Please try again.")
         return
+
+    if query.currency != "XTR":
+        await query.answer(
+            ok=False,
+            error_message=(
+                "Unsupported currency for this purchase. "
+                "Please make sure you are paying with Telegram Stars (XTR)."
+            ),
+        )
+        return
+
+    if query.total_amount != plan["stars"]:
+        await query.answer(
+            ok=False,
+            error_message=(
+                "The price for this plan has changed. "
+                "Please reopen the Premium page and start the purchase again."
+            ),
+        )
+        return
+
     await query.answer(ok=True)
 
 
@@ -972,17 +1002,56 @@ async def successful_payment_handler(update: Update, context: ContextTypes.DEFAU
     plan_key = payment.invoice_payload
     plan = PREMIUM_PLANS.get(plan_key)
     if not plan:
-        logger.error(f"Received payment for unknown plan: {plan_key}")
+        logger.error(
+            "Payment for unknown plan %r (telegram_payment_charge_id=%s, "
+            "provider_payment_charge_id=%s)",
+            plan_key,
+            payment.telegram_payment_charge_id,
+            payment.provider_payment_charge_id,
+        )
+        await update.message.reply_text(
+            "⚠ Your payment was received but we couldn't activate your subscription "
+            "due to an internal error.\n\n"
+            "Please contact the bot administrator and provide this reference:\n"
+            f"<code>{payment.telegram_payment_charge_id}</code>",
+            parse_mode="HTML",
+        )
         return
 
     # Validate currency and amount before granting access
     if payment.currency != "XTR":
-        logger.error(f"Unexpected currency {payment.currency!r} for plan {plan_key}")
+        logger.error(
+            "Unexpected currency %r for plan %s (telegram_payment_charge_id=%s, "
+            "provider_payment_charge_id=%s)",
+            payment.currency,
+            plan_key,
+            payment.telegram_payment_charge_id,
+            payment.provider_payment_charge_id,
+        )
+        await update.message.reply_text(
+            "⚠ Your payment was received but we couldn't activate your subscription "
+            "due to a currency mismatch.\n\n"
+            "Please contact the bot administrator and provide this reference:\n"
+            f"<code>{payment.telegram_payment_charge_id}</code>",
+            parse_mode="HTML",
+        )
         return
+
     if payment.total_amount != plan["stars"]:
         logger.error(
-            f"Amount mismatch for plan {plan_key}: expected {plan['stars']} Stars, "
-            f"got {payment.total_amount}"
+            "Amount mismatch for plan %s: expected %s Stars, got %s "
+            "(telegram_payment_charge_id=%s, provider_payment_charge_id=%s)",
+            plan_key,
+            plan["stars"],
+            payment.total_amount,
+            payment.telegram_payment_charge_id,
+            payment.provider_payment_charge_id,
+        )
+        await update.message.reply_text(
+            "⚠ Your payment was received but the amount didn't match the selected plan.\n\n"
+            "Please contact the bot administrator and provide this reference:\n"
+            f"<code>{payment.telegram_payment_charge_id}</code>",
+            parse_mode="HTML",
         )
         return
 
@@ -1130,7 +1199,7 @@ async def generate_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     progress = await update.message.reply_text("🤖 <i>The AI wizard is painting...</i>", parse_mode="HTML")
 
     # Run the blocking OpenAI call + HTTP download in a thread to avoid blocking the event loop
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     image_bytes = await loop.run_in_executor(None, generate_sticker_image, prompt)
 
     if image_bytes is None:
@@ -1165,7 +1234,7 @@ async def generate_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Send the PNG from DALL-E as the visual preview — reliable across all clients
     await update.message.reply_photo(
         photo=io.BytesIO(preview_png_bytes),
-        caption=f"🤖 <b>Preview</b> — <i>{prompt}</i>",
+        caption=f"🤖 <b>Preview</b> — <i>{html.escape(prompt)}</i>",
         parse_mode="HTML"
     )
 

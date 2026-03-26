@@ -911,17 +911,6 @@ files = [
 ]
 
 [[package]]
-name = "telegram"
-version = "0.0.1"
-description = "Telegram APIs"
-optional = false
-python-versions = "*"
-groups = ["main"]
-files = [
-    {file = "telegram-0.0.1.tar.gz", hash = "sha256:d405a0af4c868a8dbeae6d03e297e21c7ee6269e11e2ed3810e15544aba02591"},
-]
-
-[[package]]
 name = "tqdm"
 version = "4.67.3"
 description = "Fast, Extensible Progress Meter"
@@ -1009,4 +998,4 @@ watchdog = ["watchdog (>=2.3)"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "2d1d1f87b92d93f58e0e85bde9b6d8b9b0c3bc18214a90ffc19ddba8e236cd28"
+content-hash = "ca8a2f3f2d659163c080c21a9a3c18ae4e3076e496d649982c069db7a908bbf2"
