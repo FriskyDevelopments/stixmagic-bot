@@ -55,10 +55,10 @@ class WizardEngine:
         next_step = None
         if step.transition.resolver:
             next_step = step.transition.resolver(raw_value, session.values)
-        elif step.transition.next_step:
+        elif step.transition.next_step is not None:
             next_step = step.transition.next_step
 
-        if not next_step:
+        if next_step is None:
             session.completed = True
             return WizardEvent(
                 prompt=step.prompt,
