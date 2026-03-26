@@ -9,8 +9,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Font Awesome for icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">
     <style>
         /* ── Reset & base ───────────────────────────── */
         *, *::before, *::after {
@@ -328,10 +326,6 @@
             letter-spacing: 0.06em;
         }
 
-        label i {
-            font-size: 0.7rem;
-        }
-
         /* ── Inputs ─────────────────────────────────── */
         input[type="text"],
         select,
@@ -385,11 +379,6 @@
             color: var(--hint);
             margin-top: 0.3rem;
             line-height: 1.4;
-        }
-
-        .helper-text i {
-            margin-top: 0.12rem;
-            flex-shrink: 0;
         }
 
         /* ── Tooltip ─────────────────────────────────── */
@@ -453,7 +442,6 @@
             font-size: 2.2rem;
             margin-bottom: 0.5rem;
             display: block;
-            color: var(--hint);
         }
 
         .file-upload-text {
@@ -687,12 +675,6 @@
             line-height: 1.5;
         }
 
-        .info-row i {
-            margin-top: 0.1rem;
-            flex-shrink: 0;
-            color: var(--link);
-        }
-
         /* ── Character counter ───────────────────────── */
         .char-counter {
             font-size: 0.7rem;
@@ -748,6 +730,17 @@
             .content { padding: 1.25rem; }
             #app { max-width: 540px; margin: 0 auto; }
         }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation: none !important;
+                transition: none !important;
+                scroll-behavior: auto !important;
+            }
+            .header-logo {
+                filter: drop-shadow(0 0 4px rgba(94, 168, 232, 0.4));
+            }
+        }
     </style>
 </head>
 <body>
@@ -758,11 +751,11 @@
         <div class="header-logo">✦</div>
         <div class="header-title">Stix Magic</div>
         <div class="user-badge" id="user-badge" title="">
-            <i class="fa-solid fa-user" style="font-size:0.65rem"></i>
+            <span aria-hidden="true">👤</span>
             <span class="user-badge-name" id="user-name-display">—</span>
         </div>
         <button class="theme-toggle" id="theme-toggle" data-tooltip="Toggle theme" aria-label="Toggle dark/light mode">
-            <i class="fa-solid fa-moon" id="theme-icon"></i>
+            <span id="theme-icon">🌙</span>
         </button>
     </header>
 
@@ -770,17 +763,17 @@
     <nav class="tabs" role="tablist">
         <button class="tab-btn active" id="tab-btn-create" data-tab="create" role="tab" aria-selected="true"
                 aria-controls="tab-create">
-            <i class="fa-solid fa-flask tab-icon"></i>
+            <span class="tab-icon" aria-hidden="true">🦑</span>
             <span>Create</span>
         </button>
         <button class="tab-btn" id="tab-btn-add" data-tab="add" role="tab" aria-selected="false"
                 aria-controls="tab-add">
-            <i class="fa-solid fa-paintbrush tab-icon"></i>
+            <span class="tab-icon" aria-hidden="true">🎨</span>
             <span>Add Sticker</span>
         </button>
         <button class="tab-btn" id="tab-btn-packs" data-tab="packs" role="tab" aria-selected="false"
                 aria-controls="tab-packs">
-            <i class="fa-solid fa-boxes-stacked tab-icon"></i>
+            <span class="tab-icon" aria-hidden="true">📦</span>
             <span>My Packs</span>
         </button>
     </nav>
@@ -791,13 +784,13 @@
         <!-- TAB 1: Create New Pack -->
         <section id="tab-create" class="tab-panel active" role="tabpanel" aria-labelledby="tab-btn-create">
             <div class="section-header blue">
-                <i class="fa-solid fa-flask"></i>
+                🦑
                 Create New Pack
             </div>
 
             <div class="form-group">
                 <label for="cp-name">
-                    <i class="fa-solid fa-tag"></i>
+                    🏷
                     Pack Name
                 </label>
                 <input type="text" id="cp-name"
@@ -809,7 +802,7 @@
 
             <div class="form-group">
                 <label for="cp-title">
-                    <i class="fa-solid fa-pen-to-square"></i>
+                    ✏️
                     Pack Title
                 </label>
                 <input type="text" id="cp-title"
@@ -819,13 +812,13 @@
             </div>
 
             <div class="info-row">
-                <i class="fa-solid fa-circle-info"></i>
+                ℹ️
                 Enter a base name (letters, numbers and underscores only). The bot will automatically append
                 <code>_by_&lt;botname&gt;</code> to meet Telegram's requirements. The name cannot be changed later.
             </div>
 
             <button class="btn btn-primary" id="btn-create-pack" data-tooltip="Send pack creation request to bot">
-                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                ✦
                 Create Pack
             </button>
         </section>
@@ -833,32 +826,32 @@
         <!-- TAB 2: Add Sticker -->
         <section id="tab-add" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-add">
             <div class="section-header green">
-                <i class="fa-solid fa-paintbrush"></i>
+                🎨
                 Add a Sticker
             </div>
 
             <div class="form-group">
                 <label for="as-pack-select">
-                    <i class="fa-solid fa-boxes-stacked"></i>
+                    📦
                     Select Pack
                 </label>
                 <select id="as-pack-select" aria-label="Choose a sticker pack">
                     <option value="">— choose a pack —</option>
                 </select>
                 <p class="helper-text">
-                    <i class="fa-solid fa-circle-info"></i>
+                    ℹ️
                     Select the pack where you want to add this sticker.
                 </p>
             </div>
 
             <div class="form-group">
                 <label>
-                    <i class="fa-solid fa-image"></i>
+                    🖼️
                     Image / File
                 </label>
                 <div class="file-upload-area" id="file-drop-zone">
                     <input type="file" id="as-file" accept=".webp,.png,.tgs,.webm,image/webp,image/png,application/x-tgsticker,video/webm" aria-label="Upload sticker file">
-                    <i class="fa-solid fa-cloud-arrow-up file-upload-icon"></i>
+                    <span class="file-upload-icon" aria-hidden="true">📁</span>
                     <div class="file-upload-text">
                         <strong>Tap to browse</strong> or drag &amp; drop<br>
                         PNG, WebP, TGS (animated), WEBM (video) supported
@@ -866,27 +859,27 @@
                     <div class="file-upload-name" id="file-name-display"></div>
                 </div>
                 <p class="helper-text">
-                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    ⚠️
                     Max recommended size: 512 × 512 px.
                 </p>
             </div>
 
             <div class="form-group">
                 <label for="as-emoji">
-                    <i class="fa-regular fa-face-smile"></i>
+                    😊
                     Emoji
                 </label>
                 <input type="text" id="as-emoji" placeholder="e.g. 😊" maxlength="8"
                        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                        value="😊">
                 <p class="helper-text">
-                    <i class="fa-solid fa-circle-info"></i>
+                    ℹ️
                     One emoji that represents this sticker in Telegram.
                 </p>
             </div>
 
             <button class="btn btn-primary" id="btn-add-sticker" data-tooltip="Upload sticker to selected pack">
-                <i class="fa-solid fa-plus"></i>
+                ➕
                 Add Sticker
             </button>
         </section>
@@ -894,13 +887,13 @@
         <!-- TAB 3: My Packs -->
         <section id="tab-packs" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-packs">
             <div class="section-header yellow">
-                <i class="fa-solid fa-boxes-stacked"></i>
+                📦
                 My Packs
             </div>
 
             <button class="btn btn-ghost" style="margin-bottom:1rem" id="btn-refresh-packs"
                     data-tooltip="Reload your pack list">
-                <i class="fa-solid fa-rotate"></i>
+                🔄
                 Refresh
             </button>
 
@@ -917,7 +910,7 @@
     <!-- Footer -->
     <div class="close-row">
         <button class="btn-close-app" id="btn-close-app">
-            <i class="fa-solid fa-xmark"></i>
+            ✕
             Close
         </button>
     </div>
@@ -953,7 +946,7 @@
     function applyTheme(dark) {
         isDark = dark;
         htmlEl.setAttribute('data-theme', dark ? 'dark' : 'light');
-        themeIcon.className = dark ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+        themeIcon.textContent = dark ? '🌙' : '☀️';
         localStorage.setItem('sm-theme', dark ? 'dark' : 'light');
     }
 
@@ -1174,11 +1167,7 @@
             linkEl.href = link;
             linkEl.target = '_blank';
             linkEl.rel = 'noopener noreferrer';
-            var linkIcon = document.createElement('i');
-            linkIcon.className = 'fa-solid fa-arrow-up-right-from-square';
-            linkIcon.style.fontSize = '0.6rem';
-            linkEl.appendChild(linkIcon);
-            linkEl.appendChild(document.createTextNode(' ' + link));
+            linkEl.textContent = '↗ ' + link;
 
             infoEl.appendChild(titleEl);
             infoEl.appendChild(nameEl);
@@ -1191,9 +1180,7 @@
             editBtn.className = 'btn btn-icon btn-ghost';
             editBtn.setAttribute('data-tooltip', 'Edit pack');
             editBtn.setAttribute('aria-label', 'Edit ' + pack.name);
-            var editIcon = document.createElement('i');
-            editIcon.className = 'fa-solid fa-pen';
-            editBtn.appendChild(editIcon);
+            editBtn.textContent = '✏️';
             editBtn.addEventListener('click', (function (name) {
                 return function () { window.editPack(name); };
             }(pack.name)));
@@ -1202,9 +1189,7 @@
             delBtn.className = 'btn btn-icon btn-danger';
             delBtn.setAttribute('data-tooltip', 'Delete pack');
             delBtn.setAttribute('aria-label', 'Delete ' + pack.name);
-            var delIcon = document.createElement('i');
-            delIcon.className = 'fa-solid fa-trash';
-            delBtn.appendChild(delIcon);
+            delBtn.textContent = '🗑️';
             delBtn.addEventListener('click', (function (name) {
                 return function () { window.deletePack(name); };
             }(pack.name)));

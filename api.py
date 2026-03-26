@@ -227,16 +227,23 @@ def _get_miniapp_user():
     """Extract and validate the Mini App user from the current request.
 
     Checks (in order): ``X-Telegram-Init-Data`` header, ``initData`` form
-    field, ``initData`` JSON body field, ``initData`` query param.
+    field, and ``initData`` JSON body field.  The query-parameter fallback
+    is deliberately omitted by default because query strings appear in
+    server access logs, browser history, and ``Referer`` headers — leaking
+    the signed initData.  Set ``MINIAPP_ALLOW_INITDATA_QUERY=true`` to
+    re-enable it for development/testing only.
 
     Returns ``(user_dict, None)`` on success or ``(None, error_response)``
     when authentication fails.
     """
+    allow_query = os.environ.get("MINIAPP_ALLOW_INITDATA_QUERY", "").lower() in {
+        "1", "true", "yes",
+    }
     init_data = (
         request.headers.get("X-Telegram-Init-Data", "")
         or request.form.get("initData", "")
         or (request.get_json(silent=True) or {}).get("initData", "")
-        or request.args.get("initData", "")
+        or (request.args.get("initData", "") if allow_query else "")
     )
     user = validate_miniapp_init_data(init_data)
     if user is None:
