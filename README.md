@@ -300,4 +300,6 @@ CI and the dev/prod workflows intentionally stop at safe validation and smoke te
 ## License
 
   MIT
+
+  ![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/FriskyDevelopments/stixmagic-bot?utm_source=oss&utm_medium=github&utm_campaign=FriskyDevelopments%2Fstixmagic-bot&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
   
