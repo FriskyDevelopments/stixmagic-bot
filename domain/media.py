@@ -243,3 +243,41 @@ async def async_apply_mask_to_image(
     return await loop.run_in_executor(
         None, apply_mask_to_image, source_bytes, mask_bytes, inverted
     )
+
+
+# ── MediaNormalizer implementation ────────────────────────────────
+
+class DefaultMediaNormalizer:
+    """Concrete implementation of the MediaNormalizer protocol for sticker normalization."""
+
+    async def normalize_sticker(
+        self,
+        sticker_input,
+        *,
+        capabilities,
+    ):
+        """Normalize arbitrary media into sticker-safe outputs."""
+        from core.types import StickerGenerationOutput
+
+        source_bytes = io.BytesIO(sticker_input.source_bytes)
+
+        if sticker_input.is_animated_source:
+            result = await async_convert_video_to_sticker(source_bytes)
+            if result is None:
+                raise ValueError("Failed to convert animated media to sticker format")
+
+            return StickerGenerationOutput(
+                sticker_bytes=result.getvalue(),
+                sticker_format="webm",
+                metadata={"source_format": sticker_input.source_mime_type}
+            )
+        else:
+            result = await async_convert_to_sticker(source_bytes)
+            if result is None:
+                raise ValueError("Failed to convert static media to sticker format")
+
+            return StickerGenerationOutput(
+                sticker_bytes=result.getvalue(),
+                sticker_format="webp",
+                metadata={"source_format": sticker_input.source_mime_type}
+            )

@@ -41,6 +41,7 @@ from infra.db import (
 from domain.media import (
     apply_mask_to_image,
     download_file_bytes,
+    DefaultMediaNormalizer,
 )
 from core.engine import StixCoreEngine
 from platforms.telegram import TelegramStixAdapter
@@ -54,7 +55,7 @@ logger = logging.getLogger(__name__)
 
 init_db()
 
-core_engine = StixCoreEngine()
+core_engine = StixCoreEngine(media_normalizer=DefaultMediaNormalizer())
 telegram_adapter = TelegramStixAdapter(core_engine)
 
 async def validate_and_sync_packs(bot, user_id):
@@ -217,15 +218,17 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return WAITING_STICKER
 
         generated = await telegram_adapter.generate_pack(sticker_file, media.media_type)
-        if not generated:
+        if not generated or not generated.items or not generated.items[0].success:
             await ctrl.stop()
             await progress.edit_text("⚠ Conversion failed. Please try again.")
             return WAITING_STICKER
 
+        sticker_output = generated.items[0].sticker
+        sticker_bytes = sticker_output.sticker_bytes if isinstance(sticker_output.sticker_bytes, bytes) else sticker_output.sticker_bytes
         input_sticker = InputSticker(
-            sticker=generated.sticker_file,
+            sticker=io.BytesIO(sticker_bytes) if isinstance(sticker_bytes, bytes) else sticker_bytes,
             emoji_list=STICKER_EMOJI,
-            format=generated.sticker_format,
+            format=sticker_output.sticker_format,
         )
 
         await context.bot.create_new_sticker_set(
@@ -393,14 +396,16 @@ async def addsticker_receive(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await progress.edit_text("⚗️ <i>Distilling the animation...</i>", parse_mode="HTML")
 
         generated = await telegram_adapter.generate_pack(sticker_file, media.media_type)
-        if not generated:
+        if not generated or not generated.items or not generated.items[0].success:
             await progress.edit_text("⚠ Conversion failed. Please try again.")
             return WAITING_STICKER_ADD
 
+        sticker_output = generated.items[0].sticker
+        sticker_bytes = sticker_output.sticker_bytes if isinstance(sticker_output.sticker_bytes, bytes) else sticker_output.sticker_bytes
         input_sticker = InputSticker(
-            sticker=generated.sticker_file,
+            sticker=io.BytesIO(sticker_bytes) if isinstance(sticker_bytes, bytes) else sticker_bytes,
             emoji_list=STICKER_EMOJI,
-            format=generated.sticker_format,
+            format=sticker_output.sticker_format,
         )
         await context.bot.add_sticker_to_set(
             user_id=user.id,

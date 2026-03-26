@@ -41,8 +41,39 @@ class TelegramStixAdapter:
         )
 
     async def generate_pack(self, file_bytes, media_type: str):
+        """Generate pack by delegating to core engine."""
+        from core.types import (
+            PackGenerationRequest,
+            StickerGenerationInput,
+            PackItemResult,
+            PackGenerationResult,
+            StickerGenerationOutput,
+        )
+
+        if self._core_engine:
+            # Delegate to core engine for shared normalization logic
+            is_animated = media_type == "video"
+            source_bytes = file_bytes.getvalue() if hasattr(file_bytes, 'getvalue') else file_bytes
+
+            sticker_input = StickerGenerationInput(
+                source_bytes=source_bytes,
+                source_mime_type=f"video/mp4" if is_animated else "image/png",
+                is_animated_source=is_animated,
+                prefer_format="webm" if is_animated else "webp",
+            )
+
+            request = PackGenerationRequest(
+                pack_id="",
+                title="",
+                sticker_inputs=[sticker_input],
+            )
+
+            from core.capabilities import TELEGRAM_CAPABILITIES
+            result = await self._core_engine.generate_pack(request, capabilities=TELEGRAM_CAPABILITIES)
+            return result
+
+        # Fallback: local conversion if no core engine
         from domain.media import async_convert_to_sticker, async_convert_video_to_sticker
-        from core.types import PackGenerationInput, PackGenerationResult as LegacyResult
 
         sticker_file = file_bytes
         sticker_format = "video" if media_type == "video" else "static"
@@ -56,9 +87,42 @@ class TelegramStixAdapter:
             if converted:
                 sticker_file = converted
 
-        return LegacyResult(sticker_file=sticker_file, sticker_format=sticker_format)
+        # Build new structure with PackItemResult
+        sticker_output = StickerGenerationOutput(
+            sticker_bytes=sticker_file.getvalue() if hasattr(sticker_file, 'getvalue') else sticker_file,
+            sticker_format=sticker_format
+        )
+        item = PackItemResult(
+            index=0,
+            success=True,
+            sticker=sticker_output
+        )
+
+        return PackGenerationResult(
+            pack_id="",
+            title="",
+            items=[item]
+        )
 
     def generate_reactions(self, pack: dict, user_reaction: str | None = None) -> str:
+        """Generate reactions by delegating to core engine."""
+        if self._core_engine:
+            # Use core engine's format_pack_reactions method
+            import asyncio
+            payload = ReactionRenderInput(
+                title=pack['title'],
+                name=pack['name'],
+                description=pack.get('description', ''),
+                likes=pack.get('likes', 0),
+                dislikes=pack.get('dislikes', 0),
+                views=pack.get('view_count', 0),
+                user_reaction=user_reaction,
+            )
+            # Run async method synchronously for backward compatibility
+            result = asyncio.run(self._core_engine.format_pack_reactions(payload))
+            return result.text
+
+        # Fallback if no core engine
         like_mark = " ◀" if user_reaction == "like" else ""
         dislike_mark = " ◀" if user_reaction == "dislike" else ""
 

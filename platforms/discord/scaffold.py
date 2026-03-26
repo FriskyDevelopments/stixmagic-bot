@@ -15,7 +15,7 @@ class DiscordStixAdapter:
             PackGenerationInput(file_bytes=file_bytes, media_type=media_type)
         )
 
-    def generate_reactions(self, *, title: str, name: str, description: str = "", likes: int = 0, dislikes: int = 0, views: int = 0, user_reaction: str | None = None) -> str:
+    async def generate_reactions(self, *, title: str, name: str, description: str = "", likes: int = 0, dislikes: int = 0, views: int = 0, user_reaction: str | None = None) -> str:
         payload = ReactionRenderInput(
             title=title,
             name=name,
@@ -25,7 +25,8 @@ class DiscordStixAdapter:
             views=views,
             user_reaction=user_reaction,
         )
-        return self.core_engine.generate_reactions(payload).text
+        result = await self.core_engine.generate_reactions(payload)
+        return result.text
 
     async def handle_slash_generate(self, interaction) -> None:
         """Placeholder command flow to mirror Telegram media->core->response lifecycle."""

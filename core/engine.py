@@ -13,6 +13,8 @@ from .types import (
     ReactionGenerationInput,
     ReactionGenerationOutput,
     ReactionOption,
+    ReactionRenderInput,
+    ReactionRenderResult,
 )
 
 
@@ -61,8 +63,12 @@ class StixCoreEngine:
                     capabilities=capabilities,
                 )
                 items.append(PackItemResult(index=index, success=True, sticker=sticker))
-            except Exception as exc:
+            except (ValueError, IOError, OSError) as exc:
                 items.append(PackItemResult(index=index, success=False, error=str(exc)))
+            except Exception as exc:
+                import logging
+                logging.exception(f"Unexpected error processing sticker at index {index}")
+                raise
 
         result = PackGenerationResult(
             pack_id=request.pack_id,
@@ -109,3 +115,27 @@ class StixCoreEngine:
         if not self._pack_formatter:
             return result
         return await self._pack_formatter.format_pack_result(result, capabilities=capabilities)
+
+    async def format_pack_reactions(
+        self,
+        payload: ReactionRenderInput,
+    ) -> ReactionRenderResult:
+        """Render a normalized reaction + metadata text block for platform adapters."""
+        import html
+
+        like_mark = " ◀" if payload.user_reaction == "like" else ""
+        dislike_mark = " ◀" if payload.user_reaction == "dislike" else ""
+
+        text = (
+            f"🔍 <b>{html.escape(payload.title)}</b>\n"
+            f"<code>{html.escape(payload.name)}</code>\n"
+        )
+        if payload.description:
+            text += f"\n<i>{html.escape(payload.description)}</i>\n"
+        text += (
+            f"\n👁 {payload.views}  ·  "
+            f"👍 {payload.likes}{like_mark}  ·  "
+            f"👎 {payload.dislikes}{dislike_mark}"
+        )
+
+        return ReactionRenderResult(text=text)

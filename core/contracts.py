@@ -106,6 +106,19 @@ class SessionStore(Protocol):
         ...
 
 
+class AsyncSessionStore(Protocol):
+    """Async contract for wizard/session state persistence."""
+
+    async def get(self, session_id: str) -> dict[str, Any]:
+        ...
+
+    async def set(self, session_id: str, data: dict[str, Any]) -> None:
+        ...
+
+    async def clear(self, session_id: str) -> None:
+        ...
+
+
 class SupportsPackGeneration(Protocol):
     """Shared contract for core pack generation entry."""
 
@@ -124,5 +137,5 @@ class StixCoreContract(Protocol):
     async def generate_pack(self, payload: Any) -> Any:
         """Convert incoming media into a platform-ready sticker payload."""
 
-    def generate_reactions(self, payload: ReactionRenderInput) -> ReactionRenderResult:
+    async def generate_reactions(self, payload: ReactionRenderInput) -> ReactionRenderResult:
         """Render a normalized reaction + metadata text block for platform adapters."""
