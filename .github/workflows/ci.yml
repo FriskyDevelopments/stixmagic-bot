@@ -27,9 +27,9 @@ jobs:
       - name: Smoke test (config + DB)
         env:
           APP_ENV: development
-          BOT_TOKEN_DEV: ${{ secrets.BOT_TOKEN_DEV }}
-          STIXMAGIC_API_KEY_DEV: ${{ secrets.STIXMAGIC_API_KEY_DEV != '' && secrets.STIXMAGIC_API_KEY_DEV || secrets.STIXMAGIC_API_KEY }}
-          SESSION_SECRET_DEV: ${{ secrets.SESSION_SECRET_DEV != '' && secrets.SESSION_SECRET_DEV || secrets.SESSION_SECRET }}
+          BOT_TOKEN_DEV: ${{ secrets.BOT_TOKEN_DEV != '' && secrets.BOT_TOKEN_DEV || '1234567890:AABBCCDDEEFFaabbccddeeff_ci_placeholder' }}
+          STIXMAGIC_API_KEY_DEV: ${{ secrets.STIXMAGIC_API_KEY_DEV != '' && secrets.STIXMAGIC_API_KEY_DEV || secrets.STIXMAGIC_API_KEY != '' && secrets.STIXMAGIC_API_KEY || 'ci-placeholder-api-key' }}
+          SESSION_SECRET_DEV: ${{ secrets.SESSION_SECRET_DEV != '' && secrets.SESSION_SECRET_DEV || secrets.SESSION_SECRET != '' && secrets.SESSION_SECRET || 'ci-placeholder-session-secret' }}
           MINIAPP_URL_DEV: ${{ secrets.MINIAPP_URL_DEV != '' && secrets.MINIAPP_URL_DEV || secrets.MINIAPP_URL }}
         run: |
           python scripts/check_config.py
