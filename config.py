@@ -148,9 +148,9 @@ def _resolve_admin_ids() -> list[int]:
     raw = os.environ.get("ADMIN_USER_IDS", "") or os.environ.get("ADMIN_USER_ID", "")
     ids = []
     for part in raw.split(","):
-        part = part.strip()
-        if part.isdigit():
-            ids.append(int(part))
+        stripped = part.strip()
+        if stripped.isdigit():
+            ids.append(int(stripped))
     return ids
 
 

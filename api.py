@@ -157,7 +157,8 @@ def miniapp_packs():
         try:
             packs = _run_async(_validate_packs_async(config.BOT_TOKEN, uid))
             return ok(packs)
-        except Exception:
+        except Exception as e:
+            print(f"[miniapp_packs] Telegram validation failed for user {uid} (BOT_TOKEN present): {e}. Falling back to DB-only response.")
             pass
 
     conn = get_db()

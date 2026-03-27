@@ -70,7 +70,7 @@ and exposes constants that the rest of the app imports:
 
 See `.env.example` for a full annotated reference. Key variables:
 
-```
+```bash
 APP_ENV=development          # or "production"
 TELEGRAM_BOT_TOKEN=...       # production bot token
 DEV_BOT_TOKEN=...            # development bot token (@StixMagicdevBot)
