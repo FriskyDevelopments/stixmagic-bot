@@ -91,7 +91,6 @@ Draft lifecycle states:
 | `/plans` | View subscription plans and usage |
 | `/packs` | Browse and manage your packs |
 | `/sync` | Import an existing Telegram pack |
-| `/settings` | Toggle mask inversion and other preferences |
 | `/help` | Show help information |
 | `/cancel` | Cancel the current operation |
 
