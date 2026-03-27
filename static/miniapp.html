@@ -839,7 +839,7 @@
                 Pack creation still happens in the bot because Telegram sticker publishing requires the bot surface.
             </div>
 
-            <button class="btn btn-primary" id="btn-create-pack" data-tooltip="Continue in bot to create the pack">
+            <button type="button" class="btn btn-primary" id="btn-create-pack" data-tooltip="Continue in bot to create the pack">
                 🪄 Continue in Bot
             </button>
         </section>
@@ -874,7 +874,7 @@
                 <span>Need the cutout flow instead? Use the bot's magic-cut ritual from the same account.</span>
             </div>
 
-            <button class="btn btn-primary" id="btn-add-sticker" data-tooltip="Continue in bot to add a sticker">
+            <button type="button" class="btn btn-primary" id="btn-add-sticker" data-tooltip="Continue in bot to add a sticker">
                 ✨ Continue in Bot
             </button>
         </section>
@@ -1011,6 +1011,17 @@
     var bootstrapData = null;
     var miniappSession = null;
 
+    // Parse initial API base from URL parameters for split-origin deployments
+    var initialApiBase = (function() {
+        try {
+            var params = new URLSearchParams(window.location.search);
+            var apiBase = params.get('api_base');
+            return apiBase ? apiBase.replace(/\/$/, '') : '';
+        } catch (e) {
+            return '';
+        }
+    })();
+
     function getTelegramInitData() {
         return tg && typeof tg.initData === 'string' ? tg.initData : '';
     }
@@ -1045,10 +1056,10 @@
         headers['X-Telegram-Init-Data'] = initData;
         options.headers = headers;
 
-        // Build full URL using the API base from bootstrap or fall back to relative path
+        // Build full URL using the API base from bootstrap or initial URL param, or fall back to relative path
         var apiBase = (bootstrapData && bootstrapData.deployment && bootstrapData.deployment.public_base_url)
             ? bootstrapData.deployment.public_base_url
-            : '';
+            : initialApiBase;
         var fullUrl = apiBase ? apiBase + path : path;
 
         return fetch(fullUrl, options).then(function (response) {
@@ -1069,9 +1080,12 @@
     }
 
     function openBotFlow(kind) {
-        var fallback = 'https://t.me/stixmagicbot';
         var links = bootstrapData && bootstrapData.bot && bootstrapData.bot.links;
-        var url = links && links[kind] ? links[kind] : fallback;
+        if (!links || !links[kind]) {
+            showAlert('Bot link not available. Please check your deployment configuration.');
+            return;
+        }
+        var url = links[kind];
         if (tg && tg.openTelegramLink) {
             tg.openTelegramLink(url);
             return;

@@ -2,6 +2,7 @@ import os
 import sqlite3
 import time
 import asyncio
+import json
 from functools import wraps
 from urllib.parse import urlparse
 from flask import Flask, jsonify, request, send_from_directory
@@ -336,24 +337,12 @@ def miniapp_intent():
     token_data = f"{user_id}:{action}:{int(time.time())}"
     token = hashlib.sha256(token_data.encode()).hexdigest()[:16]
 
-    # Store intent in a simple table (for now, just return the token)
-    # TODO: persist intents in a DB table with expiry
+    # Store intent in the database with expiry tracking
     conn = get_db()
     c = conn.cursor()
-    # Create intents table if it doesn't exist (for future use)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS miniapp_intents (
-            token TEXT PRIMARY KEY,
-            user_id INTEGER NOT NULL,
-            action TEXT NOT NULL,
-            metadata TEXT,
-            created_at INTEGER NOT NULL,
-            consumed INTEGER DEFAULT 0
-        )
-    """)
     c.execute(
         "INSERT INTO miniapp_intents (token, user_id, action, metadata, created_at) VALUES (?, ?, ?, ?, ?)",
-        (token, user_id, action, str(metadata), int(time.time()))
+        (token, user_id, action, json.dumps(metadata), int(time.time()))
     )
     conn.commit()
     conn.close()

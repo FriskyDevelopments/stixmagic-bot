@@ -132,7 +132,10 @@ async def nav_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    start_payload = (context.args[0] if context.args else "").strip().lower()
+    raw_payload = (context.args[0] if context.args else "").strip().lower()
+
+    # Extract base payload before any "_" token suffix for compatibility with Mini App deep links
+    start_payload = raw_payload.split("_")[0] if "_" in raw_payload else raw_payload
 
     # Deep link payloads trigger conversation entry points directly
     # These return control to the ConversationHandler so state is properly recorded

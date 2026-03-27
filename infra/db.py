@@ -64,6 +64,18 @@ def init_db() -> None:
         )
         """
     )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS miniapp_intents (
+            token TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            metadata TEXT,
+            created_at INTEGER NOT NULL,
+            consumed INTEGER DEFAULT 0
+        )
+        """
+    )
     conn.commit()
     conn.close()
 
