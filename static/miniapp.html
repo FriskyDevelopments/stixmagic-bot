@@ -1044,7 +1044,17 @@
         }
         headers['X-Telegram-Init-Data'] = initData;
         options.headers = headers;
-        return fetch(path, options).then(function (response) {
+
+        // Build full URL using the API base from bootstrap or fall back to relative path
+        var apiBase = (bootstrapData && bootstrapData.deployment && bootstrapData.deployment.public_base_url)
+            ? bootstrapData.deployment.public_base_url
+            : '';
+        var fullUrl = apiBase ? apiBase + path : path;
+
+        return fetch(fullUrl, options).then(function (response) {
+            if (!response.ok && response.status >= 500) {
+                throw new Error('Server error: ' + response.status);
+            }
             return response.json().then(function (json) {
                 if (!response.ok || !json.ok) {
                     var message = json && json.error && json.error.message ? json.error.message : 'Request failed';
@@ -1052,6 +1062,9 @@
                 }
                 return json;
             });
+        }).catch(function (err) {
+            // Propagate fetch failures clearly
+            throw err;
         });
     }
 
@@ -1268,12 +1281,34 @@
     document.getElementById('btn-create-pack').addEventListener('click', function () {
         var titleInput = document.getElementById('cp-title');
         var packTitle  = titleInput.value.trim();
+        var packNotes  = document.getElementById('cp-notes').value.trim();
+
         if (!packTitle) {
             showAlert('Please enter a pack title before continuing to the bot.');
             titleInput.focus();
             return;
         }
-        handoffNotice('Continue in the bot to publish the pack and upload the first sticker.', 'create_pack');
+
+        // Mint an intent token with metadata and hand off to bot with that token
+        var metadata = { title: packTitle };
+        if (packNotes) { metadata.notes = packNotes; }
+
+        apiFetch('/api/miniapp/intent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'create_pack', metadata: metadata })
+        })
+        .then(function (json) {
+            var deepLink = json.data.deep_link;
+            if (tg && tg.openTelegramLink) {
+                tg.openTelegramLink(deepLink);
+            } else {
+                window.location.href = deepLink;
+            }
+        })
+        .catch(function (err) {
+            showAlert('Failed to create intent: ' + err.message);
+        });
     });
 
     // ── TAB 2: Add Sticker ───────────────────────────────────────
@@ -1283,7 +1318,24 @@
             showAlert('Please select a pack first.');
             return;
         }
-        handoffNotice('Continue in the bot to upload media into ' + packName + '.', 'add_sticker');
+
+        // Mint an intent token with the selected pack
+        apiFetch('/api/miniapp/intent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'add_sticker', metadata: { pack_name: packName } })
+        })
+        .then(function (json) {
+            var deepLink = json.data.deep_link;
+            if (tg && tg.openTelegramLink) {
+                tg.openTelegramLink(deepLink);
+            } else {
+                window.location.href = deepLink;
+            }
+        })
+        .catch(function (err) {
+            showAlert('Failed to create intent: ' + err.message);
+        });
     });
 
     // ── TAB 3: My Packs ─────────────────────────────────────────
@@ -1294,11 +1346,41 @@
     });
 
     window.editPack = function (packName) {
-        handoffNotice('Pack edits are handled in the bot for now: ' + packName, 'manage_packs');
+        apiFetch('/api/miniapp/intent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'manage_packs', metadata: { pack_name: packName } })
+        })
+        .then(function (json) {
+            var deepLink = json.data.deep_link;
+            if (tg && tg.openTelegramLink) {
+                tg.openTelegramLink(deepLink);
+            } else {
+                window.location.href = deepLink;
+            }
+        })
+        .catch(function (err) {
+            showAlert('Failed to create intent: ' + err.message);
+        });
     };
 
     window.deletePack = function (packName) {
-        handoffNotice('Pack deletion stays in the bot until the Mini App has a destructive-action API: ' + packName, 'manage_packs');
+        apiFetch('/api/miniapp/intent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'manage_packs', metadata: { pack_name: packName, delete: true } })
+        })
+        .then(function (json) {
+            var deepLink = json.data.deep_link;
+            if (tg && tg.openTelegramLink) {
+                tg.openTelegramLink(deepLink);
+            } else {
+                window.location.href = deepLink;
+            }
+        })
+        .catch(function (err) {
+            showAlert('Failed to create intent: ' + err.message);
+        });
     };
 
     // ── Catalog ──────────────────────────────────────────────────

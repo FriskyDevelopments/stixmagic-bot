@@ -3,6 +3,7 @@ import sqlite3
 import time
 import asyncio
 from functools import wraps
+from urllib.parse import urlparse
 from flask import Flask, jsonify, request, send_from_directory
 from stixmagic.contracts import (
     API_VERSION,
@@ -21,24 +22,35 @@ from stixmagic.telegram_auth import TelegramInitDataError, validate_init_data
 
 load_dotenv()
 SETTINGS = get_settings()
-DB_FILE = SETTINGS.database_path
 
 app = Flask(__name__, static_folder="static")
 
 API_KEY = SETTINGS.stixmagic_api_key
 PAGE_SIZE = 20
 
+
+def _normalize_origin(url: str) -> str:
+    """Normalize a URL to just its origin (scheme + netloc), stripping any path."""
+    if not url:
+        return ""
+    parsed = urlparse(url)
+    if parsed.scheme and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}"
+    return url.rstrip("/")
+
+
 # Pre-compute the CORS allowlist for Mini App routes once at startup.
 _MINIAPP_CORS_ORIGINS: frozenset[str] = frozenset(
     filter(None, [
-        SETTINGS.public_base_url.rstrip("/") if SETTINGS.public_base_url else None,
-        os.environ.get("MINIAPP_URL", "").rstrip("/") or None,
+        _normalize_origin(SETTINGS.public_base_url) if SETTINGS.public_base_url else None,
+        _normalize_origin(os.environ.get("MINIAPP_URL", "")) or None,
     ])
 )
 
 
 def get_db():
-    conn = sqlite3.connect(DB_FILE)
+    """Get a database connection with lazy path resolution."""
+    conn = sqlite3.connect(SETTINGS.database_path)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -155,6 +167,9 @@ def miniapp():
 
 
 # ── MINI APP (no API key — user_id comes from Telegram initData) ──
+# Mini App routes use @require_miniapp_auth instead of @require_api_key because
+# they validate the Telegram WebApp initData, which provides user authentication.
+# This allows public Mini App access without requiring a server API key.
 
 def _run_async(coro):
     """Run an async coroutine safely from a synchronous Flask route."""
@@ -206,6 +221,18 @@ def miniapp_bootstrap():
     session = request.miniapp_session
     user = session["user"]
     bot_username = SETTINGS.telegram_bot_username
+
+    # Build bot object conditionally — only include links if bot_username is configured
+    bot_info = {"username": bot_username}
+    if bot_username:
+        bot_info["links"] = {
+            "create_pack": f"https://t.me/{bot_username}?start={START_PAYLOAD_CREATE}",
+            "add_sticker": f"https://t.me/{bot_username}?start={START_PAYLOAD_ADD}",
+            "manage_packs": f"https://t.me/{bot_username}?start={START_PAYLOAD_MANAGE}",
+            "magic_cut": f"https://t.me/{bot_username}?start={START_PAYLOAD_MAGIC}",
+            "feature_pack": f"https://t.me/{bot_username}?start={START_PAYLOAD_FEATURE}",
+        }
+
     return ok({
         "product": PRODUCT_NAME,
         "api_version": API_VERSION,
@@ -214,16 +241,7 @@ def miniapp_bootstrap():
             "surface": "miniapp",
             "start_param": session.get("start_param"),
         },
-        "bot": {
-            "username": bot_username,
-            "links": {
-                "create_pack": f"https://t.me/{bot_username}?start={START_PAYLOAD_CREATE}",
-                "add_sticker": f"https://t.me/{bot_username}?start={START_PAYLOAD_ADD}",
-                "manage_packs": f"https://t.me/{bot_username}?start={START_PAYLOAD_MANAGE}",
-                "magic_cut": f"https://t.me/{bot_username}?start={START_PAYLOAD_MAGIC}",
-                "feature_pack": f"https://t.me/{bot_username}?start={START_PAYLOAD_FEATURE}",
-            },
-        },
+        "bot": bot_info,
         "deployment": {
             "public_base_url": SETTINGS.public_base_url,
             "miniapp_url": SETTINGS.miniapp_url,
@@ -289,6 +307,73 @@ def miniapp_settings_patch():
     row = c.fetchone()
     conn.close()
     return ok({"user_id": user_id, "mask_inverted": bool(row["mask_inverted"]) if row else False})
+
+
+@app.route("/api/miniapp/intent", methods=["POST"])
+@require_miniapp_auth
+def miniapp_intent():
+    """
+    Mint a one-time intent token for Mini App → Bot handoff with metadata.
+    Body: {"action": "create_pack"|"add_sticker"|"manage_packs", "metadata": {...}}
+    Returns: {"token": "...", "deep_link": "https://t.me/bot?start=..."}
+    """
+    user_id = int(request.miniapp_session["user"]["id"])
+    data = request.get_json(silent=True)
+    if not data:
+        return err("JSON body required", 400, "invalid_body")
+
+    action = data.get("action", "")
+    metadata = data.get("metadata", {})
+
+    # Validate action
+    valid_actions = ["create_pack", "add_sticker", "manage_packs", "magic_cut", "feature_pack"]
+    if action not in valid_actions:
+        return err(f"Invalid action. Must be one of: {', '.join(valid_actions)}", 400, "invalid_action")
+
+    # Generate a unique token (simplified: timestamp + user_id hash)
+    # In production, use a proper token store with expiry
+    import hashlib
+    token_data = f"{user_id}:{action}:{int(time.time())}"
+    token = hashlib.sha256(token_data.encode()).hexdigest()[:16]
+
+    # Store intent in a simple table (for now, just return the token)
+    # TODO: persist intents in a DB table with expiry
+    conn = get_db()
+    c = conn.cursor()
+    # Create intents table if it doesn't exist (for future use)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS miniapp_intents (
+            token TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            metadata TEXT,
+            created_at INTEGER NOT NULL,
+            consumed INTEGER DEFAULT 0
+        )
+    """)
+    c.execute(
+        "INSERT INTO miniapp_intents (token, user_id, action, metadata, created_at) VALUES (?, ?, ?, ?, ?)",
+        (token, user_id, action, str(metadata), int(time.time()))
+    )
+    conn.commit()
+    conn.close()
+
+    # Build deep link using the appropriate START_PAYLOAD constant
+    bot_username = SETTINGS.telegram_bot_username
+    if not bot_username:
+        return err("Bot username not configured", 500, "bot_not_configured")
+
+    payload_map = {
+        "create_pack": START_PAYLOAD_CREATE,
+        "add_sticker": START_PAYLOAD_ADD,
+        "manage_packs": START_PAYLOAD_MANAGE,
+        "magic_cut": START_PAYLOAD_MAGIC,
+        "feature_pack": START_PAYLOAD_FEATURE,
+    }
+    start_payload = payload_map.get(action, action)
+    deep_link = f"https://t.me/{bot_username}?start={start_payload}_{token}"
+
+    return ok({"token": token, "deep_link": deep_link, "action": action})
 
 
 @app.route("/api/health")

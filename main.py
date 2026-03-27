@@ -133,12 +133,17 @@ async def nav_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     start_payload = (context.args[0] if context.args else "").strip().lower()
+
+    # Deep link payloads trigger conversation entry points directly
+    # These return control to the ConversationHandler so state is properly recorded
     if start_payload == START_PAYLOAD_CREATE:
         return await create_start(update, context)
     if start_payload == START_PAYLOAD_ADD:
         return await addsticker_start(update, context)
     if start_payload == START_PAYLOAD_MANAGE:
-        return await manage_stickers(update, context)
+        # manage_stickers is not a conversation, so we don't return its result
+        await manage_stickers(update, context)
+        return ConversationHandler.END
     if start_payload == START_PAYLOAD_MAGIC:
         return await magic_start(update, context)
     if start_payload == START_PAYLOAD_FEATURE:
