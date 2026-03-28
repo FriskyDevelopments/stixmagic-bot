@@ -827,7 +827,7 @@
             <div class="form-group">
                 <label for="cp-notes">
                     <i class="fa-solid fa-note-sticky"></i>
-                    Prep Notes <span style="color:var(--hint);font-weight:400">(optional, local only)</span>
+                    Prep Notes <span style="color:var(--hint);font-weight:400">(optional, saved with your intent)</span>
                 </label>
                 <input type="text" id="cp-notes"
                        placeholder="e.g. start with my logo sticker"
@@ -1011,16 +1011,9 @@
     var bootstrapData = null;
     var miniappSession = null;
 
-    // Parse initial API base from URL parameters for split-origin deployments
-    var initialApiBase = (function() {
-        try {
-            var params = new URLSearchParams(window.location.search);
-            var apiBase = params.get('api_base');
-            return apiBase ? apiBase.replace(/\/$/, '') : '';
-        } catch (e) {
-            return '';
-        }
-    })();
+    // Trusted API base - never use user-controlled URL parameters for API origin
+    // This prevents leaking X-Telegram-Init-Data to arbitrary hosts
+    var initialApiBase = '';
 
     function getTelegramInitData() {
         return tg && typeof tg.initData === 'string' ? tg.initData : '';
@@ -1056,10 +1049,11 @@
         headers['X-Telegram-Init-Data'] = initData;
         options.headers = headers;
 
-        // Build full URL using the API base from bootstrap or initial URL param, or fall back to relative path
+        // Only use trusted API base from bootstrap data - never from URL params
+        // This prevents leaking X-Telegram-Init-Data to untrusted origins
         var apiBase = (bootstrapData && bootstrapData.deployment && bootstrapData.deployment.public_base_url)
             ? bootstrapData.deployment.public_base_url
-            : initialApiBase;
+            : '';
         var fullUrl = apiBase ? apiBase + path : path;
 
         return fetch(fullUrl, options).then(function (response) {
