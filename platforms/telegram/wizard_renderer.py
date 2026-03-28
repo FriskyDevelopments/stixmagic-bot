@@ -20,8 +20,8 @@ class TelegramWizardRenderer(WizardRenderer):
         if event.step_id == "confirm":
             buttons = [
                 [
-                    {"label": "✅ Confirm", "callback_data": "wizard:yes"},
-                    {"label": "↩ Restart", "callback_data": "wizard:no"},
+                    {"label": "✅ Confirm", "callback_data": "menu_wizard_confirm"},
+                    {"label": "↩ Restart", "callback_data": "menu_wizard_restart"},
                 ]
             ]
 
