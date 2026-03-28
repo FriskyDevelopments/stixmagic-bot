@@ -314,7 +314,7 @@ def check_creation_limit(telegram_id):
     limits = PLAN_LIMITS.get(plan, PLAN_LIMITS['free'])
     period_type = limits['period']
     max_creations = limits['creations']
-    period_start, period_end = _current_period_bounds(period_type)
+    period_start, _ = _current_period_bounds(period_type)
 
     conn = get_db()
     c = conn.cursor()
@@ -472,8 +472,8 @@ def cleanup_worker():
                 conn.commit()
             if expired_count:
                 logger.info(f"Cleanup: expired {expired_count} draft(s)")
-        except Exception as e:
-            logger.error(f"Cleanup worker error: {e}")
+        except Exception:
+            logger.exception("Cleanup worker error")
         time.sleep(86400)  # run once per day
 
 
@@ -782,34 +782,52 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if converted:
                 sticker_file = converted
 
-        input_sticker = InputSticker(sticker=sticker_file, emoji_list=STICKER_EMOJI, format=sticker_format)
-
-        await context.bot.create_new_sticker_set(
-            user_id=user.id,
-            name=pack_name,
-            title=title,
-            stickers=[input_sticker],
+        # Upload the sticker file to get a file_id
+        sent_sticker = await context.bot.send_document(
+            chat_id=user.id,
+            document=sticker_file,
+            filename="sticker.webp"
         )
+        generated_file_id = sent_sticker.document.file_id if sent_sticker.document else None
+
+        # Create draft instead of publishing directly
+        draft_id = create_draft(
+            telegram_id=user.id,
+            source_file_id=file_id,
+            generated_file_id=generated_file_id,
+            style_id=None
+        )
+
+        if draft_id is None:
+            await progress.edit_text(
+                f"⚠ <b>Draft limit reached</b>\n{DIV}\n\n"
+                "You've reached your draft limit. Approve or reject existing drafts first.\n\n"
+                "Use /mydrafts to manage your drafts.",
+                parse_mode="HTML",
+                reply_markup=home_keyboard()
+            )
+            context.user_data.clear()
+            return ConversationHandler.END
 
         # Increment usage after successful creation
         increment_usage(user.id)
 
-        add_pack_to_db(user.id, pack_name, title)
+        # Store pack info for approval handler
+        context.user_data['pending_pack_name'] = pack_name
+        context.user_data['pending_pack_title'] = title
+        context.user_data['pending_sticker_format'] = sticker_format
 
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("✦ Inscribe More Stickers", callback_data=f"addto_{pack_name}")],
-            [InlineKeyboardButton("🔗 Open the Vessel", url=f"https://t.me/addstickers/{pack_name}")],
-            [
-                InlineKeyboardButton("📖 Grimoire", callback_data="menu_packs"),
-                InlineKeyboardButton("✦ Home", callback_data="nav:home"),
-            ],
+            [InlineKeyboardButton("✓ Approve & Publish", callback_data=f"draft_approve_{draft_id}")],
+            [InlineKeyboardButton("✕ Reject", callback_data=f"draft_reject_{draft_id}")],
+            [InlineKeyboardButton("🗂 View All Drafts", callback_data="menu_mydrafts")],
         ])
 
         await progress.edit_text(
-            f"⚗️ <b>Pack forged!</b>\n"
+            f"⚗️ <b>Draft created!</b>\n"
             f"{DIV}\n\n"
             f"<b>{html.escape(title)}</b>\n"
-            f"<i>The first sticker is sealed within.</i>",
+            f"<i>Review and approve to publish this pack.</i>",
             parse_mode="HTML",
             reply_markup=keyboard
         )
@@ -969,29 +987,52 @@ async def addsticker_receive(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if converted:
                 sticker_file = converted
 
-        input_sticker = InputSticker(sticker=sticker_file, emoji_list=STICKER_EMOJI, format=sticker_format)
-        await context.bot.add_sticker_to_set(
-            user_id=user.id,
-            name=pack_name,
-            sticker=input_sticker
+        # Upload the sticker file to get a file_id
+        sent_sticker = await context.bot.send_document(
+            chat_id=user.id,
+            document=sticker_file,
+            filename="sticker.webp"
         )
+        generated_file_id = sent_sticker.document.file_id if sent_sticker.document else None
+
+        # Create draft instead of publishing directly
+        draft_id = create_draft(
+            telegram_id=user.id,
+            source_file_id=file_id,
+            generated_file_id=generated_file_id,
+            style_id=None
+        )
+
+        if draft_id is None:
+            await progress.edit_text(
+                f"⚠ <b>Draft limit reached</b>\n{DIV}\n\n"
+                "You've reached your draft limit. Approve or reject existing drafts first.\n\n"
+                "Use /mydrafts to manage your drafts.",
+                parse_mode="HTML",
+                reply_markup=home_keyboard()
+            )
+            context.user_data.clear()
+            return ConversationHandler.END
 
         # Increment usage after successful creation
         increment_usage(user.id)
 
+        # Store pack info for approval handler
+        context.user_data['pending_pack_name'] = pack_name
+        context.user_data['pending_pack_title'] = pack_title
+        context.user_data['pending_sticker_format'] = sticker_format
+
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("✦ Bind Another", callback_data=f"addto_{pack_name}")],
-            [InlineKeyboardButton("🔗 Open the Vessel", url=f"https://t.me/addstickers/{pack_name}")],
-            [
-                InlineKeyboardButton("📖 Grimoire", callback_data="menu_packs"),
-                InlineKeyboardButton("✦ Home", callback_data="nav:home"),
-            ],
+            [InlineKeyboardButton("✓ Approve & Add to Pack", callback_data=f"draft_approve_{draft_id}")],
+            [InlineKeyboardButton("✕ Reject", callback_data=f"draft_reject_{draft_id}")],
+            [InlineKeyboardButton("🗂 View All Drafts", callback_data="menu_mydrafts")],
         ])
 
         await progress.edit_text(
-            f"✦ <b>Sticker sealed</b>\n"
+            f"✦ <b>Draft created!</b>\n"
             f"{DIV}\n\n"
-            f"<b>{html.escape(pack_title)}</b> grows stronger.",
+            f"<b>{html.escape(pack_title)}</b>\n"
+            f"<i>Review and approve to add to this pack.</i>",
             parse_mode="HTML",
             reply_markup=keyboard
         )
@@ -1509,38 +1550,11 @@ async def _sync_process(update: Update, context: ContextTypes.DEFAULT_TYPE, pack
     return ConversationHandler.END
 
 
-# ── ANIMATED TASK FEEDBACK ────────────────────────────────────
-
-async def send_working_animation(update: Update):
-    """Send a 'working…' placeholder while the bot processes a request.
-
-    Returns the sent Message so the caller can delete it when done.
-    The placeholder keeps the chat informative without permanent clutter.
-    """
-    return await update.effective_message.reply_text(
-        "🧙 <i>working on it…</i>",
-        parse_mode="HTML"
-    )
-
-
-async def delete_working_animation(bot, chat_id: int, message_id: int):
-    """Delete the working-animation placeholder sent by send_working_animation."""
-    try:
-        await bot.delete_message(chat_id=chat_id, message_id=message_id)
-    except Exception:
-        pass  # already deleted or not found — safe to ignore
-
-
 # ── DRAFT VAULT COMMANDS ──────────────────────────────────────
 
-async def mydrafts_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show the user's pending draft stickers.
-
-    Drafts are generated stickers awaiting review.  From here the user
-    can approve, retry, or reject each one.
-    """
-    user = update.effective_user
-    drafts = get_user_drafts(user.id, status='draft')
+async def _render_mydrafts(user_id: int):
+    """Render the mydrafts view. Returns (text, keyboard)."""
+    drafts = get_user_drafts(user_id, status='draft')
 
     if not drafts:
         text = (
@@ -1548,10 +1562,7 @@ async def mydrafts_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "No pending drafts — the vault is empty.\n\n"
             "<i>Generate a sticker to see it here first.</i>"
         )
-        await update.message.reply_text(
-            text, parse_mode="HTML", reply_markup=home_keyboard()
-        )
-        return
+        return text, home_keyboard()
 
     text = (
         f"🗂 <b>DRAFT VAULT</b>\n{DIV}\n\n"
@@ -1559,27 +1570,22 @@ async def mydrafts_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "<i>Use the buttons below to approve, retry, or reject each draft.</i>"
     )
     keyboard_rows = []
-    for draft_id, file_id, status, created_at, expires_at in drafts:
-        label = f"Draft #{draft_id}"
+    for draft_id, *_ in drafts:
         keyboard_rows.append([
             InlineKeyboardButton(f"✓ Approve #{draft_id}", callback_data=f"draft_approve_{draft_id}"),
-            InlineKeyboardButton(f"✕ Reject", callback_data=f"draft_reject_{draft_id}"),
+            InlineKeyboardButton("✕ Reject", callback_data=f"draft_reject_{draft_id}"),
         ])
         keyboard_rows.append([
             InlineKeyboardButton(f"🔄 Retry #{draft_id}", callback_data=f"draft_retry_{draft_id}"),
-            InlineKeyboardButton(f"💾 Save later", callback_data=f"draft_save_{draft_id}"),
+            InlineKeyboardButton("💾 Save later", callback_data=f"draft_save_{draft_id}"),
         ])
     keyboard_rows.append([InlineKeyboardButton("✦ Home", callback_data="nav:home")])
-
-    await update.message.reply_text(
-        text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard_rows)
-    )
+    return text, InlineKeyboardMarkup(keyboard_rows)
 
 
-async def myapproved_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show the user's approved stickers ready for publishing."""
-    user = update.effective_user
-    approved = get_user_drafts(user.id, status='approved')
+async def _render_myapproved(user_id: int):
+    """Render the myapproved view. Returns (text, keyboard)."""
+    approved = get_user_drafts(user_id, status='approved')
 
     if not approved:
         text = (
@@ -1593,18 +1599,14 @@ async def myapproved_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"<b>{len(approved)}</b> sticker(s) ready to publish.\n\n"
             "<i>These stickers can be added to your packs or collections.</i>"
         )
-
-    await update.message.reply_text(
-        text, parse_mode="HTML", reply_markup=home_keyboard()
-    )
+    return text, home_keyboard()
 
 
-async def trash_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show the user's rejected and expired stickers (the trash bin)."""
-    user = update.effective_user
+async def _render_trash(user_id: int, username: str = None):
+    """Render the trash view. Returns (text, keyboard)."""
     conn = get_db()
     c = conn.cursor()
-    user_row = get_or_create_user(user.id, user.username)
+    user_row = get_or_create_user(user_id, username)
     c.execute(
         "SELECT id, status, created_at FROM sticker_drafts "
         "WHERE user_id = ? AND status IN ('rejected', 'expired') ORDER BY created_at DESC",
@@ -1627,18 +1629,11 @@ async def trash_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"◦ #{draft_id} — <i>{status}</i> on {created_at[:10]}\n"
         if len(rows) > 10:
             text += f"\n<i>…and {len(rows) - 10} more.</i>"
-
-    await update.message.reply_text(
-        text, parse_mode="HTML", reply_markup=home_keyboard()
-    )
+    return text, home_keyboard()
 
 
-async def catalog_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show the available sticker style catalog.
-
-    Displays all active styles from the catalog_styles table, grouped by
-    plan tier so users know which styles are available on their plan.
-    """
+async def _render_catalog():
+    """Render the catalog view. Returns (text, keyboard)."""
     conn = get_db()
     c = conn.cursor()
     c.execute(
@@ -1665,17 +1660,13 @@ async def catalog_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if description:
                 text += f"   {description}\n"
         text += "\n<i>Use /plans to see what each tier includes.</i>"
-
-    await update.message.reply_text(
-        text, parse_mode="HTML", reply_markup=home_keyboard()
-    )
+    return text, home_keyboard()
 
 
-async def plans_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show the available subscription plans and their creation quotas."""
-    user = update.effective_user
-    current_plan = get_user_plan(user.id)
-    _, remaining = check_creation_limit(user.id)
+async def _render_plans(user_id: int):
+    """Render the plans view. Returns (text, keyboard)."""
+    current_plan = get_user_plan(user_id)
+    _, remaining = check_creation_limit(user_id)
 
     text = (
         f"💎 <b>PLANS</b>\n{DIV}\n\n"
@@ -1697,10 +1688,49 @@ async def plans_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "──────────────────────\n\n"
         "<i>Premium and Pro plans coming soon!</i>"
     )
+    return text, home_keyboard()
 
-    await update.message.reply_text(
-        text, parse_mode="HTML", reply_markup=home_keyboard()
-    )
+
+async def mydrafts_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show the user's pending draft stickers.
+
+    Drafts are generated stickers awaiting review.  From here the user
+    can approve, retry, or reject each one.
+    """
+    user = update.effective_user
+    text, keyboard = await _render_mydrafts(user.id)
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+
+
+async def myapproved_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show the user's approved stickers ready for publishing."""
+    user = update.effective_user
+    text, keyboard = await _render_myapproved(user.id)
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+
+
+async def trash_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show the user's rejected and expired stickers (the trash bin)."""
+    user = update.effective_user
+    text, keyboard = await _render_trash(user.id, user.username)
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+
+
+async def catalog_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show the available sticker style catalog.
+
+    Displays all active styles from the catalog_styles table, grouped by
+    plan tier so users know which styles are available on their plan.
+    """
+    text, keyboard = await _render_catalog()
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+
+
+async def plans_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show the available subscription plans and their creation quotas."""
+    user = update.effective_user
+    text, keyboard = await _render_plans(user.id)
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
 
 
 # ── DRAFT ACTION CALLBACKS ────────────────────────────────────
@@ -1720,17 +1750,136 @@ async def draft_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     if data.startswith("draft_approve_"):
         draft_id = int(data.split("draft_approve_")[1])
-        success = update_draft_status(draft_id, "approved", query.from_user.id, expected_status="draft")
-        if not success:
+        user = query.from_user
+
+        # Get draft details
+        conn = get_db()
+        c = conn.cursor()
+        user_row = get_or_create_user(user.id)
+        c.execute(
+            "SELECT generated_file_id, source_file_id, status FROM sticker_drafts "
+            "WHERE id = ? AND user_id = ?",
+            (draft_id, user_row['id'])
+        )
+        draft = c.fetchone()
+        conn.close()
+
+        if not draft or draft['status'] != 'draft':
             await query.edit_message_text(
                 f"⚠ Draft <b>#{draft_id}</b> not found or already processed.",
                 parse_mode="HTML",
                 reply_markup=home_keyboard()
             )
-        else:
+            return
+
+        generated_file_id = draft['generated_file_id']
+
+        # Check if this is a pack creation or adding to existing pack
+        pack_name = context.user_data.get('pending_pack_name')
+        pack_title = context.user_data.get('pending_pack_title')
+        sticker_format = context.user_data.get('pending_sticker_format', 'static')
+
+        try:
+            if pack_name and pack_title:
+                # This is a new pack creation or add to pack
+                existing_packs = get_user_packs(user.id)
+                pack_exists = any(n == pack_name for n, _ in existing_packs)
+
+                # Download the file
+                file_bytes = await download_file_bytes(context.bot, generated_file_id)
+                if not file_bytes:
+                    await query.edit_message_text(
+                        f"⚠ Failed to download draft file. Please try again.",
+                        parse_mode="HTML",
+                        reply_markup=home_keyboard()
+                    )
+                    return
+
+                input_sticker = InputSticker(sticker=file_bytes, emoji_list=STICKER_EMOJI, format=sticker_format)
+
+                if not pack_exists:
+                    # Create new pack
+                    await context.bot.create_new_sticker_set(
+                        user_id=user.id,
+                        name=pack_name,
+                        title=pack_title,
+                        stickers=[input_sticker],
+                    )
+                    add_pack_to_db(user.id, pack_name, pack_title)
+
+                    # Mark draft as approved
+                    update_draft_status(draft_id, "approved", user.id, expected_status="draft")
+
+                    keyboard = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("✦ Inscribe More Stickers", callback_data=f"addto_{pack_name}")],
+                        [InlineKeyboardButton("🔗 Open the Vessel", url=f"https://t.me/addstickers/{pack_name}")],
+                        [
+                            InlineKeyboardButton("📖 Grimoire", callback_data="menu_packs"),
+                            InlineKeyboardButton("✦ Home", callback_data="nav:home"),
+                        ],
+                    ])
+
+                    await query.edit_message_text(
+                        f"⚗️ <b>Pack forged!</b>\n"
+                        f"{DIV}\n\n"
+                        f"<b>{html.escape(pack_title)}</b>\n"
+                        f"<i>The first sticker is sealed within.</i>",
+                        parse_mode="HTML",
+                        reply_markup=keyboard
+                    )
+                else:
+                    # Add to existing pack
+                    await context.bot.add_sticker_to_set(
+                        user_id=user.id,
+                        name=pack_name,
+                        sticker=input_sticker
+                    )
+
+                    # Mark draft as approved
+                    update_draft_status(draft_id, "approved", user.id, expected_status="draft")
+
+                    keyboard = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("✦ Bind Another", callback_data=f"addto_{pack_name}")],
+                        [InlineKeyboardButton("🔗 Open the Vessel", url=f"https://t.me/addstickers/{pack_name}")],
+                        [
+                            InlineKeyboardButton("📖 Grimoire", callback_data="menu_packs"),
+                            InlineKeyboardButton("✦ Home", callback_data="nav:home"),
+                        ],
+                    ])
+
+                    await query.edit_message_text(
+                        f"✦ <b>Sticker sealed</b>\n"
+                        f"{DIV}\n\n"
+                        f"<b>{html.escape(pack_title)}</b> grows stronger.",
+                        parse_mode="HTML",
+                        reply_markup=keyboard
+                    )
+
+                # Clear context
+                context.user_data.pop('pending_pack_name', None)
+                context.user_data.pop('pending_pack_title', None)
+                context.user_data.pop('pending_sticker_format', None)
+            else:
+                # Just mark as approved (no immediate publishing)
+                success = update_draft_status(draft_id, "approved", user.id, expected_status="draft")
+                if success:
+                    await query.edit_message_text(
+                        f"✅ Draft <b>#{draft_id}</b> approved!\n\n"
+                        "<i>It's ready to be added to a pack or collection.</i>",
+                        parse_mode="HTML",
+                        reply_markup=home_keyboard()
+                    )
+                else:
+                    await query.edit_message_text(
+                        f"⚠ Draft <b>#{draft_id}</b> not found or already processed.",
+                        parse_mode="HTML",
+                        reply_markup=home_keyboard()
+                    )
+        except Exception as e:
+            logger.error(f"Error publishing draft {draft_id}: {e}")
             await query.edit_message_text(
-                f"✅ Draft <b>#{draft_id}</b> approved!\n\n"
-                "<i>It's ready to be added to a pack or collection.</i>",
+                f"⚠ <b>Publishing failed</b>\n{DIV}\n\n"
+                f"<i>{html.escape(str(e))}</i>",
                 parse_mode="HTML",
                 reply_markup=home_keyboard()
             )
@@ -1814,158 +1963,32 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await draft_action_callback(update, context)
     elif data == "menu_mydrafts":
         await query.answer()
-        # Invoke the mydrafts rendering logic directly
         user = query.from_user
-        drafts = get_user_drafts(user.id, status='draft')
-
-        if not drafts:
-            text = (
-                f"🗂 <b>DRAFT VAULT</b>\n{DIV}\n\n"
-                "No pending drafts — the vault is empty.\n\n"
-                "<i>Generate a sticker to see it here first.</i>"
-            )
-            await query.edit_message_text(
-                text, parse_mode="HTML", reply_markup=home_keyboard()
-            )
-        else:
-            text = (
-                f"🗂 <b>DRAFT VAULT</b>\n{DIV}\n\n"
-                f"You have <b>{len(drafts)}</b> pending draft(s).\n\n"
-                "<i>Use the buttons below to approve, retry, or reject each draft.</i>"
-            )
-            keyboard_rows = []
-            for draft_id, file_id, status, created_at, expires_at in drafts:
-                keyboard_rows.append([
-                    InlineKeyboardButton(f"✓ Approve #{draft_id}", callback_data=f"draft_approve_{draft_id}"),
-                    InlineKeyboardButton(f"✕ Reject", callback_data=f"draft_reject_{draft_id}"),
-                ])
-                keyboard_rows.append([
-                    InlineKeyboardButton(f"🔄 Retry #{draft_id}", callback_data=f"draft_retry_{draft_id}"),
-                    InlineKeyboardButton(f"💾 Save later", callback_data=f"draft_save_{draft_id}"),
-                ])
-            keyboard_rows.append([InlineKeyboardButton("✦ Home", callback_data="nav:home")])
-            await query.edit_message_text(
-                text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard_rows)
-            )
+        text, keyboard = await _render_mydrafts(user.id)
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
 
     elif data == "menu_myapproved":
         await query.answer()
-        # Invoke the myapproved rendering logic directly
         user = query.from_user
-        approved = get_user_drafts(user.id, status='approved')
-
-        if not approved:
-            text = (
-                f"✅ <b>APPROVED STICKERS</b>\n{DIV}\n\n"
-                "No approved stickers yet.\n\n"
-                "<i>Approve drafts from /mydrafts to see them here.</i>"
-            )
-        else:
-            text = (
-                f"✅ <b>APPROVED STICKERS</b>\n{DIV}\n\n"
-                f"<b>{len(approved)}</b> sticker(s) ready to publish.\n\n"
-                "<i>These stickers can be added to your packs or collections.</i>"
-            )
-        await query.edit_message_text(
-            text, parse_mode="HTML", reply_markup=home_keyboard()
-        )
+        text, keyboard = await _render_myapproved(user.id)
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
 
     elif data == "menu_trash":
         await query.answer()
-        # Invoke the trash rendering logic directly
         user = query.from_user
-        conn = get_db()
-        c = conn.cursor()
-        user_row = get_or_create_user(user.id, user.username)
-        c.execute(
-            "SELECT id, status, created_at FROM sticker_drafts "
-            "WHERE user_id = ? AND status IN ('rejected', 'expired') ORDER BY created_at DESC",
-            (user_row['id'],)
-        )
-        rows = c.fetchall()
-        conn.close()
-
-        if not rows:
-            text = (
-                f"🗑 <b>TRASH</b>\n{DIV}\n\n"
-                "Nothing in the trash — all clean."
-            )
-        else:
-            text = (
-                f"🗑 <b>TRASH</b>\n{DIV}\n\n"
-                f"<b>{len(rows)}</b> discarded sticker(s).\n\n"
-            )
-            for draft_id, status, created_at in rows[:10]:
-                text += f"◦ #{draft_id} — <i>{status}</i> on {created_at[:10]}\n"
-            if len(rows) > 10:
-                text += f"\n<i>…and {len(rows) - 10} more.</i>"
-        await query.edit_message_text(
-            text, parse_mode="HTML", reply_markup=home_keyboard()
-        )
+        text, keyboard = await _render_trash(user.id, user.username)
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
 
     elif data == "menu_catalog":
         await query.answer()
-        # Invoke the catalog rendering logic directly
-        conn = get_db()
-        c = conn.cursor()
-        c.execute(
-            "SELECT name, slug, description, category, plan_access "
-            "FROM catalog_styles WHERE status = 'active' ORDER BY plan_access, name"
-        )
-        styles = c.fetchall()
-        conn.close()
-
-        if not styles:
-            text = (
-                f"🎨 <b>STYLE CATALOG</b>\n{DIV}\n\n"
-                "No styles available yet — check back soon!\n\n"
-                "<i>New styles are added regularly for all plans.</i>"
-            )
-        else:
-            text = f"🎨 <b>STYLE CATALOG</b>\n{DIV}\n\n"
-            for name, slug, description, category, plan_access in styles:
-                tier_icon = {"free": "🆓", "premium": "⭐", "pro": "💎"}.get(plan_access, "🆓")
-                text += f"{tier_icon} <b>{name}</b>"
-                if category:
-                    text += f" <i>({category})</i>"
-                text += "\n"
-                if description:
-                    text += f"   {description}\n"
-            text += "\n<i>Use /plans to see what each tier includes.</i>"
-        await query.edit_message_text(
-            text, parse_mode="HTML", reply_markup=home_keyboard()
-        )
+        text, keyboard = await _render_catalog()
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
 
     elif data == "menu_plans":
         await query.answer()
-        # Invoke the plans rendering logic directly
         user = query.from_user
-        current_plan = get_user_plan(user.id)
-        _, remaining = check_creation_limit(user.id)
-
-        text = (
-            f"💎 <b>PLANS</b>\n{DIV}\n\n"
-            f"Your current plan: <b>{current_plan.upper()}</b>\n"
-            f"Remaining creations this period: <b>{remaining}</b>\n\n"
-            "──────────────────────\n"
-            "🆓 <b>Free</b>\n"
-            "  · 3 creations per day\n"
-            "  · 10 drafts\n"
-            "  · Basic styles\n\n"
-            "⭐ <b>Premium</b>\n"
-            "  · 50 creations per month\n"
-            "  · 100 drafts\n"
-            "  · All styles\n\n"
-            "💎 <b>Pro</b>\n"
-            "  · 300 creations per month\n"
-            "  · Unlimited drafts\n"
-            "  · Priority processing\n"
-            "──────────────────────\n\n"
-            "<i>Premium and Pro plans coming soon!</i>"
-        )
-        await query.edit_message_text(
-            text, parse_mode="HTML", reply_markup=home_keyboard()
-        )
+        text, keyboard = await _render_plans(user.id)
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
 
 
 # ── MAIN ─────────────────────────────────────────────────────
