@@ -258,13 +258,16 @@ def miniapp_bootstrap():
 def miniapp_packs():
     uid = int(request.miniapp_session["user"]["id"])
 
-    if SETTINGS.telegram_bot_token:
+    # Only validate against Telegram if refresh parameter is provided
+    refresh = request.args.get("refresh", "").lower() in ("true", "1", "yes")
+    if refresh and SETTINGS.telegram_bot_token:
         try:
             packs = _run_async(_validate_packs_async(SETTINGS.telegram_bot_token, uid))
             return ok(packs)
         except Exception:
             pass
 
+    # Default: return cached DB rows
     conn = get_db()
     c = conn.cursor()
     c.execute("SELECT name, title FROM packs WHERE user_id = ? ORDER BY id", (uid,))
@@ -333,8 +336,13 @@ def miniapp_intent():
     if action not in valid_actions:
         return err(f"Invalid action. Must be one of: {', '.join(valid_actions)}", 400, "invalid_action")
 
-    # Generate a cryptographically-random token
-    token = secrets.token_hex(32)
+    # Validate bot configuration before DB write
+    bot_username = SETTINGS.telegram_bot_username
+    if not bot_username:
+        return err("Bot username not configured", 500, "bot_not_configured")
+
+    # Generate a shorter cryptographically-random token (32 chars hex instead of 64)
+    token = secrets.token_hex(16)
 
     # Store intent in the database with expiry tracking
     conn = get_db()
@@ -347,10 +355,6 @@ def miniapp_intent():
     conn.close()
 
     # Build deep link using the appropriate START_PAYLOAD constant
-    bot_username = SETTINGS.telegram_bot_username
-    if not bot_username:
-        return err("Bot username not configured", 500, "bot_not_configured")
-
     payload_map = {
         "create_pack": START_PAYLOAD_CREATE,
         "add_sticker": START_PAYLOAD_ADD,
