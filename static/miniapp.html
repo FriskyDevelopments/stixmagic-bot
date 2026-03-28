@@ -813,8 +813,7 @@
 
             <div class="info-row">
                 ℹ️
-                Enter a base name (letters, numbers and underscores only). The bot will automatically append
-                <code>_by_&lt;botname&gt;</code> to meet Telegram's requirements. The name cannot be changed later.
+                Pack name must be unique and contain only letters, numbers and underscores. It cannot be changed later.
             </div>
 
             <button class="btn btn-primary" id="btn-create-pack" data-tooltip="Send pack creation request to bot">
@@ -1033,6 +1032,16 @@
         else { alert(msg); }
     }
 
+    // ── Error extraction helper ───────────────────────────────────
+    // fetchApi rejects with an Error that may carry .body from the
+    // JSON response.  This helper surfaces the server's human-readable
+    // message when available.
+    function extractErrorMsg(err) {
+        return (err && err.body && err.body.error && err.body.error.message)
+            || (err && err.message)
+            || 'Network error. Please try again.';
+    }
+
     // ── Close app ────────────────────────────────────────────────
     document.getElementById('btn-close-app').addEventListener('click', function () {
         if (tg && tg.close) { tg.close(); }
@@ -1225,6 +1234,19 @@
     setupCharCounter('cp-name',  'cp-name-count',  64);
     setupCharCounter('cp-title', 'cp-title-count', 64);
 
+    // Live-normalize pack name to lowercase (Telegram sticker set names are lowercase)
+    var cpNameInput = document.getElementById('cp-name');
+    if (cpNameInput) {
+        cpNameInput.addEventListener('input', function () {
+            var pos = this.selectionStart;
+            var lower = this.value.toLowerCase();
+            if (lower !== this.value) {
+                this.value = lower;
+                this.setSelectionRange(pos, pos);
+            }
+        });
+    }
+
     // ── TAB 1: Create Pack ───────────────────────────────────────
     document.getElementById('btn-create-pack').addEventListener('click', function () {
         var nameInput  = document.getElementById('cp-name');
@@ -1263,7 +1285,7 @@
             .catch(function (err) {
                 btn.disabled = false;
                 console.error('[miniapp] create pack error:', err);
-                showAlert('Network error. Please try again.');
+                showAlert(extractErrorMsg(err));
             });
     });
 
@@ -1331,7 +1353,7 @@
             .catch(function (err) {
                 btn.disabled = false;
                 console.error('[miniapp] add sticker error:', err);
-                showAlert('Network error. Please try again.');
+                showAlert(extractErrorMsg(err));
             });
     });
 
@@ -1359,7 +1381,7 @@
             })
             .catch(function (err) {
                 console.error('[miniapp] edit pack error:', err);
-                showAlert('Network error. Please try again.');
+                showAlert(extractErrorMsg(err));
             });
     };
 
@@ -1378,7 +1400,7 @@
                 })
                 .catch(function (err) {
                     console.error('[miniapp] delete pack error:', err);
-                    showAlert('Network error. Please try again.');
+                    showAlert(extractErrorMsg(err));
                 });
         }
 

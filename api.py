@@ -40,6 +40,7 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_STICKER_FILE_BYTES
 # ── Telegram sticker-set short-name suffix ────────────────────
 _PACK_NAME_SUFFIX_RE = re.compile(r"^[a-zA-Z0-9_]+_by_[a-zA-Z0-9_]+$")
 _MAX_PACK_NAME_LEN = 64
+_MAX_TITLE_LEN = 64
 
 API_VERSION = "1.0"
 PAGE_SIZE = 20
@@ -52,6 +53,41 @@ def get_db():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _ensure_miniapp_schema():
+    """Idempotently create the packs table and its performance index.
+
+    Safe to call at module load time — both statements use ``IF NOT EXISTS``.
+    This guarantees the Mini App API works even if the bot (main.py) has not
+    been run to initialise the database yet.
+    """
+    conn = get_db()
+    c = conn.cursor()
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS packs (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            name    TEXT,
+            title   TEXT
+        )
+        """
+    )
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_packs_user_id ON packs (user_id)"
+    )
+    conn.commit()
+    conn.close()
+
+
+try:
+    _ensure_miniapp_schema()
+except Exception as _schema_err:
+    import logging as _logging
+    _logging.getLogger(__name__).warning(
+        "Could not ensure miniapp DB schema at startup: %s", _schema_err
+    )
 
 
 def get_bot_username() -> str | None:
@@ -92,7 +128,7 @@ def handle_413(_e):
 @app.after_request
 def add_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Headers"] = "X-API-Key, Content-Type"
+    response.headers["Access-Control-Allow-Headers"] = "X-API-Key, X-Telegram-Init-Data, Content-Type"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, DELETE, OPTIONS"
     response.headers["X-API-Version"] = API_VERSION
     return response
@@ -360,14 +396,20 @@ def miniapp_create_pack():
         return err("User ID not found in initData", 400, "missing_user_id")
 
     data = request.get_json(silent=True) or {}
-    base_name = str(data.get("pack_name", "")).strip()
+    base_name = str(data.get("pack_name", "")).strip().lower()
     title = str(data.get("title", "")).strip()
 
     if not base_name:
         return err("pack_name is required", 400, "missing_param")
     if not title:
         return err("title is required", 400, "missing_param")
-    if not re.fullmatch(r"[a-zA-Z0-9_]+", base_name):
+    if len(title) > _MAX_TITLE_LEN:
+        return err(
+            f"title must be {_MAX_TITLE_LEN} characters or fewer",
+            400,
+            "invalid_title",
+        )
+    if not re.fullmatch(r"[a-z0-9_]+", base_name):
         return err(
             "pack_name may only contain letters, numbers and underscores",
             400,
@@ -422,6 +464,12 @@ def miniapp_update_pack(pack_name):
     new_title = str(data.get("title", "")).strip()
     if not new_title:
         return err("title is required", 400, "missing_param")
+    if len(new_title) > _MAX_TITLE_LEN:
+        return err(
+            f"title must be {_MAX_TITLE_LEN} characters or fewer",
+            400,
+            "invalid_title",
+        )
 
     conn = get_db()
     c = conn.cursor()
