@@ -229,13 +229,17 @@ Legacy import paths such as `domain/media.py` and `pipeline_adapter.py` remain a
 
 | Variable | Required | Description |
 |---|---|---|
-| `APP_ENV` | ✅ | Runtime target: `development`, `production`, or `test` |
-| `BOT_TOKEN_DEV` / `BOT_TOKEN_PROD` | ✅ | Telegram bot token for the selected environment |
-| `STIXMAGIC_API_KEY_DEV` / `STIXMAGIC_API_KEY_PROD` | ✅ | REST API authentication key for the selected environment |
-| `SESSION_SECRET_DEV` / `SESSION_SECRET_PROD` | Recommended | Flask session secret; production should always set one |
-| `MINIAPP_URL_DEV` / `MINIAPP_URL_PROD` | Optional | Telegram Mini App URL for the selected environment |
+| `APP_ENV` | ✅ | Runtime target: `development` or `production` |
+| `DEV_BOT_TOKEN` / `TELEGRAM_BOT_TOKEN_DEV` | ✅ (development) | Development Telegram bot token |
+| `TELEGRAM_BOT_TOKEN` / `BOT_TOKEN` | ✅ (production) | Production Telegram bot token |
+| `STIXMAGIC_API_KEY_DEV` | ✅ (development) | Development API key |
+| `STIXMAGIC_API_KEY_PROD` / `STIXMAGIC_API_KEY` | ✅ (production) | Production API key |
+| `SESSION_SECRET_DEV` | Optional (development) | Development session secret |
+| `SESSION_SECRET_PROD` / `SESSION_SECRET` | ✅ (production) | Production session secret |
+| `MINIAPP_URL_DEV` | Optional (development) | Development Mini App URL |
+| `MINIAPP_URL_PROD` / `MINIAPP_URL` | Optional (production) | Production Mini App URL |
 
-Legacy aliases remain supported for compatibility: `TELEGRAM_BOT_TOKEN`, `STIXMAGIC_API_KEY`, `SESSION_SECRET`, and `MINIAPP_URL`.
+Runtime rejects ambiguous aliases. Set only one variable per setting.
 
 ---
 
@@ -268,9 +272,9 @@ Legacy aliases remain supported for compatibility: `TELEGRAM_BOT_TOKEN`, `STIXMA
 
 The repository now uses three workflows:
 
-- `ci.yml` — runs on pull requests and pushes to `main`; installs dependencies, runs a syntax check, validates runtime config, and performs the local smoke test.
-- `development.yml` — manual/on-branch development workflow that validates the development secret set using `BOT_TOKEN_DEV`.
-- `production.yml` — manual production-prep workflow that validates the production secret set using `BOT_TOKEN_PROD` without auto-deploying.
+- `ci.yml` — runs on pull requests and pushes to `main`; installs dependencies, runs compile checks, and runs runtime unit checks without secrets.
+- `development.yml` — manual/on-branch development workflow that validates the development secret set against `APP_ENV=development`.
+- `production.yml` — manual production-prep workflow that validates production-only settings in protected environment context.
 
 ### Required GitHub Actions secrets
 
@@ -278,8 +282,8 @@ Required now:
 
 | Secret | Purpose |
 |---|---|
-| `BOT_TOKEN_DEV` | Development Telegram bot token |
-| `BOT_TOKEN_PROD` | Production Telegram bot token |
+| `DEV_BOT_TOKEN` (preferred) / `BOT_TOKEN_DEV` | Development Telegram bot token |
+| `TELEGRAM_BOT_TOKEN` (preferred) / `BOT_TOKEN` | Production Telegram bot token |
 
 Recommended environment-specific secrets:
 
@@ -289,7 +293,7 @@ Recommended environment-specific secrets:
 | `SESSION_SECRET_DEV` / `SESSION_SECRET_PROD` | Separate Flask session secrets per environment |
 | `MINIAPP_URL_DEV` / `MINIAPP_URL_PROD` | Separate Mini App URLs per environment |
 
-If your repository still only has the legacy unsuffixed API, session, or Mini App secrets, the workflows and runtime still accept them as fallbacks. Bot token handling is now normalized around `BOT_TOKEN_DEV` and `BOT_TOKEN_PROD`.
+Prefer environment-specific secret names. Production keeps compatibility aliases for API/session/miniapp, while development is strict and development-first.
 
 ### Automated verification scope
 

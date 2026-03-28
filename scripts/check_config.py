@@ -18,6 +18,8 @@ if __name__ == "__main__":
         "Configuration OK:",
         {
             "app_env": settings.app_env,
+            "runtime_mode": "DEVELOPMENT" if settings.is_development else "PRODUCTION",
+            "telegram_token_source": settings.telegram_token_source,
             "has_bot_token": bool(settings.telegram_bot_token),
             "has_api_key": bool(settings.api_key),
             "has_session_secret": bool(settings.session_secret),

@@ -84,6 +84,11 @@ STICKER_EMOJI = ["✨"]
 
 DIV = "◈ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ◈"
 
+
+def _pack_namespace_prefix() -> str:
+    settings = get_settings()
+    return "devstix" if settings.is_development else "stix"
+
 def cancel_keyboard():
     return InlineKeyboardMarkup([[InlineKeyboardButton("✕ Cancel", callback_data="nav:home")]])
 
@@ -207,7 +212,7 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     bot_username = context.bot.username
     suffix = "".join(random.choices(string.ascii_lowercase, k=5))
-    pack_name = f"stix_{user.id}_{suffix}_by_{bot_username}"
+    pack_name = f"{_pack_namespace_prefix()}_{user.id}_{suffix}_by_{bot_username}"
 
     try:
         sticker_file = await download_file_bytes(context.bot, media.file_id)
@@ -1402,6 +1407,14 @@ def main():
         return
 
     token = settings.telegram_bot_token
+    runtime_mode = "DEVELOPMENT" if settings.is_development else "PRODUCTION"
+    logger.info(
+        "Runtime mode: %s (APP_ENV=%s). Telegram token source: %s. Pack namespace prefix: %s.",
+        runtime_mode,
+        settings.app_env,
+        settings.telegram_token_source,
+        _pack_namespace_prefix(),
+    )
 
     from menus import MINIAPP_URL
 
