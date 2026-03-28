@@ -4,8 +4,7 @@ config.py – Centralized runtime configuration for Stix Magic.
 Environment is controlled via the APP_ENV environment variable:
   - "development" → dev/QA bot (@StixMagicdevBot)
   - "production"  → production bot
-  Any other value (including aliases like "dev", "prod", "local", "qa") causes
-  an immediate startup failure.
+  Any other value causes an immediate startup failure.
 
 Token selection:
   - production  : TELEGRAM_BOT_TOKEN (required)
@@ -34,13 +33,12 @@ import sys
 
 _RAW_ENV = os.environ.get("APP_ENV", "development").strip()
 
-# Only the two canonical environment strings are allowed. No aliases.
-_ALLOWED_ENVS: set[str] = {"development", "production"}
+ALLOWED_ENVS = {"development", "production"}
 
-if _RAW_ENV not in _ALLOWED_ENVS:
+if _RAW_ENV not in ALLOWED_ENVS:
     sys.stderr.write(
         f"ERROR: Invalid APP_ENV value: {repr(_RAW_ENV)}. "
-        f"Allowed values are: 'development' or 'production' (no aliases allowed).\n"
+        f"Allowed values are: 'development' or 'production'.\n"
     )
     sys.exit(1)
 
@@ -175,9 +173,9 @@ def validate_config() -> None:
 
     Checks performed:
     1. A bot token must be present and well-formed.
-    2. In production, DEV_BOT_TOKEN must not be set at all — prevents
+    2. In production, DEV_BOT_TOKEN must NOT be set or non-empty — prevents
        accidentally running the dev bot as production.
-    3. In development, TELEGRAM_BOT_TOKEN must not be set at all —
+    3. In development, TELEGRAM_BOT_TOKEN must NOT be set or non-empty —
        prevents accidentally running the production bot under dev settings.
     4. If EXPECTED_PROD_BOT_ID / EXPECTED_DEV_BOT_ID is set, the resolved
        token's numeric bot ID must match — deterministic identity check that
@@ -215,24 +213,24 @@ def validate_config() -> None:
                 "Expected format: <bot_id>:<hash>  (e.g. 123456789:AABBcc...)."
             )
 
-    # 2. Production safety: reject if DEV_BOT_TOKEN is set at all.
+    # 2. Production safety: reject if DEV_BOT_TOKEN is present at all.
     if IS_PRODUCTION:
         dev_raw = os.environ.get("DEV_BOT_TOKEN", "")
-        if dev_raw:
+        if dev_raw.strip():
             errors.append(
                 "SAFETY VIOLATION: APP_ENV=production but DEV_BOT_TOKEN is set. "
                 "The development token must not be present in production. "
-                "Unset DEV_BOT_TOKEN in your production environment."
+                "Unset DEV_BOT_TOKEN when running in production."
             )
 
-    # 3. Development safety: reject if TELEGRAM_BOT_TOKEN is set at all.
+    # 3. Development safety: reject if TELEGRAM_BOT_TOKEN is present at all.
     if IS_DEVELOPMENT:
         prod_raw = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-        if prod_raw:
+        if prod_raw.strip():
             errors.append(
                 "SAFETY VIOLATION: APP_ENV=development but TELEGRAM_BOT_TOKEN is set. "
                 "The production token must not be present in development. "
-                "Unset TELEGRAM_BOT_TOKEN in your development environment."
+                "Unset TELEGRAM_BOT_TOKEN when running in development."
             )
 
     # 4. Deterministic bot-identity check (independent of opposite-env token).
