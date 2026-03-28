@@ -9,6 +9,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections import defaultdict
 from functools import wraps
 
 from flask import Flask, jsonify, request, send_from_directory
@@ -33,9 +34,14 @@ ALLOW_UNSIGNED = os.environ.get("ALLOW_UNSIGNED_MINIAPP_INIT_DATA", "").lower() 
     "1", "true", "yes",
 }
 
+# ── Rate limiting configuration ────────────────────────────────
+RATE_LIMIT_WINDOW = 60  # seconds
+RATE_LIMIT_MAX_REQUESTS = int(os.environ.get("MINIAPP_RATE_LIMIT", "10"))
+_rate_limit_store = defaultdict(list)
+
 # ── Maximum sticker file size: 2 MB ──────────────────────────
 MAX_STICKER_FILE_BYTES = 2 * 1024 * 1024
-app.config["MAX_CONTENT_LENGTH"] = MAX_STICKER_FILE_BYTES
+app.config["MAX_CONTENT_LENGTH"] = MAX_STICKER_FILE_BYTES + 64 * 1024
 
 # ── Telegram sticker-set short-name suffix ────────────────────
 _PACK_NAME_SUFFIX_RE = re.compile(r"^[a-zA-Z0-9_]+_by_[a-zA-Z0-9_]+$")
@@ -76,6 +82,9 @@ def _ensure_miniapp_schema():
     )
     c.execute(
         "CREATE INDEX IF NOT EXISTS idx_packs_user_id ON packs (user_id)"
+    )
+    c.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_packs_name_unique ON packs (name)"
     )
     conn.commit()
     conn.close()
@@ -287,6 +296,33 @@ def _get_miniapp_user():
     return user, None
 
 
+def _check_rate_limit(user_id: int) -> tuple[bool, str | None]:
+    """Check if the user has exceeded the rate limit.
+
+    Returns ``(True, None)`` if within limit, or ``(False, error_response)``
+    if the limit is exceeded.
+    """
+    key = f"user_{user_id}" if user_id else f"ip_{request.remote_addr}"
+    now = time.time()
+
+    # Clean up old entries
+    _rate_limit_store[key] = [
+        ts for ts in _rate_limit_store[key] if now - ts < RATE_LIMIT_WINDOW
+    ]
+
+    # Check limit
+    if len(_rate_limit_store[key]) >= RATE_LIMIT_MAX_REQUESTS:
+        return False, err(
+            f"Rate limit exceeded. Maximum {RATE_LIMIT_MAX_REQUESTS} requests per {RATE_LIMIT_WINDOW} seconds.",
+            429,
+            "rate_limit_exceeded"
+        )
+
+    # Record this request
+    _rate_limit_store[key].append(now)
+    return True, None
+
+
 def _tg_api_simple(method: str) -> dict:
     """Call a parameterless Telegram Bot API GET method (e.g. ``getMe``)."""
     if not BOT_TOKEN:
@@ -395,6 +431,11 @@ def miniapp_create_pack():
     if not user_id:
         return err("User ID not found in initData", 400, "missing_user_id")
 
+    # Rate limiting after authentication
+    ok_limit, limit_err = _check_rate_limit(user_id)
+    if not ok_limit:
+        return limit_err
+
     data = request.get_json(silent=True) or {}
     base_name = str(data.get("pack_name", "")).strip().lower()
     title = str(data.get("title", "")).strip()
@@ -435,17 +476,22 @@ def miniapp_create_pack():
 
     conn = get_db()
     c = conn.cursor()
-    c.execute(
-        "SELECT id FROM packs WHERE user_id = ? AND name = ?", (user_id, pack_name)
-    )
+    # Check for global uniqueness of pack name
+    c.execute("SELECT id FROM packs WHERE name = ?", (pack_name,))
     if c.fetchone():
         conn.close()
         return err("A pack with that name already exists", 409, "conflict")
-    c.execute(
-        "INSERT INTO packs (user_id, name, title) VALUES (?, ?, ?)",
-        (user_id, pack_name, title),
-    )
-    conn.commit()
+
+    try:
+        c.execute(
+            "INSERT INTO packs (user_id, name, title) VALUES (?, ?, ?)",
+            (user_id, pack_name, title),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        # Handle race condition where pack was created between SELECT and INSERT
+        conn.close()
+        return err("A pack with that name already exists", 409, "conflict")
     conn.close()
     return ok({"name": pack_name, "title": title}, status=201)
 
@@ -459,6 +505,11 @@ def miniapp_update_pack(pack_name):
     user_id = user.get("id")
     if not user_id:
         return err("User ID not found in initData", 400, "missing_user_id")
+
+    # Rate limiting after authentication
+    ok_limit, limit_err = _check_rate_limit(user_id)
+    if not ok_limit:
+        return limit_err
 
     data = request.get_json(silent=True) or {}
     new_title = str(data.get("title", "")).strip()
@@ -497,6 +548,11 @@ def miniapp_delete_pack(pack_name):
     user_id = user.get("id")
     if not user_id:
         return err("User ID not found in initData", 400, "missing_user_id")
+
+    # Rate limiting after authentication
+    ok_limit, limit_err = _check_rate_limit(user_id)
+    if not ok_limit:
+        return limit_err
 
     conn = get_db()
     c = conn.cursor()
@@ -589,6 +645,11 @@ def miniapp_add_sticker():
     user_id = user.get("id")
     if not user_id:
         return err("User ID not found in initData", 400, "missing_user_id")
+
+    # Rate limiting after authentication
+    ok_limit, limit_err = _check_rate_limit(user_id)
+    if not ok_limit:
+        return limit_err
 
     pack_name = request.form.get("pack_name", "").strip()
     raw_emoji = request.form.get("emoji", "😊")
@@ -846,7 +907,7 @@ def user_settings_update(user_id):
 
 @app.errorhandler(404)
 def not_found(e):
-    if request.path.startswith("/api"):
+    if request.path.startswith("/api") or request.path.startswith("/miniapp/api"):
         return err("Endpoint not found", 404, "not_found")
     return send_from_directory(app.static_folder, "index.html")
 

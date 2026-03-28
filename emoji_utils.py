@@ -37,6 +37,10 @@ def is_single_emoji_grapheme(value: str) -> bool:
     if regex.fullmatch(r"[\U0001F1E6-\U0001F1FF]{2}", grapheme):
         return True
 
+    # Accept keycap sequences (#️⃣, *️⃣, 0️⃣ … 9️⃣)
+    if regex.fullmatch(r"[#*0-9]\uFE0F?\u20E3", grapheme):
+        return True
+
     return False
 
 

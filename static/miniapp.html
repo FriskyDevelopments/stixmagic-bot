@@ -760,7 +760,7 @@
     </header>
 
     <!-- ── Tabs ────────────────────────────────────── -->
-    <nav class="tabs" role="tablist">
+    <nav class="tabs" role="tablist" aria-label="Sticker creation tabs">
         <button class="tab-btn active" id="tab-btn-create" data-tab="create" role="tab" aria-selected="true"
                 aria-controls="tab-create">
             <span class="tab-icon" aria-hidden="true">🦑</span>
@@ -940,24 +940,28 @@
 
     // Saved preference wins
     var savedTheme = localStorage.getItem('sm-theme');
+    var manualOverride = localStorage.getItem('sm-theme-manual');
     var isDark = savedTheme ? savedTheme === 'dark' : prefersDark;
 
     function applyTheme(dark) {
         isDark = dark;
         htmlEl.setAttribute('data-theme', dark ? 'dark' : 'light');
         themeIcon.textContent = dark ? '🌙' : '☀️';
-        localStorage.setItem('sm-theme', dark ? 'dark' : 'light');
     }
 
     applyTheme(isDark);
 
     themeBtn.addEventListener('click', function () {
         applyTheme(!isDark);
+        // Persist only on manual toggle
+        localStorage.setItem('sm-theme', isDark ? 'dark' : 'light');
+        localStorage.setItem('sm-theme-manual', 'true');
     });
 
     if (tg) {
         tg.onEvent('themeChanged', function () {
-            if (!localStorage.getItem('sm-theme')) {
+            // Only apply if user hasn't manually overridden
+            if (!localStorage.getItem('sm-theme-manual')) {
                 applyTheme(tg.colorScheme === 'dark');
             }
         });
@@ -1030,6 +1034,18 @@
     function showAlert(msg) {
         if (tg && tg.showAlert) { tg.showAlert(msg); }
         else { alert(msg); }
+    }
+
+    // ── API error helper ─────────────────────────────────────────
+    function showApiError(err, defaultMsg) {
+        console.error('[miniapp] API error:', err);
+        var msg = defaultMsg;
+        if (err && err.body) {
+            msg = err.body.message || err.body.error || JSON.stringify(err.body);
+        } else if (err && err.message) {
+            msg = err.message;
+        }
+        showAlert(msg);
     }
 
     // ── Error extraction helper ───────────────────────────────────
@@ -1106,10 +1122,9 @@
             populatePackSelect();
             renderMyPacks();
         }).catch(function (err) {
-            packsLoaded = true;
-            packsCache = [];
+            // Do NOT set packsLoaded = true; preserve packsCache
             console.error('[miniapp] fetch packs error:', err);
-            renderEmptyPacks('my-packs-list');
+            renderPacksError('my-packs-list');
         });
     }
 
@@ -1127,6 +1142,16 @@
         el.innerHTML = '<div class="state-box">' +
             '<span class="state-icon">📭</span>' +
             '<p>No packs yet.<br>Create your first pack in the <strong>Create</strong> tab!</p></div>';
+    }
+
+    function renderPacksError(containerId) {
+        var el = document.getElementById(containerId);
+        if (!el) return;
+        el.innerHTML = '<div class="state-box">' +
+            '<span class="state-icon">⚠️</span>' +
+            '<p>Failed to load packs.<br>Please check your connection.</p>' +
+            '<button class="btn btn-primary" style="margin-top:1rem;max-width:200px;" onclick="loadPacks()">🔄 Retry</button>' +
+            '</div>';
     }
 
     function populatePackSelect() {
@@ -1231,7 +1256,36 @@
         update();
     }
 
-    setupCharCounter('cp-name',  'cp-name-count',  64);
+    // Fetch bot username and adjust pack name maxlength dynamically
+    function adjustPackNameMaxLength() {
+        fetchApi('GET', '/miniapp/api/packs').then(function (res) {
+            // The server knows bot username; we can infer it from any existing pack
+            // or fetch from a dedicated endpoint. For now, assume "_by_<username>" is ~20 chars
+            // Conservative estimate: 64 - 20 = 44
+            var suffix = '_by_';
+            var botUsername = '';
+            if (res && res.ok && Array.isArray(res.data) && res.data.length > 0) {
+                var sampleName = res.data[0].name;
+                var byIndex = sampleName.lastIndexOf('_by_');
+                if (byIndex > 0) {
+                    botUsername = sampleName.substring(byIndex + 4);
+                }
+            }
+            var suffixLen = botUsername ? (suffix.length + botUsername.length) : 20;
+            var maxBase = 64 - suffixLen;
+            var input = document.getElementById('cp-name');
+            var counter = document.getElementById('cp-name-count');
+            if (input && counter && maxBase > 0) {
+                input.setAttribute('maxlength', maxBase);
+                setupCharCounter('cp-name', 'cp-name-count', maxBase);
+            }
+        }).catch(function () {
+            // Fallback: use conservative limit
+            setupCharCounter('cp-name', 'cp-name-count', 44);
+        });
+    }
+
+    adjustPackNameMaxLength();
     setupCharCounter('cp-title', 'cp-title-count', 64);
 
     // Live-normalize pack name to lowercase (Telegram sticker set names are lowercase)
@@ -1284,8 +1338,7 @@
             })
             .catch(function (err) {
                 btn.disabled = false;
-                console.error('[miniapp] create pack error:', err);
-                showAlert(extractErrorMsg(err));
+                showApiError(err, 'Failed to create pack. Please try again.');
             });
     });
 
@@ -1352,8 +1405,7 @@
             })
             .catch(function (err) {
                 btn.disabled = false;
-                console.error('[miniapp] add sticker error:', err);
-                showAlert(extractErrorMsg(err));
+                showApiError(err, 'Failed to add sticker. Please try again.');
             });
     });
 
@@ -1367,23 +1419,117 @@
     window.editPack = function (packName) {
         var pack = packsCache.find(function (p) { return p.name === packName; });
         if (!pack) return;
-        var newTitle = window.prompt('New title for "' + packName + '":', pack.title || pack.name);
-        if (!newTitle || newTitle.trim() === '') return;
-        newTitle = newTitle.trim();
-        fetchApi('PATCH', '/miniapp/api/packs/' + encodeURIComponent(packName), { title: newTitle })
-            .then(function (res) {
-                if (res && res.ok) {
-                    pack.title = newTitle;
-                    renderMyPacks();
-                } else {
-                    showAlert('Error: ' + ((res && res.error && res.error.message) || 'Unknown error'));
+
+        // Use Telegram WebApp showPopup if available, otherwise fall back to modal
+        if (tg && tg.showPopup) {
+            tg.showPopup({
+                title: 'Edit Pack',
+                message: 'Enter new title for "' + packName + '":',
+                buttons: [
+                    { id: 'cancel', type: 'cancel' },
+                    { id: 'ok', type: 'default', text: 'Update' }
+                ]
+            }, function (buttonId) {
+                if (buttonId === 'ok') {
+                    // Telegram showPopup doesn't support text input, so fall back to custom modal
+                    showEditModal(packName, pack.title || pack.name);
                 }
-            })
-            .catch(function (err) {
-                console.error('[miniapp] edit pack error:', err);
-                showAlert(extractErrorMsg(err));
             });
+            // Actually, showPopup doesn't support text input. Use custom modal directly.
+            showEditModal(packName, pack.title || pack.name);
+        } else {
+            showEditModal(packName, pack.title || pack.name);
+        }
     };
+
+    function showEditModal(packName, currentTitle) {
+        // Create modal overlay
+        var overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;display:flex;align-items:center;justify-content:center;padding:1rem;';
+
+        var modal = document.createElement('div');
+        modal.style.cssText = 'background:var(--bg2);border-radius:var(--radius);padding:1.5rem;max-width:400px;width:100%;box-shadow:var(--shadow);';
+
+        var title = document.createElement('h3');
+        title.textContent = 'Edit Pack Title';
+        title.style.cssText = 'margin:0 0 1rem;color:var(--text);font-size:1.1rem;';
+
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.value = currentTitle;
+        input.maxLength = 64;
+        input.style.cssText = 'width:100%;margin-bottom:1rem;';
+        input.placeholder = 'Enter new title';
+
+        var btnContainer = document.createElement('div');
+        btnContainer.style.cssText = 'display:flex;gap:0.5rem;';
+
+        var cancelBtn = document.createElement('button');
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.className = 'btn btn-ghost';
+        cancelBtn.style.cssText = 'flex:1;';
+
+        var saveBtn = document.createElement('button');
+        saveBtn.textContent = 'Update';
+        saveBtn.className = 'btn btn-primary';
+        saveBtn.style.cssText = 'flex:1;';
+
+        function closeModal() {
+            document.body.removeChild(overlay);
+        }
+
+        cancelBtn.addEventListener('click', closeModal);
+        overlay.addEventListener('click', function (e) {
+            if (e.target === overlay) closeModal();
+        });
+
+        saveBtn.addEventListener('click', function () {
+            var newTitle = input.value.trim();
+            if (!newTitle) {
+                showAlert('Title cannot be empty');
+                input.focus();
+                return;
+            }
+            saveBtn.disabled = true;
+            fetchApi('PATCH', '/miniapp/api/packs/' + encodeURIComponent(packName), { title: newTitle })
+                .then(function (res) {
+                    saveBtn.disabled = false;
+                    if (res && res.ok) {
+                        var pack = packsCache.find(function (p) { return p.name === packName; });
+                        if (pack) pack.title = newTitle;
+                        renderMyPacks();
+                        populatePackSelect();
+                        closeModal();
+                        showAlert('Pack title updated!');
+                    } else {
+                        showAlert('Error: ' + ((res && res.error && res.error.message) || 'Unknown error'));
+                    }
+                })
+                .catch(function (err) {
+                    saveBtn.disabled = false;
+                    showApiError(err, 'Failed to update pack title. Please try again.');
+                });
+        });
+
+        input.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                saveBtn.click();
+            } else if (e.key === 'Escape') {
+                closeModal();
+            }
+        });
+
+        btnContainer.appendChild(cancelBtn);
+        btnContainer.appendChild(saveBtn);
+
+        modal.appendChild(title);
+        modal.appendChild(input);
+        modal.appendChild(btnContainer);
+        overlay.appendChild(modal);
+
+        document.body.appendChild(overlay);
+        setTimeout(function () { input.focus(); input.select(); }, 100);
+    }
 
     window.deletePack = function (packName) {
         function doDelete() {
@@ -1399,8 +1545,7 @@
                     }
                 })
                 .catch(function (err) {
-                    console.error('[miniapp] delete pack error:', err);
-                    showAlert(extractErrorMsg(err));
+                    showApiError(err, 'Failed to delete pack. Please try again.');
                 });
         }
 
