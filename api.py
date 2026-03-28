@@ -3,6 +3,7 @@ import sqlite3
 import time
 import asyncio
 import json
+import secrets
 from functools import wraps
 from urllib.parse import urlparse
 from flask import Flask, jsonify, request, send_from_directory
@@ -20,6 +21,7 @@ from stixmagic.contracts import (
 from dotenv import load_dotenv
 from stixmagic.settings import get_settings
 from stixmagic.telegram_auth import TelegramInitDataError, validate_init_data
+from infra.db import init_db
 
 load_dotenv()
 SETTINGS = get_settings()
@@ -331,11 +333,8 @@ def miniapp_intent():
     if action not in valid_actions:
         return err(f"Invalid action. Must be one of: {', '.join(valid_actions)}", 400, "invalid_action")
 
-    # Generate a unique token (simplified: timestamp + user_id hash)
-    # In production, use a proper token store with expiry
-    import hashlib
-    token_data = f"{user_id}:{action}:{int(time.time())}"
-    token = hashlib.sha256(token_data.encode()).hexdigest()[:16]
+    # Generate a cryptographically-random token
+    token = secrets.token_hex(32)
 
     # Store intent in the database with expiry tracking
     conn = get_db()
@@ -783,6 +782,11 @@ def server_error(e):
 
 
 def run_api():
+    try:
+        init_db()
+    except Exception as e:
+        print(f"Database initialization failed: {e}")
+        raise
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 

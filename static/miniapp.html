@@ -827,7 +827,7 @@
             <div class="form-group">
                 <label for="cp-notes">
                     <i class="fa-solid fa-note-sticky"></i>
-                    Prep Notes <span style="color:var(--hint);font-weight:400">(optional, local only)</span>
+                    Prep Notes <span style="color:var(--hint);font-weight:400">(optional, saved with your intent)</span>
                 </label>
                 <input type="text" id="cp-notes"
                        placeholder="e.g. start with my logo sticker"
@@ -1011,16 +1011,9 @@
     var bootstrapData = null;
     var miniappSession = null;
 
-    // Parse initial API base from URL parameters for split-origin deployments
-    var initialApiBase = (function() {
-        try {
-            var params = new URLSearchParams(window.location.search);
-            var apiBase = params.get('api_base');
-            return apiBase ? apiBase.replace(/\/$/, '') : '';
-        } catch (e) {
-            return '';
-        }
-    })();
+    // Use empty string for relative URLs (same-origin deployment)
+    // This ensures X-Telegram-Init-Data is only sent to the trusted origin
+    var initialApiBase = '';
 
     function getTelegramInitData() {
         return tg && typeof tg.initData === 'string' ? tg.initData : '';
