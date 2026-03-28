@@ -96,6 +96,8 @@ def add_headers(response):
         # Only allow trusted origins to access Mini App API responses.
         if origin.rstrip("/") in _MINIAPP_CORS_ORIGINS:
             response.headers["Access-Control-Allow-Origin"] = origin
+            # Set Vary header to prevent CDN cache poisoning when using origin-specific CORS
+            response.headers["Vary"] = "Origin"
     else:
         # Preserve existing wildcard CORS behavior for non-Mini App routes.
         response.headers["Access-Control-Allow-Origin"] = "*"
@@ -183,9 +185,17 @@ def _run_async(coro):
         loop.close()
 
 
+class PackMissingError(Exception):
+    """Raised when Telegram explicitly reports a sticker pack is missing/deleted."""
+    def __init__(self, pack_name: str):
+        self.pack_name = pack_name
+        super().__init__(f"Pack {pack_name} not found on Telegram")
+
+
 async def _validate_packs_async(token, user_id):
     """Validate all DB packs against Telegram; prune deleted, sync renamed titles."""
     from telegram import Bot as TelegramBot
+    from telegram.error import TelegramError
     bot = TelegramBot(token=token)
     try:
         conn = get_db()
@@ -208,11 +218,14 @@ async def _validate_packs_async(token, user_id):
                     upd.close()
                     title = ss.title
                 valid.append({"name": name, "title": title, "link": f"https://t.me/addstickers/{name}"})
-            except Exception:
-                rm = get_db()
-                rm.execute("DELETE FROM packs WHERE user_id = ? AND name = ?", (user_id, name))
-                rm.commit()
-                rm.close()
+            except TelegramError as e:
+                # Only raise PackMissingError for explicit "not found" responses
+                # Common error messages for missing packs include "STICKERSET_INVALID" or "Stickerset_invalid"
+                error_msg = str(e).lower()
+                if "stickerset" in error_msg and ("invalid" in error_msg or "not found" in error_msg):
+                    raise PackMissingError(name)
+                # For all other Telegram errors (rate limits, timeouts, etc), re-raise
+                raise
         return valid
     finally:
         await bot.close()
@@ -264,8 +277,22 @@ def miniapp_packs():
         try:
             packs = _run_async(_validate_packs_async(SETTINGS.telegram_bot_token, uid))
             return ok(packs)
-        except Exception:
-            pass
+        except PackMissingError as e:
+            # Only delete the specific pack that Telegram reported as missing
+            conn = get_db()
+            conn.execute("DELETE FROM packs WHERE user_id = ? AND name = ?", (uid, e.pack_name))
+            conn.commit()
+            conn.close()
+            # Retry validation after deletion
+            try:
+                packs = _run_async(_validate_packs_async(SETTINGS.telegram_bot_token, uid))
+                return ok(packs)
+            except Exception as retry_err:
+                # If retry fails, return error to client
+                return err(f"Pack validation failed: {str(retry_err)}", 500, "validation_error")
+        except Exception as e:
+            # For transient errors (timeouts, rate limits, network issues), return error to client
+            return err(f"Unable to validate packs: {str(e)}", 503, "service_unavailable")
 
     # Default: return cached DB rows
     conn = get_db()
