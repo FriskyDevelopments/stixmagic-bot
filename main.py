@@ -917,7 +917,11 @@ async def show_premium_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Stars payments are final and non-refundable per Telegram policy.</i>"
     )
 
-    if premium:
+    is_lifetime = premium and expiry is None
+    # For lifetime subscribers, never show buy buttons — renewing would be a silent no-op.
+    # For time-limited active subscribers, show renewal buttons so they can stack/extend.
+    # For free users, show all plans.
+    if is_lifetime:
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🤖 AI GENERATE", callback_data="menu_generate")],
             [InlineKeyboardButton("✦ Home", callback_data="nav:home")],
@@ -925,11 +929,14 @@ async def show_premium_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         buy_rows = [
             [InlineKeyboardButton(
-                f"⭐ Buy {p['label']} · {p['stars']} Stars",
+                f"⭐ {'Renew' if premium else 'Buy'} {p['label']} · {p['stars']} Stars",
                 callback_data=f"buy_{k}"
             )]
             for k, p in PREMIUM_PLANS.items()
         ]
+        if premium:
+            # Active time-limited subscriber can jump straight to AI Generate too
+            buy_rows.insert(0, [InlineKeyboardButton("🤖 AI GENERATE", callback_data="menu_generate")])
         buy_rows.append([InlineKeyboardButton("✦ Home", callback_data="nav:home")])
         keyboard = InlineKeyboardMarkup(buy_rows)
 
@@ -947,6 +954,17 @@ async def buy_premium_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     plan = PREMIUM_PLANS.get(plan_key)
     if not plan:
         await query.answer("Unknown plan.", show_alert=True)
+        return
+
+    # Guard: lifetime subscribers cannot renew — grant_premium() would silently no-op
+    # but the invoice would still charge them Stars with no benefit.
+    user = update.effective_user
+    expiry = get_premium_expiry(user.id)
+    if expiry is None and is_premium_user(user.id):
+        await query.answer(
+            "You already have a Lifetime subscription — no purchase needed!",
+            show_alert=True,
+        )
         return
 
     await query.answer()
@@ -1069,23 +1087,56 @@ async def successful_payment_handler(update: Update, context: ContextTypes.DEFAU
         return
 
     user = update.effective_user
+
+    # Detect the lifetime no-op case: user already has a lifetime subscription and bought
+    # a time-limited plan. grant_premium() protects lifetime from being downgraded, so we
+    # check expiry before calling it to send an accurate confirmation message.
+    pre_expiry = get_premium_expiry(user.id)
+    already_lifetime = pre_expiry is None and is_premium_user(user.id)
+
     grant_premium(user.id, days=plan["days"])
 
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🤖 AI GENERATE — Try it now!", callback_data="menu_generate")],
         [InlineKeyboardButton("✦ Home", callback_data="nav:home")],
     ])
-    await update.message.reply_text(
-        f"⭐ <b>Welcome to Premium!</b>\n"
-        f"{DIV}\n\n"
-        f"Your <b>{plan['label']}</b> subscription is active.\n\n"
-        "You can now use <b>AI Sticker Generator</b>:\n"
-        "describe any idea → DALL-E draws it → sticker ready.\n\n"
-        "<i>Tap below to start generating.</i>",
-        parse_mode="HTML",
-        reply_markup=keyboard
-    )
-    logger.info(f"Premium granted: user={user.id} plan={plan_key} label={plan['label']}")
+
+    if already_lifetime:
+        # Payment received but it had no effect — user already had lifetime
+        logger.warning(
+            "Lifetime user %s paid for plan %s — grant_premium no-op; Stars consumed.",
+            user.id, plan_key,
+        )
+        await update.message.reply_text(
+            f"⭐ <b>Payment received</b>\n"
+            f"{DIV}\n\n"
+            "You already have a <b>Lifetime</b> subscription, so nothing changed — "
+            "your access remains lifetime.\n\n"
+            "<i>Stars payments are non-refundable per Telegram policy.</i>",
+            parse_mode="HTML",
+            reply_markup=keyboard,
+        )
+    else:
+        expiry_after = get_premium_expiry(user.id)
+        if expiry_after is None:
+            sub_line = "Your <b>Lifetime</b> subscription is now active."
+        else:
+            dt = datetime.fromtimestamp(expiry_after, tz=timezone.utc)
+            sub_line = (
+                f"Your <b>{plan['label']}</b> subscription is active — "
+                f"expires <b>{dt.strftime('%d %b %Y')}</b>."
+            )
+        await update.message.reply_text(
+            f"⭐ <b>Welcome to Premium!</b>\n"
+            f"{DIV}\n\n"
+            f"{sub_line}\n\n"
+            "You can now use <b>AI Sticker Generator</b>:\n"
+            "describe any idea → DALL-E draws it → sticker ready.\n\n"
+            "<i>Tap below to start generating.</i>",
+            parse_mode="HTML",
+            reply_markup=keyboard,
+        )
+    logger.info("Premium granted: user=%s plan=%s label=%s", user.id, plan_key, plan["label"])
 
 
 # ── PREMIUM — ADMIN COMMANDS ─────────────────────────────────
