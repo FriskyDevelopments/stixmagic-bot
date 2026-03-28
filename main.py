@@ -77,11 +77,33 @@ def init_db():
         )
     ''')
 
+    # ── Style catalog ─────────────────────────────────────────────
+    # Defines the visual styles available during sticker creation.
+    # plan_access controls which plan tier can access each style.
+    # Created before sticker_drafts so style_id can reference it.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS catalog_styles (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            name          TEXT NOT NULL,
+            slug          TEXT NOT NULL UNIQUE,
+            description   TEXT,
+            preview_image TEXT,
+            category      TEXT,
+            plan_access   TEXT NOT NULL DEFAULT 'free',
+            status        TEXT NOT NULL DEFAULT 'active',
+            instructions  TEXT,
+            created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    ''')
+
     # ── Draft vault ───────────────────────────────────────────────
     # Every generated sticker lives here first.  It must be explicitly
     # approved before it can be published to a pack or collection.
     # Pipeline: generated → draft → approved → published
     #           generated → draft → rejected  → trash
+    #
+    # pack_name / pack_title / sticker_format store the intended publish
+    # target so the approval callback doesn't need transient user_data.
     c.execute('''
         CREATE TABLE IF NOT EXISTS sticker_drafts (
             id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,12 +111,30 @@ def init_db():
             source_file_id    TEXT,
             generated_file_id TEXT,
             status            TEXT NOT NULL DEFAULT 'draft',
-            style_id          INTEGER REFERENCES catalog_styles(id),
+            style_id          INTEGER,
+            pack_name         TEXT,
+            pack_title        TEXT,
+            sticker_format    TEXT NOT NULL DEFAULT 'static',
             created_at        TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
             expires_at        TEXT
         )
     ''')
+
+    # Migrate existing sticker_drafts tables that pre-date pack_name/pack_title/sticker_format columns.
+    # Each statement is written out explicitly (no dynamic SQL) to avoid any
+    # identifier injection risk and to make the intent clear.
+    # The try/except is the standard SQLite idiom: ALTER TABLE ADD COLUMN errors
+    # with OperationalError if the column already exists.
+    for stmt in [
+        "ALTER TABLE sticker_drafts ADD COLUMN pack_name TEXT",
+        "ALTER TABLE sticker_drafts ADD COLUMN pack_title TEXT",
+        "ALTER TABLE sticker_drafts ADD COLUMN sticker_format TEXT NOT NULL DEFAULT 'static'",
+    ]:
+        try:
+            c.execute(stmt)
+        except sqlite3.OperationalError:
+            pass  # Column already exists — safe to ignore
 
     # ── Sticker collections ───────────────────────────────────────
     # Named groups that hold approved stickers (analogous to albums).
@@ -117,24 +157,6 @@ def init_db():
             draft_id         INTEGER NOT NULL REFERENCES sticker_drafts(id),
             telegram_file_id TEXT,
             created_at       TEXT NOT NULL DEFAULT (datetime('now'))
-        )
-    ''')
-
-    # ── Style catalog ─────────────────────────────────────────────
-    # Defines the visual styles available during sticker creation.
-    # plan_access controls which plan tier can access each style.
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS catalog_styles (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            name          TEXT NOT NULL,
-            slug          TEXT NOT NULL UNIQUE,
-            description   TEXT,
-            preview_image TEXT,
-            category      TEXT,
-            plan_access   TEXT NOT NULL DEFAULT 'free',
-            status        TEXT NOT NULL DEFAULT 'active',
-            instructions  TEXT,
-            created_at    TEXT NOT NULL DEFAULT (datetime('now'))
         )
     ''')
 
@@ -250,7 +272,7 @@ def format_sqlite_datetime(dt: datetime) -> str:
 # ── User-registry helpers ─────────────────────────────────────
 
 def get_db():
-    """Return a shared database connection using the centralized accessor from api.py."""
+    """Return a new SQLite connection for this module with row_factory set to sqlite3.Row."""
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn
@@ -354,8 +376,14 @@ def increment_usage(telegram_id):
 
 # ── Draft-vault helpers ───────────────────────────────────────
 
-def create_draft(telegram_id, source_file_id=None, generated_file_id=None, style_id=None):
+def create_draft(telegram_id, source_file_id=None, generated_file_id=None,
+                 style_id=None, pack_name=None, pack_title=None, sticker_format='static'):
     """Insert a new draft and return its row id, enforcing max_drafts cap.
+
+    pack_name / pack_title / sticker_format record the intended publish
+    target so the approval callback can act without needing transient
+    context.user_data that would be lost on restart or overwritten by
+    concurrent requests.
 
     Returns:
         draft_id (int) on success
@@ -384,9 +412,11 @@ def create_draft(telegram_id, source_file_id=None, generated_file_id=None, style
     expires_at = format_sqlite_datetime(_utcnow() + timedelta(days=DRAFT_EXPIRY_DAYS))
     c.execute(
         "INSERT INTO sticker_drafts "
-        "(user_id, source_file_id, generated_file_id, style_id, expires_at) "
-        "VALUES (?, ?, ?, ?, ?)",
-        (user['id'], source_file_id, generated_file_id, style_id, expires_at)
+        "(user_id, source_file_id, generated_file_id, style_id, "
+        " pack_name, pack_title, sticker_format, expires_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (user['id'], source_file_id, generated_file_id, style_id,
+         pack_name, pack_title, sticker_format, expires_at)
     )
     conn.commit()
     draft_id = c.lastrowid
@@ -782,20 +812,30 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if converted:
                 sticker_file = converted
 
-        # Upload the sticker file to get a file_id
+        # Upload the sticker file to get a Telegram file_id, then delete the
+        # upload message so it doesn't clutter the chat.
         sent_sticker = await context.bot.send_document(
             chat_id=user.id,
             document=sticker_file,
             filename="sticker.webp"
         )
         generated_file_id = sent_sticker.document.file_id if sent_sticker.document else None
+        try:
+            await context.bot.delete_message(chat_id=user.id, message_id=sent_sticker.message_id)
+        except Exception:
+            pass  # Deletion is best-effort; keep going regardless
 
-        # Create draft instead of publishing directly
+        # Create draft instead of publishing directly.
+        # Pack intent is stored on the draft row so the approval callback
+        # works even after a bot restart or when multiple drafts are pending.
         draft_id = create_draft(
             telegram_id=user.id,
             source_file_id=file_id,
             generated_file_id=generated_file_id,
-            style_id=None
+            style_id=None,
+            pack_name=pack_name,
+            pack_title=title,
+            sticker_format=sticker_format,
         )
 
         if draft_id is None:
@@ -811,11 +851,6 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Increment usage after successful creation
         increment_usage(user.id)
-
-        # Store pack info for approval handler
-        context.user_data['pending_pack_name'] = pack_name
-        context.user_data['pending_pack_title'] = title
-        context.user_data['pending_sticker_format'] = sticker_format
 
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("✓ Approve & Publish", callback_data=f"draft_approve_{draft_id}")],
@@ -987,20 +1022,30 @@ async def addsticker_receive(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if converted:
                 sticker_file = converted
 
-        # Upload the sticker file to get a file_id
+        # Upload the sticker file to get a Telegram file_id, then delete the
+        # upload message so it doesn't clutter the chat.
         sent_sticker = await context.bot.send_document(
             chat_id=user.id,
             document=sticker_file,
             filename="sticker.webp"
         )
         generated_file_id = sent_sticker.document.file_id if sent_sticker.document else None
+        try:
+            await context.bot.delete_message(chat_id=user.id, message_id=sent_sticker.message_id)
+        except Exception:
+            pass  # Deletion is best-effort; keep going regardless
 
-        # Create draft instead of publishing directly
+        # Create draft instead of publishing directly.
+        # Pack intent is stored on the draft row so the approval callback
+        # works even after a bot restart or when multiple drafts are pending.
         draft_id = create_draft(
             telegram_id=user.id,
             source_file_id=file_id,
             generated_file_id=generated_file_id,
-            style_id=None
+            style_id=None,
+            pack_name=pack_name,
+            pack_title=pack_title,
+            sticker_format=sticker_format,
         )
 
         if draft_id is None:
@@ -1016,11 +1061,6 @@ async def addsticker_receive(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         # Increment usage after successful creation
         increment_usage(user.id)
-
-        # Store pack info for approval handler
-        context.user_data['pending_pack_name'] = pack_name
-        context.user_data['pending_pack_title'] = pack_title
-        context.user_data['pending_sticker_format'] = sticker_format
 
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("✓ Approve & Add to Pack", callback_data=f"draft_approve_{draft_id}")],
@@ -1552,11 +1592,18 @@ async def _sync_process(update: Update, context: ContextTypes.DEFAULT_TYPE, pack
 
 # ── DRAFT VAULT COMMANDS ──────────────────────────────────────
 
-async def _render_mydrafts(user_id: int):
-    """Render the mydrafts view. Returns (text, keyboard)."""
-    drafts = get_user_drafts(user_id, status='draft')
+DRAFTS_PER_PAGE = 5
 
-    if not drafts:
+
+async def _render_mydrafts(user_id: int, page: int = 0):
+    """Render the mydrafts view with pagination. Returns (text, keyboard).
+
+    Shows up to DRAFTS_PER_PAGE drafts per page with Previous/Next navigation
+    to stay within Telegram's inline keyboard button limits.
+    """
+    all_drafts = get_user_drafts(user_id, status='draft')
+
+    if not all_drafts:
         text = (
             f"🗂 <b>DRAFT VAULT</b>\n{DIV}\n\n"
             "No pending drafts — the vault is empty.\n\n"
@@ -1564,13 +1611,19 @@ async def _render_mydrafts(user_id: int):
         )
         return text, home_keyboard()
 
+    total = len(all_drafts)
+    total_pages = (total + DRAFTS_PER_PAGE - 1) // DRAFTS_PER_PAGE
+    page = max(0, min(page, total_pages - 1))
+    page_drafts = all_drafts[page * DRAFTS_PER_PAGE : (page + 1) * DRAFTS_PER_PAGE]
+
     text = (
         f"🗂 <b>DRAFT VAULT</b>\n{DIV}\n\n"
-        f"You have <b>{len(drafts)}</b> pending draft(s).\n\n"
+        f"You have <b>{total}</b> pending draft(s). "
+        f"Page <b>{page + 1}/{total_pages}</b>.\n\n"
         "<i>Use the buttons below to approve, retry, or reject each draft.</i>"
     )
     keyboard_rows = []
-    for draft_id, *_ in drafts:
+    for draft_id, *_ in page_drafts:
         keyboard_rows.append([
             InlineKeyboardButton(f"✓ Approve #{draft_id}", callback_data=f"draft_approve_{draft_id}"),
             InlineKeyboardButton("✕ Reject", callback_data=f"draft_reject_{draft_id}"),
@@ -1579,6 +1632,16 @@ async def _render_mydrafts(user_id: int):
             InlineKeyboardButton(f"🔄 Retry #{draft_id}", callback_data=f"draft_retry_{draft_id}"),
             InlineKeyboardButton("💾 Save later", callback_data=f"draft_save_{draft_id}"),
         ])
+
+    # Pagination navigation
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("◂ Prev", callback_data=f"mydrafts_page_{page - 1}"))
+    if page < total_pages - 1:
+        nav_row.append(InlineKeyboardButton("Next ▸", callback_data=f"mydrafts_page_{page + 1}"))
+    if nav_row:
+        keyboard_rows.append(nav_row)
+
     keyboard_rows.append([InlineKeyboardButton("✦ Home", callback_data="nav:home")])
     return text, InlineKeyboardMarkup(keyboard_rows)
 
@@ -1752,13 +1815,15 @@ async def draft_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
         draft_id = int(data.split("draft_approve_")[1])
         user = query.from_user
 
-        # Get draft details
+        # Get draft details including pack intent stored at draft-creation time
         conn = get_db()
         c = conn.cursor()
         user_row = get_or_create_user(user.id)
         c.execute(
-            "SELECT generated_file_id, source_file_id, status FROM sticker_drafts "
-            "WHERE id = ? AND user_id = ?",
+            "SELECT generated_file_id, source_file_id, status,"
+            " pack_name, pack_title, sticker_format"
+            " FROM sticker_drafts"
+            " WHERE id = ? AND user_id = ?",
             (draft_id, user_row['id'])
         )
         draft = c.fetchone()
@@ -1774,10 +1839,11 @@ async def draft_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
         generated_file_id = draft['generated_file_id']
 
-        # Check if this is a pack creation or adding to existing pack
-        pack_name = context.user_data.get('pending_pack_name')
-        pack_title = context.user_data.get('pending_pack_title')
-        sticker_format = context.user_data.get('pending_sticker_format', 'static')
+        # Publish intent is read from the draft row (DB-persisted) rather
+        # than context.user_data so it survives bot restarts and concurrent drafts.
+        pack_name = draft['pack_name']
+        pack_title = draft['pack_title']
+        sticker_format = draft['sticker_format'] or 'static'  # DB default is 'static'; fallback guards pre-migration rows
 
         try:
             if pack_name and pack_title:
@@ -1807,8 +1873,8 @@ async def draft_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
                     )
                     add_pack_to_db(user.id, pack_name, pack_title)
 
-                    # Mark draft as approved
-                    update_draft_status(draft_id, "approved", user.id, expected_status="draft")
+                    # Sticker is now live in Telegram — mark as published
+                    update_draft_status(draft_id, "published", user.id, expected_status="draft")
 
                     keyboard = InlineKeyboardMarkup([
                         [InlineKeyboardButton("✦ Inscribe More Stickers", callback_data=f"addto_{pack_name}")],
@@ -1835,8 +1901,8 @@ async def draft_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
                         sticker=input_sticker
                     )
 
-                    # Mark draft as approved
-                    update_draft_status(draft_id, "approved", user.id, expected_status="draft")
+                    # Sticker is now live in Telegram — mark as published
+                    update_draft_status(draft_id, "published", user.id, expected_status="draft")
 
                     keyboard = InlineKeyboardMarkup([
                         [InlineKeyboardButton("✦ Bind Another", callback_data=f"addto_{pack_name}")],
@@ -1854,13 +1920,8 @@ async def draft_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
                         parse_mode="HTML",
                         reply_markup=keyboard
                     )
-
-                # Clear context
-                context.user_data.pop('pending_pack_name', None)
-                context.user_data.pop('pending_pack_title', None)
-                context.user_data.pop('pending_sticker_format', None)
             else:
-                # Just mark as approved (no immediate publishing)
+                # No pack target — mark as approved so user can publish later
                 success = update_draft_status(draft_id, "approved", user.id, expected_status="draft")
                 if success:
                     await query.edit_message_text(
@@ -1894,6 +1955,11 @@ async def draft_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 reply_markup=home_keyboard()
             )
         else:
+            # Clear any stale pending-pack data in case this draft was created
+            # inline and the user rejects it before approving another one.
+            context.user_data.pop('pending_pack_name', None)
+            context.user_data.pop('pending_pack_title', None)
+            context.user_data.pop('pending_sticker_format', None)
             await query.edit_message_text(
                 f"🗑 Draft <b>#{draft_id}</b> rejected and moved to trash.",
                 parse_mode="HTML",
@@ -1915,9 +1981,10 @@ async def draft_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
         new_expiry = format_sqlite_datetime(_utcnow() + timedelta(days=DRAFT_EXPIRY_DAYS))
         conn = get_db()
         c = conn.cursor()
+        # Only extend expiry for pending drafts — not approved/rejected/expired rows
         c.execute(
             "UPDATE sticker_drafts SET expires_at = ?, updated_at = datetime('now') "
-            "WHERE id = ? AND user_id = ?",
+            "WHERE id = ? AND user_id = ? AND status = 'draft'",
             (new_expiry, draft_id, user['id'])
         )
         success = c.rowcount > 0
@@ -1925,7 +1992,7 @@ async def draft_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
         conn.close()
         if not success:
             await query.edit_message_text(
-                f"⚠ Draft <b>#{draft_id}</b> not found or access denied.",
+                f"⚠ Draft <b>#{draft_id}</b> not found, already processed, or not in pending state.",
                 parse_mode="HTML",
                 reply_markup=home_keyboard()
             )
@@ -1961,6 +2028,12 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await delete_pack_confirm(update, context)
     elif data.startswith("draft_"):
         await draft_action_callback(update, context)
+    elif data.startswith("mydrafts_page_"):
+        await query.answer()
+        user = query.from_user
+        page = int(data.split("mydrafts_page_")[1])
+        text, keyboard = await _render_mydrafts(user.id, page=page)
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
     elif data == "menu_mydrafts":
         await query.answer()
         user = query.from_user

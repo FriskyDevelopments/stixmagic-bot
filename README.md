@@ -53,14 +53,15 @@ All generated stickers live in the Draft Vault. Users can:
 
 Drafts automatically expire after 7 days.
 
-#### 5. Animated Task Feedback
+#### 5. In-Chat Progress Indicators
 
-When the bot processes a request:
+When the bot processes a request it sends a text progress message (`⚗️ working on it…`), then updates it in-place when done. This keeps the chat clean:
 
-1. Bot sends `🧙 working on it…` placeholder
+1. Bot edits/sends a progress text message
 2. Processing occurs
-3. Placeholder is deleted
-4. Result is returned
+3. Progress message is updated with the result
+
+> **Phase 2 note:** Full animated sticker placeholders (`🧙 working…`) are scaffolded in `send_working_animation()` / `delete_working_animation()` and will replace the text indicator once a suitable animated sticker asset is available.
 
 #### 6. Sticker Disposal System
 
