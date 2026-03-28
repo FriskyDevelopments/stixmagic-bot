@@ -8,6 +8,7 @@ from openai import OpenAI
 logger = logging.getLogger(__name__)
 
 _client = None
+USER_AGENT = "StixMagicBot/1.0 (Telegram Bot; +https://t.me/stixmagicbot)"
 
 
 def get_client():
@@ -62,7 +63,9 @@ def generate_sticker_image(prompt: str) -> io.BytesIO | None:
         return None
 
     try:
-        img_response = http_requests.get(image_url, timeout=30)
+        img_response = http_requests.get(
+            image_url, headers={"User-Agent": USER_AGENT}, timeout=30
+        )
         img_response.raise_for_status()
         return io.BytesIO(img_response.content)
     except Exception:

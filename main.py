@@ -951,18 +951,30 @@ async def buy_premium_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     await query.answer()
 
-    await context.bot.send_invoice(
-        chat_id=query.message.chat_id,
-        title=f"Stix Magic Premium — {plan['label']}",
-        description=(
-            "Unlock AI sticker generation powered by DALL-E 3. "
-            "Describe any idea and get a Telegram sticker in seconds."
-        ),
-        payload=plan_key,
-        provider_token="",  # empty string for Telegram Stars (XTR) — no external provider
-        currency="XTR",
-        prices=[LabeledPrice(label=f"Premium {plan['label']}", amount=plan["stars"])],
-    )
+    try:
+        await context.bot.send_invoice(
+            chat_id=query.message.chat_id,
+            title=f"Stix Magic Premium — {plan['label']}",
+            description=(
+                "Unlock AI sticker generation powered by DALL-E 3. "
+                "Describe any idea and get a Telegram sticker in seconds."
+            ),
+            payload=plan_key,
+            provider_token="",  # empty string for Telegram Stars (XTR) — no external provider
+            currency="XTR",
+            prices=[LabeledPrice(label=f"Premium {plan['label']}", amount=plan["stars"])],
+        )
+    except Exception as e:
+        logger.exception(
+            f"Failed to send invoice for plan={plan_key}, plan_label={plan.get('label', 'N/A')}: {e}"
+        )
+        try:
+            await query.message.reply_text(
+                "Sorry, we couldn't create the payment invoice right now. Please try again later."
+            )
+        except Exception:
+            logger.exception("Failed to send error message to user after invoice error")
+        return
 
 
 async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
