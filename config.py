@@ -2,9 +2,10 @@
 config.py – Centralized runtime configuration for Stix Magic.
 
 Environment is controlled via the APP_ENV environment variable:
-  - "development" (or "dev", "local", "qa") → dev/QA bot (@StixMagicdevBot)
-  - "production" (or "prod")                → production bot
-  Any other value causes an immediate startup failure.
+  - "development" → dev/QA bot (@StixMagicdevBot)
+  - "production"  → production bot
+  Any other value (including aliases like "dev", "prod", "local", "qa") causes
+  an immediate startup failure.
 
 Token selection:
   - production  : TELEGRAM_BOT_TOKEN (required)
@@ -31,26 +32,19 @@ import sys
 
 # ── Environment Detection ─────────────────────────────────────────────────────
 
-_RAW_ENV = os.environ.get("APP_ENV", "development").lower().strip()
+_RAW_ENV = os.environ.get("APP_ENV", "development").strip()
 
-_ALLOWED_ENV_ALIASES: dict[str, str] = {
-    "production": "production",
-    "prod": "production",
-    "development": "development",
-    "dev": "development",
-    "local": "development",
-    "qa": "development",
-}
+# Only the two canonical environment strings are allowed. No aliases.
+_ALLOWED_ENVS: set[str] = {"development", "production"}
 
-if _RAW_ENV not in _ALLOWED_ENV_ALIASES:
-    _allowed = ", ".join(repr(k) for k in sorted(_ALLOWED_ENV_ALIASES.keys()))
+if _RAW_ENV not in _ALLOWED_ENVS:
     sys.stderr.write(
         f"ERROR: Invalid APP_ENV value: {repr(_RAW_ENV)}. "
-        f"Allowed values are: {_allowed}.\n"
+        f"Allowed values are: 'development' or 'production' (no aliases allowed).\n"
     )
     sys.exit(1)
 
-ENVIRONMENT: str = _ALLOWED_ENV_ALIASES[_RAW_ENV]
+ENVIRONMENT: str = _RAW_ENV
 
 IS_PRODUCTION = ENVIRONMENT == "production"
 IS_DEVELOPMENT = not IS_PRODUCTION
@@ -181,9 +175,9 @@ def validate_config() -> None:
 
     Checks performed:
     1. A bot token must be present and well-formed.
-    2. In production, the active token must NOT match DEV_BOT_TOKEN — prevents
+    2. In production, DEV_BOT_TOKEN must not be set at all — prevents
        accidentally running the dev bot as production.
-    3. In development, the active token must NOT match TELEGRAM_BOT_TOKEN —
+    3. In development, TELEGRAM_BOT_TOKEN must not be set at all —
        prevents accidentally running the production bot under dev settings.
     4. If EXPECTED_PROD_BOT_ID / EXPECTED_DEV_BOT_ID is set, the resolved
        token's numeric bot ID must match — deterministic identity check that
@@ -221,26 +215,24 @@ def validate_config() -> None:
                 "Expected format: <bot_id>:<hash>  (e.g. 123456789:AABBcc...)."
             )
 
-    # 2. Production safety: reject if loaded token belongs to the dev bot.
-    if IS_PRODUCTION and BOT_TOKEN:
+    # 2. Production safety: reject if DEV_BOT_TOKEN is set at all.
+    if IS_PRODUCTION:
         dev_raw = os.environ.get("DEV_BOT_TOKEN", "")
-        dev_token = _extract_token(dev_raw)
-        if dev_token and BOT_TOKEN == dev_token:
+        if dev_raw:
             errors.append(
-                "SAFETY VIOLATION: APP_ENV=production but the active token matches "
-                "DEV_BOT_TOKEN. Running the dev bot as production is not allowed. "
-                "Set TELEGRAM_BOT_TOKEN to the production token or change APP_ENV."
+                "SAFETY VIOLATION: APP_ENV=production but DEV_BOT_TOKEN is set. "
+                "The development token must not be present in production. "
+                "Unset DEV_BOT_TOKEN in your production environment."
             )
 
-    # 3. Development safety: reject if loaded token is the production token.
-    if IS_DEVELOPMENT and BOT_TOKEN:
+    # 3. Development safety: reject if TELEGRAM_BOT_TOKEN is set at all.
+    if IS_DEVELOPMENT:
         prod_raw = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-        prod_token = _extract_token(prod_raw)
-        if prod_token and BOT_TOKEN == prod_token:
+        if prod_raw:
             errors.append(
-                "SAFETY VIOLATION: APP_ENV=development but DEV_BOT_TOKEN matches "
-                "TELEGRAM_BOT_TOKEN. Running the production bot under dev settings "
-                "is not allowed. Use a separate @StixMagicdevBot token for DEV_BOT_TOKEN."
+                "SAFETY VIOLATION: APP_ENV=development but TELEGRAM_BOT_TOKEN is set. "
+                "The production token must not be present in development. "
+                "Unset TELEGRAM_BOT_TOKEN in your development environment."
             )
 
     # 4. Deterministic bot-identity check (independent of opposite-env token).
