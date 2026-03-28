@@ -580,7 +580,7 @@ async def addsticker_receive(update: Update, context: ContextTypes.DEFAULT_TYPE)
             reply_markup=keyboard
         )
     except Exception as e:
-        logger.error(f"Error adding sticker: {e}")
+        logger.error("Failed to add sticker: %s", e, exc_info=True)
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Try Again", callback_data=f"addto_{pack_name}")],
             [InlineKeyboardButton("✦ Home", callback_data="nav:home")],
@@ -588,7 +588,7 @@ async def addsticker_receive(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await progress.edit_text(
             f"⚠ <b>Couldn't add sticker</b>\n"
             f"{DIV}\n\n"
-            f"<i>{html.escape(str(e))}</i>",
+            f"<i>An error occurred while adding the sticker; please try again later.</i>",
             parse_mode="HTML",
             reply_markup=keyboard
         )
@@ -777,9 +777,9 @@ async def magic_pack_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=keyboard
             )
         except Exception as e:
-            logger.error(f"Error adding cut sticker: {e}")
+            logger.error("Failed to add sticker: %s", e, exc_info=True)
             await query.edit_message_text(
-                f"⚠ <b>Couldn't add sticker</b>\n\n<i>{html.escape(str(e))}</i>",
+                f"⚠ <b>Couldn't add sticker</b>\n\n<i>An error occurred while adding the sticker; please try again later.</i>",
                 parse_mode="HTML",
                 reply_markup=home_keyboard()
             )
