@@ -1362,21 +1362,16 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
 
-    # Handle wizard callbacks
     if data == "menu_wizard_confirm":
-        # Route wizard confirmation to WizardEngine.submit with "yes"
-        # This assumes the wizard session is stored in context.user_data
-        # and the wizard engine is accessible via the adapter or core engine
-        await query.answer("Wizard confirm handler placeholder")
-        # TODO: Integrate with WizardEngine.submit(session, "yes")
-        return
+        # Route wizard confirmation to appropriate handler
+        # The wizard engine submit logic should be invoked here
+        await query.answer("Wizard confirmation received")
+        # TODO: Implement wizard engine submit integration
     elif data == "menu_wizard_restart":
-        # Route wizard restart to WizardEngine.submit with "no"
-        await query.answer("Wizard restart handler placeholder")
-        # TODO: Integrate with WizardEngine.submit(session, "no")
-        return
-
-    if data == "menu_manage":
+        # Route wizard restart to appropriate handler
+        await query.answer("Wizard restart received")
+        # TODO: Implement wizard engine restart logic
+    elif data == "menu_manage":
         await manage_stickers(update, context)
     elif data == "menu_help_detail":
         await show_help(update, context)
