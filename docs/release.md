@@ -26,18 +26,18 @@ That is the safest fit for the current bot because the codebase does not yet inc
 
 | Secret | Required | Used by | Notes |
 |---|---|---|---|
-| `BOT_TOKEN_PROD` | Yes | Production Promotion | Production Telegram bot token. Kept separate from development. |
+| `TELEGRAM_BOT_TOKEN` | Yes | Production Promotion | Production Telegram bot token. |
 | `STIXMAGIC_API_KEY` | Yes | Production Promotion | API authentication key for the deployed app. |
-| `SESSION_SECRET` | Yes | Production Promotion | Flask session signing secret. |
-| `MINIAPP_URL` | Optional | Production Promotion | Used only if the Mini App is enabled. |
+| `TELEGRAM_WEBHOOK_SECRET` | Yes | Production Promotion | Used as Flask secret key and webhook verifier shared secret. |
+| `TELEGRAM_BOT_USERNAME` | Recommended | Production Promotion | Enables deterministic deep links in Mini App bootstrap/intent responses. |
+| `STIXMAGIC_PUBLIC_BASE_URL` | Optional | Production Promotion | Enables strict Mini App CORS allowlist and absolute API URLs. |
 
-> Recommended hardening: move `STIXMAGIC_API_KEY`, `SESSION_SECRET`, and `MINIAPP_URL` into the GitHub **production environment** so the workflow inherits environment protections and approvals.
+> Recommended hardening: scope all production secrets to the GitHub **production environment** so dispatches inherit environment protections and approvals.
 
 ### Runtime variable mapping
 
-- Development continues to use `TELEGRAM_BOT_TOKEN` locally or in your development host.
-- Production GitHub validation uses `BOT_TOKEN_PROD` and never prints it.
-- When you update the real production host, map `BOT_TOKEN_PROD` into the runtime variable expected by the app: `TELEGRAM_BOT_TOKEN`.
+- Development and production both use `TELEGRAM_BOT_TOKEN`; isolate values by environment/secrets manager, not by variable name.
+- `TELEGRAM_WEBHOOK_SECRET` should always be set in production to avoid ephemeral process-local Flask secrets.
 
 ## Why promotion is manual
 
@@ -66,10 +66,10 @@ Because of that, the safest honest model is:
 - Run **Production Promotion** with `git_ref=main`.
 - Wait for the workflow to pass.
 - Update or restart the persistent production host so it runs the merged code with:
-  - `TELEGRAM_BOT_TOKEN` = production token value from `BOT_TOKEN_PROD`
+  - `TELEGRAM_BOT_TOKEN` = production Telegram token
   - `STIXMAGIC_API_KEY` = production API key
-  - `SESSION_SECRET` = production session secret
-  - `MINIAPP_URL` = production Mini App URL, if used
+  - `TELEGRAM_WEBHOOK_SECRET` = production webhook/session secret
+  - `STIXMAGIC_PUBLIC_BASE_URL` = production HTTPS origin, if Mini App/browser clients are used
 
 ### Manual production verification
 

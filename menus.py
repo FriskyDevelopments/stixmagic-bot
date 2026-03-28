@@ -1,7 +1,7 @@
 import os
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
-from config.runtime import get_settings
+from stixmagic.settings import get_settings
 
 DIVIDER = "◈ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ◈"
 

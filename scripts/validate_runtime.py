@@ -85,8 +85,8 @@ def main() -> None:
     run_smoke_tests()
 
     if args.mode == "production":
-        require_env(("BOT_TOKEN_PROD", "STIXMAGIC_API_KEY", "SESSION_SECRET"))
-        token = validate_token("BOT_TOKEN_PROD")
+        require_env(("TELEGRAM_BOT_TOKEN", "STIXMAGIC_API_KEY", "TELEGRAM_WEBHOOK_SECRET"))
+        token = validate_token("TELEGRAM_BOT_TOKEN")
         if args.check_telegram:
             asyncio.run(telegram_get_me(token))
     else:
