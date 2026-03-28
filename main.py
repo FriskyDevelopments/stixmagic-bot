@@ -27,18 +27,8 @@ logger = logging.getLogger(__name__)
 
 DB_FILE = "bot.db"
 
-
-def get_db():
-    """Return a connection to the database.
-
-    Note: The connection is not managed by a context manager here; callers
-    must commit and close as needed (or use their own context management).
-    """
-    return sqlite3.connect(DB_FILE)
-
-
 def init_db():
-    conn = get_db()
+    conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
 
     # ── Existing tables ──────────────────────────────────────────
@@ -160,7 +150,7 @@ def get_mask_inverted(user_id):
     c.execute('SELECT mask_inverted FROM user_settings WHERE user_id = ?', (user_id,))
     row = c.fetchone()
     conn.close()
-    return bool(row[0]) if row else False
+    return bool(row['mask_inverted']) if row else False
 
 def set_mask_inverted(user_id, inverted):
     conn = get_db()
@@ -221,9 +211,11 @@ def is_new_user(user_id):
     conn = get_db()
     c = conn.cursor()
     c.execute('SELECT COUNT(*) FROM packs WHERE user_id = ?', (user_id,))
-    packs = c.fetchone()[0]
+    row = c.fetchone()
+    packs = row[0] if isinstance(row, tuple) else row['COUNT(*)']
     c.execute('SELECT COUNT(*) FROM user_settings WHERE user_id = ?', (user_id,))
-    settings = c.fetchone()[0]
+    row = c.fetchone()
+    settings = row[0] if isinstance(row, tuple) else row['COUNT(*)']
     conn.close()
     return packs == 0 and settings == 0
 
@@ -251,14 +243,18 @@ def _utcnow() -> datetime:
 
 
 def format_sqlite_datetime(dt: datetime) -> str:
-    """Format a datetime for SQLite compatibility (space-separated, no 'T').
-
-    Returns format: 'YYYY-MM-DD HH:MM:SS'
-    """
+    """Format a datetime as SQLite-compatible 'YYYY-MM-DD HH:MM:SS' string."""
     return dt.strftime('%Y-%m-%d %H:%M:%S')
 
 
 # ── User-registry helpers ─────────────────────────────────────
+
+def get_db():
+    """Return a shared database connection using the centralized accessor from api.py."""
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    return conn
+
 
 def get_or_create_user(telegram_id, username=None):
     """Return the internal users row, creating it on first contact."""
@@ -274,7 +270,7 @@ def get_or_create_user(telegram_id, username=None):
             )
             conn.commit()
         conn.close()
-        return {'id': row[0], 'plan': row[1]}
+        return {'id': row['id'], 'plan': row['plan']}
     c.execute(
         "INSERT INTO users (telegram_id, username) VALUES (?, ?)",
         (telegram_id, username)
@@ -292,13 +288,13 @@ def get_user_plan(telegram_id):
     c.execute('SELECT plan FROM users WHERE telegram_id = ?', (telegram_id,))
     row = c.fetchone()
     conn.close()
-    return row[0] if row else 'free'
+    return row['plan'] if row else 'free'
 
 
 # ── Usage-tracking helpers ────────────────────────────────────
 
 def _current_period_bounds(period_type):
-    """Return (period_start, period_end) SQLite-compatible datetime strings for the current billing window."""
+    """Return (period_start, period_end) SQLite-compatible strings for the current billing window."""
     now = _utcnow()
     if period_type == 'daily':
         start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -330,7 +326,7 @@ def check_creation_limit(telegram_id):
     )
     row = c.fetchone()
     conn.close()
-    used = row[0] if row else 0
+    used = row['creations_used'] if row else 0
     remaining = max(0, max_creations - used)
     return remaining > 0, remaining
 
@@ -344,10 +340,12 @@ def increment_usage(telegram_id):
     user = get_or_create_user(telegram_id)
     conn = get_db()
     c = conn.cursor()
+    # Atomic UPSERT: insert with ON CONFLICT ... DO UPDATE
     c.execute(
         "INSERT INTO user_usage (user_id, period_type, period_start, period_end, creations_used) "
         "VALUES (?, ?, ?, ?, 1) "
-        "ON CONFLICT(user_id, period_type, period_start) DO UPDATE SET creations_used = creations_used + 1",
+        "ON CONFLICT(user_id, period_type, period_start) "
+        "DO UPDATE SET creations_used = creations_used + 1",
         (user['id'], period_type, period_start, period_end)
     )
     conn.commit()
@@ -357,30 +355,31 @@ def increment_usage(telegram_id):
 # ── Draft-vault helpers ───────────────────────────────────────
 
 def create_draft(telegram_id, source_file_id=None, generated_file_id=None, style_id=None):
-    """Insert a new draft and return its row id.
+    """Insert a new draft and return its row id, enforcing max_drafts cap.
 
-    Enforces the user's max_drafts cap based on their subscription plan.
-    Returns None if the cap is reached.
+    Returns:
+        draft_id (int) on success
+        None if the user has reached their draft cap
     """
     user = get_or_create_user(telegram_id)
-
-    # Check draft cap
-    limits = PLAN_LIMITS.get(user['plan'], PLAN_LIMITS['free'])
+    plan = get_user_plan(telegram_id)
+    limits = PLAN_LIMITS.get(plan, PLAN_LIMITS['free'])
     max_drafts = limits['max_drafts']
 
     conn = get_db()
     c = conn.cursor()
 
+    # Enforce draft cap (None means unlimited)
     if max_drafts is not None:
-        # Count existing drafts (exclude rejected/expired)
         c.execute(
             "SELECT COUNT(*) FROM sticker_drafts WHERE user_id = ? AND status = 'draft'",
             (user['id'],)
         )
-        current_count = c.fetchone()[0]
+        row = c.fetchone()
+        current_count = row[0] if isinstance(row, tuple) else row['COUNT(*)']
         if current_count >= max_drafts:
             conn.close()
-            return None  # Cap reached
+            return None
 
     expires_at = format_sqlite_datetime(_utcnow() + timedelta(days=DRAFT_EXPIRY_DAYS))
     c.execute(
@@ -417,43 +416,39 @@ def get_user_drafts(telegram_id, status=None):
     return rows
 
 
-def update_draft_status(draft_id, status, owner_user_id=None, expected_status=None):
-    """Change the lifecycle status of a draft.
+def update_draft_status(draft_id, status, owner_telegram_id, expected_status=None):
+    """Change the lifecycle status of a draft with authorization.
 
     Args:
-        draft_id: The draft row id
+        draft_id: The draft ID to update
         status: The new status to set
-        owner_user_id: If provided, only update if the draft belongs to this user
-        expected_status: If provided, only update if the draft is currently in this status
+        owner_telegram_id: The Telegram user ID who must own this draft
+        expected_status: Optional current status that must match
 
     Returns:
-        bool: True if a row was updated, False otherwise
+        bool: True if a row was updated, False if no match (authorization failure)
     """
+    user = get_or_create_user(owner_telegram_id)
     conn = get_db()
     c = conn.cursor()
 
-    where_clauses = ["id = ?"]
-    params = [draft_id]
+    if expected_status:
+        c.execute(
+            "UPDATE sticker_drafts SET status = ?, updated_at = datetime('now') "
+            "WHERE id = ? AND user_id = ? AND status = ?",
+            (status, draft_id, user['id'], expected_status)
+        )
+    else:
+        c.execute(
+            "UPDATE sticker_drafts SET status = ?, updated_at = datetime('now') "
+            "WHERE id = ? AND user_id = ?",
+            (status, draft_id, user['id'])
+        )
 
-    if owner_user_id is not None:
-        where_clauses.append("user_id = ?")
-        params.append(owner_user_id)
-
-    if expected_status is not None:
-        where_clauses.append("status = ?")
-        params.append(expected_status)
-
-    where_clause = " AND ".join(where_clauses)
-    params.insert(0, status)  # status is first parameter for SET clause
-
-    c.execute(
-        f"UPDATE sticker_drafts SET status = ?, updated_at = datetime('now') WHERE {where_clause}",
-        tuple(params)
-    )
-    rows_updated = c.rowcount
+    updated = c.rowcount > 0
     conn.commit()
     conn.close()
-    return rows_updated > 0
+    return updated
 
 
 # ── Cleanup worker ────────────────────────────────────────────
@@ -752,6 +747,19 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return WAITING_STICKER
 
+    # Check creation limit before processing
+    allowed, remaining = check_creation_limit(user.id)
+    if not allowed:
+        await update.message.reply_text(
+            f"⚠ <b>Creation quota reached</b>\n{DIV}\n\n"
+            "You've hit your creation limit for this period.\n\n"
+            "Use /plans to view your current plan and upgrade options.",
+            parse_mode="HTML",
+            reply_markup=home_keyboard()
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
+
     progress = await update.message.reply_text("⚗️ <i>Transmuting the vessel...</i>", parse_mode="HTML")
 
     bot_username = context.bot.username
@@ -782,6 +790,9 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
             title=title,
             stickers=[input_sticker],
         )
+
+        # Increment usage after successful creation
+        increment_usage(user.id)
 
         add_pack_to_db(user.id, pack_name, title)
 
@@ -927,6 +938,19 @@ async def addsticker_receive(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return WAITING_STICKER_ADD
 
+    # Check creation limit before processing
+    allowed, remaining = check_creation_limit(user.id)
+    if not allowed:
+        await update.message.reply_text(
+            f"⚠ <b>Creation quota reached</b>\n{DIV}\n\n"
+            "You've hit your creation limit for this period.\n\n"
+            "Use /plans to view your current plan and upgrade options.",
+            parse_mode="HTML",
+            reply_markup=home_keyboard()
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
+
     progress = await update.message.reply_text("⚗️ <i>Binding the sticker...</i>", parse_mode="HTML")
 
     try:
@@ -951,6 +975,9 @@ async def addsticker_receive(update: Update, context: ContextTypes.DEFAULT_TYPE)
             name=pack_name,
             sticker=input_sticker
         )
+
+        # Increment usage after successful creation
+        increment_usage(user.id)
 
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("✦ Bind Another", callback_data=f"addto_{pack_name}")],
@@ -1147,6 +1174,19 @@ async def magic_pack_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         packs = get_user_packs(user.id)
         pack_title = next((t for n, t in packs if n == pack_name), pack_name)
 
+        # Check creation limit before processing
+        allowed, remaining = check_creation_limit(user.id)
+        if not allowed:
+            await query.edit_message_text(
+                f"⚠ <b>Creation quota reached</b>\n{DIV}\n\n"
+                "You've hit your creation limit for this period.\n\n"
+                "Use /plans to view your current plan and upgrade options.",
+                parse_mode="HTML",
+                reply_markup=home_keyboard()
+            )
+            context.user_data.clear()
+            return ConversationHandler.END
+
         try:
             sticker_file = io.BytesIO(cut_result)
             input_sticker = InputSticker(sticker=sticker_file, emoji_list=STICKER_EMOJI, format="static")
@@ -1155,6 +1195,8 @@ async def magic_pack_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 name=pack_name,
                 sticker=input_sticker
             )
+            # Increment usage after successful creation
+            increment_usage(user.id)
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔗 Open the Vessel", url=f"https://t.me/addstickers/{pack_name}")],
                 [InlineKeyboardButton("◈ New Ritual", callback_data="menu_magic"),
@@ -1366,7 +1408,8 @@ async def show_packs(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def settings_mask(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user if update.message else update.callback_query.from_user
+    query = update.callback_query
+    user = query.from_user
     inverted = get_mask_inverted(user.id)
     current = "⬛ Black = keep · ⬜ White = dissolve" if inverted else "⬜ White = keep · ⬛ Black = dissolve"
     toggle_label = "Switch to ⬜ White = keep" if inverted else "Switch to ⬛ Black = keep"
@@ -1384,11 +1427,7 @@ async def settings_mask(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("◂ Back", callback_data="nav:settings"),
          InlineKeyboardButton("✦ Home", callback_data="nav:home")],
     ])
-
-    if update.callback_query:
-        await update.callback_query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
-    else:
-        await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+    await query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
 
 
 async def toggle_mask(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1678,40 +1717,39 @@ async def draft_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
     data = query.data
-    user = get_or_create_user(query.from_user.id, query.from_user.username)
 
     if data.startswith("draft_approve_"):
         draft_id = int(data.split("draft_approve_")[1])
-        success = update_draft_status(draft_id, "approved", owner_user_id=user['id'], expected_status='draft')
+        success = update_draft_status(draft_id, "approved", query.from_user.id, expected_status="draft")
         if not success:
             await query.edit_message_text(
-                f"⚠ Draft <b>#{draft_id}</b> not found or not owned by you.",
+                f"⚠ Draft <b>#{draft_id}</b> not found or already processed.",
                 parse_mode="HTML",
                 reply_markup=home_keyboard()
             )
-            return
-        await query.edit_message_text(
-            f"✅ Draft <b>#{draft_id}</b> approved!\n\n"
-            "<i>It's ready to be added to a pack or collection.</i>",
-            parse_mode="HTML",
-            reply_markup=home_keyboard()
-        )
+        else:
+            await query.edit_message_text(
+                f"✅ Draft <b>#{draft_id}</b> approved!\n\n"
+                "<i>It's ready to be added to a pack or collection.</i>",
+                parse_mode="HTML",
+                reply_markup=home_keyboard()
+            )
 
     elif data.startswith("draft_reject_"):
         draft_id = int(data.split("draft_reject_")[1])
-        success = update_draft_status(draft_id, "rejected", owner_user_id=user['id'], expected_status='draft')
+        success = update_draft_status(draft_id, "rejected", query.from_user.id, expected_status="draft")
         if not success:
             await query.edit_message_text(
-                f"⚠ Draft <b>#{draft_id}</b> not found or not owned by you.",
+                f"⚠ Draft <b>#{draft_id}</b> not found or already processed.",
                 parse_mode="HTML",
                 reply_markup=home_keyboard()
             )
-            return
-        await query.edit_message_text(
-            f"🗑 Draft <b>#{draft_id}</b> rejected and moved to trash.",
-            parse_mode="HTML",
-            reply_markup=home_keyboard()
-        )
+        else:
+            await query.edit_message_text(
+                f"🗑 Draft <b>#{draft_id}</b> rejected and moved to trash.",
+                parse_mode="HTML",
+                reply_markup=home_keyboard()
+            )
 
     elif data.startswith("draft_retry_"):
         draft_id = int(data.split("draft_retry_")[1])
@@ -1724,28 +1762,30 @@ async def draft_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     elif data.startswith("draft_save_"):
         draft_id = int(data.split("draft_save_")[1])
+        user = get_or_create_user(query.from_user.id)
         new_expiry = format_sqlite_datetime(_utcnow() + timedelta(days=DRAFT_EXPIRY_DAYS))
         conn = get_db()
         c = conn.cursor()
         c.execute(
-            "UPDATE sticker_drafts SET expires_at = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+            "UPDATE sticker_drafts SET expires_at = ?, updated_at = datetime('now') "
+            "WHERE id = ? AND user_id = ?",
             (new_expiry, draft_id, user['id'])
         )
-        rows_updated = c.rowcount
+        success = c.rowcount > 0
         conn.commit()
         conn.close()
-        if not rows_updated:
+        if not success:
             await query.edit_message_text(
-                f"⚠ Draft <b>#{draft_id}</b> not found or not owned by you.",
+                f"⚠ Draft <b>#{draft_id}</b> not found or access denied.",
                 parse_mode="HTML",
                 reply_markup=home_keyboard()
             )
-            return
-        await query.edit_message_text(
-            f"💾 Draft <b>#{draft_id}</b> saved for later — expiry extended.",
-            parse_mode="HTML",
-            reply_markup=home_keyboard()
-        )
+        else:
+            await query.edit_message_text(
+                f"💾 Draft <b>#{draft_id}</b> saved for later — expiry extended.",
+                parse_mode="HTML",
+                reply_markup=home_keyboard()
+            )
 
 
 # ── CALLBACK ROUTER ──────────────────────────────────────────
@@ -1774,7 +1814,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await draft_action_callback(update, context)
     elif data == "menu_mydrafts":
         await query.answer()
-        # Call the actual mydrafts rendering logic
+        # Invoke the mydrafts rendering logic directly
         user = query.from_user
         drafts = get_user_drafts(user.id, status='draft')
 
@@ -1784,35 +1824,33 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "No pending drafts — the vault is empty.\n\n"
                 "<i>Generate a sticker to see it here first.</i>"
             )
-            await query.message.reply_text(
+            await query.edit_message_text(
                 text, parse_mode="HTML", reply_markup=home_keyboard()
             )
-            return
-
-        text = (
-            f"🗂 <b>DRAFT VAULT</b>\n{DIV}\n\n"
-            f"You have <b>{len(drafts)}</b> pending draft(s).\n\n"
-            "<i>Use the buttons below to approve, retry, or reject each draft.</i>"
-        )
-        keyboard_rows = []
-        for draft_id, file_id, status, created_at, expires_at in drafts:
-            keyboard_rows.append([
-                InlineKeyboardButton(f"✓ Approve #{draft_id}", callback_data=f"draft_approve_{draft_id}"),
-                InlineKeyboardButton(f"✕ Reject", callback_data=f"draft_reject_{draft_id}"),
-            ])
-            keyboard_rows.append([
-                InlineKeyboardButton(f"🔄 Retry #{draft_id}", callback_data=f"draft_retry_{draft_id}"),
-                InlineKeyboardButton(f"💾 Save later", callback_data=f"draft_save_{draft_id}"),
-            ])
-        keyboard_rows.append([InlineKeyboardButton("✦ Home", callback_data="nav:home")])
-
-        await query.message.reply_text(
-            text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard_rows)
-        )
+        else:
+            text = (
+                f"🗂 <b>DRAFT VAULT</b>\n{DIV}\n\n"
+                f"You have <b>{len(drafts)}</b> pending draft(s).\n\n"
+                "<i>Use the buttons below to approve, retry, or reject each draft.</i>"
+            )
+            keyboard_rows = []
+            for draft_id, file_id, status, created_at, expires_at in drafts:
+                keyboard_rows.append([
+                    InlineKeyboardButton(f"✓ Approve #{draft_id}", callback_data=f"draft_approve_{draft_id}"),
+                    InlineKeyboardButton(f"✕ Reject", callback_data=f"draft_reject_{draft_id}"),
+                ])
+                keyboard_rows.append([
+                    InlineKeyboardButton(f"🔄 Retry #{draft_id}", callback_data=f"draft_retry_{draft_id}"),
+                    InlineKeyboardButton(f"💾 Save later", callback_data=f"draft_save_{draft_id}"),
+                ])
+            keyboard_rows.append([InlineKeyboardButton("✦ Home", callback_data="nav:home")])
+            await query.edit_message_text(
+                text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard_rows)
+            )
 
     elif data == "menu_myapproved":
         await query.answer()
-        # Call the actual myapproved rendering logic
+        # Invoke the myapproved rendering logic directly
         user = query.from_user
         approved = get_user_drafts(user.id, status='approved')
 
@@ -1828,14 +1866,13 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"<b>{len(approved)}</b> sticker(s) ready to publish.\n\n"
                 "<i>These stickers can be added to your packs or collections.</i>"
             )
-
-        await query.message.reply_text(
+        await query.edit_message_text(
             text, parse_mode="HTML", reply_markup=home_keyboard()
         )
 
     elif data == "menu_trash":
         await query.answer()
-        # Call the actual trash rendering logic
+        # Invoke the trash rendering logic directly
         user = query.from_user
         conn = get_db()
         c = conn.cursor()
@@ -1862,14 +1899,13 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text += f"◦ #{draft_id} — <i>{status}</i> on {created_at[:10]}\n"
             if len(rows) > 10:
                 text += f"\n<i>…and {len(rows) - 10} more.</i>"
-
-        await query.message.reply_text(
+        await query.edit_message_text(
             text, parse_mode="HTML", reply_markup=home_keyboard()
         )
 
     elif data == "menu_catalog":
         await query.answer()
-        # Call the actual catalog rendering logic
+        # Invoke the catalog rendering logic directly
         conn = get_db()
         c = conn.cursor()
         c.execute(
@@ -1896,14 +1932,13 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if description:
                     text += f"   {description}\n"
             text += "\n<i>Use /plans to see what each tier includes.</i>"
-
-        await query.message.reply_text(
+        await query.edit_message_text(
             text, parse_mode="HTML", reply_markup=home_keyboard()
         )
 
     elif data == "menu_plans":
         await query.answer()
-        # Call the actual plans rendering logic
+        # Invoke the plans rendering logic directly
         user = query.from_user
         current_plan = get_user_plan(user.id)
         _, remaining = check_creation_limit(user.id)
@@ -1928,8 +1963,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "──────────────────────\n\n"
             "<i>Premium and Pro plans coming soon!</i>"
         )
-
-        await query.message.reply_text(
+        await query.edit_message_text(
             text, parse_mode="HTML", reply_markup=home_keyboard()
         )
 
@@ -1968,7 +2002,6 @@ def main():
     application.add_handler(CommandHandler("manage", manage_stickers))
     application.add_handler(CommandHandler("help", show_help))
     application.add_handler(CommandHandler("about", show_about))
-    application.add_handler(CommandHandler("settings", settings_mask))
     # Draft vault & lifecycle commands
     application.add_handler(CommandHandler("mydrafts", mydrafts_command))
     application.add_handler(CommandHandler("myapproved", myapproved_command))

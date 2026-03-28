@@ -90,9 +90,10 @@ Draft lifecycle states:
 | `/catalog` | Browse available sticker styles |
 | `/plans` | View subscription plans and usage |
 | `/packs` | Browse and manage your packs |
+| `/manage` | Manage your existing sticker packs |
 | `/sync` | Import an existing Telegram pack |
-| `/settings` | Toggle mask inversion and other preferences |
 | `/help` | Show help information |
+| `/about` | About Stix Magic |
 | `/cancel` | Cancel the current operation |
 
 ---
