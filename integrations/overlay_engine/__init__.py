@@ -28,18 +28,49 @@ class OverlayCompositor:
     """Lightweight OBS-style compositor state container."""
 
     def __init__(self, renders_root: str = "renders") -> None:
+        """
+        Initialize the OverlayCompositor and its in-memory state.
+        
+        Parameters:
+            renders_root (str): Filesystem path used as the base directory for compositor renders; stored as a Path.
+        """
         self.renders_root = Path(renders_root)
         self.pack_id: str | None = None
         self.layers: list[OverlayLayer] = []
         self.running = False
 
     def load_pack(self, pack_id: str) -> None:
+        """
+        Set the active overlay pack for the compositor and clear any existing layers.
+        
+        Parameters:
+            pack_id (str): Identifier of the overlay pack to load; whitespace is trimmed.
+        
+        Raises:
+            ValueError: If `pack_id` is not a non-empty string.
+        """
         if not isinstance(pack_id, str) or not pack_id.strip():
             raise ValueError("pack_id must be a non-empty string")
         self.pack_id = pack_id.strip()
         self.layers.clear()
 
     def add_layer(self, asset_id: str, preset: str = "pulse", **kwargs) -> None:
+        """
+        Add a new overlay layer to the current pack's scene.
+        
+        Parameters:
+            asset_id (str): Identifier of the asset to add; must be a non-empty string.
+            preset (str): Visual preset name; empty values default to "pulse".
+            **kwargs: Optional placement and appearance overrides:
+                x (int): Horizontal position (converted to int, defaults to 0).
+                y (int): Vertical position (converted to int, defaults to 0).
+                scale (float): Scale factor (converted to float, defaults to 1.0).
+                opacity (float): Opacity (converted to float, defaults to 1.0).
+        
+        Raises:
+            RuntimeError: If no pack has been loaded via `load_pack`.
+            ValueError: If `asset_id` is not a non-empty string.
+        """
         if self.pack_id is None:
             raise RuntimeError("load_pack must be called before add_layer")
         if not isinstance(asset_id, str) or not asset_id.strip():
@@ -56,15 +87,35 @@ class OverlayCompositor:
         self.layers.append(layer)
 
     def start(self) -> None:
+        """
+        Mark the compositor as running after ensuring a pack is loaded.
+        
+        Raises:
+            RuntimeError: If no pack has been loaded via `load_pack` (i.e., `pack_id` is None).
+        """
         if self.pack_id is None:
             raise RuntimeError("load_pack must be called before start")
         self.running = True
 
     def stop(self) -> None:
+        """
+        Mark the compositor as not running.
+        
+        Clears the running state so subsequent scene updates or rendering operations are considered stopped.
+        """
         self.running = False
 
     def scene(self) -> dict[str, object]:
-        """Return a serializable snapshot of the current compositor state."""
+        """
+        Serialize the compositor's current state into a snapshot dictionary.
+        
+        Returns:
+            snapshot (dict[str, object]): A serializable dictionary with keys:
+                - "pack_id": current pack identifier or None
+                - "running": `True` if the compositor is started, `False` otherwise
+                - "layer_count": number of layers in the scene
+                - "layers": list of layer dictionaries (shallow copies of each layer's __dict__)
+        """
         return {
             "pack_id": self.pack_id,
             "running": self.running,

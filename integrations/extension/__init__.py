@@ -24,23 +24,22 @@ def trigger_asset(
 ) -> dict[str, str]:
     """
     Build a normalized trigger payload for browser-extension consumers.
-
-    Parameters
-    ----------
-    event:
-        Trigger type emitted by the extension.
-    pack_id:
-        Pack identifier where the asset lives.
-    asset_id:
-        Asset identifier inside the pack.
-    preset_id:
-        Optional motion preset id.
-
-    Returns
-    -------
-    dict[str, str]
-        Serialized payload that upstream integrations can forward to a
-        browser extension transport.
+    
+    Validates inputs and returns a dictionary suitable for forwarding to a browser/Nebulosa extension transport. Raises ValueError if any of `event`, `pack_id`, `asset_id`, or `preset_id` is not a non-empty string, or if the normalized `event` is not one of the allowed events.
+    
+    Parameters:
+        event (str): Trigger type emitted by the extension; will be stripped and lowercased.
+        pack_id (str): Pack identifier where the asset lives; will be stripped.
+        asset_id (str): Asset identifier inside the pack; will be stripped.
+        preset_id (str): Optional motion preset identifier; will be stripped. Defaults to "pulse".
+    
+    Returns:
+        dict[str, str]: Payload with keys:
+            - `event`: normalized event name
+            - `pack_id`: stripped pack identifier
+            - `asset_id`: stripped asset identifier
+            - `preset_id`: stripped preset identifier
+            - `triggered_at`: UTC ISO 8601 timestamp of when the trigger was created
     """
     for field_name, value in {
         "event": event,

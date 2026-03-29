@@ -154,12 +154,12 @@ def export_gif(
     **kwargs,
 ) -> str | None:
     """
-    Export an animated GIF from *source_path* using *preset*.
-
-    .. note::
-        PLACEHOLDER – actual frame rendering is not yet implemented.
-        This stub creates an empty output file so downstream pipeline
-        steps can reference the expected path.
+    Export an animated GIF for the given source and preset.
+    
+    This is a placeholder exporter: it writes a small marker file at the canonical output path so downstream steps can reference the expected GIF location.
+    
+    Returns:
+        out_path (str | None): Path to the created placeholder GIF file, or `None` if the export failed.
     """
     asset_id = source_path_to_id(source_path)
     os.makedirs(output_dir, exist_ok=True)
@@ -176,10 +176,12 @@ def export_animated_webp(
     **kwargs,
 ) -> str | None:
     """
-    Export an animated WebP from *source_path* using *preset*.
-
-    .. note::
-        PLACEHOLDER – actual frame rendering is not yet implemented.
+    Export an animated WebP for the given source using the provided preset.
+    
+    This is a placeholder exporter: it writes a small text placeholder file named "{asset_id}_{preset_id}.webp" into output_dir and does not perform real frame rendering.
+    
+    Returns:
+        str | None: Path to the created placeholder `.webp` file, or `None` if the export failed.
     """
     asset_id = source_path_to_id(source_path)
     os.makedirs(output_dir, exist_ok=True)
@@ -196,10 +198,12 @@ def export_webm(
     **kwargs,
 ) -> str | None:
     """
-    Export a VP9 WebM with alpha channel from *source_path* using *preset*.
-
-    .. note::
-        PLACEHOLDER – actual rendering via ffmpeg is not yet implemented.
+    Produce a WebM export file for the given source asset and preset (placeholder implementation).
+    
+    This function writes a small UTF-8 placeholder file named "{asset_id}_{preset_id}.webm" into the specified output directory and logs a warning that the exporter is a placeholder.
+    
+    Returns:
+        out_path (str): Path to the created placeholder WebM file, or `None` if the export failed.
     """
     asset_id = source_path_to_id(source_path)
     os.makedirs(output_dir, exist_ok=True)
@@ -216,10 +220,12 @@ def export_mov(
     **kwargs,
 ) -> str | None:
     """
-    Export a ProRes 4444 MOV with alpha channel from *source_path*.
-
-    .. note::
-        PLACEHOLDER – actual rendering via ffmpeg is not yet implemented.
+    Write a placeholder MOV export file for the given source and preset and return its path.
+    
+    This is a stub that writes a text placeholder at the canonical output filename (no real encoding is performed).
+    
+    Returns:
+        out_path (str | None): Filesystem path to the created placeholder MOV file, or `None` if creation failed.
     """
     asset_id = source_path_to_id(source_path)
     os.makedirs(output_dir, exist_ok=True)
@@ -238,12 +244,18 @@ def export_png_sequence(
     **kwargs,
 ) -> str | None:
     """
-    Export a numbered PNG frame sequence.
-
-    Returns the path to the directory containing the frames.
-
-    .. note::
-        PLACEHOLDER – actual frame rendering is not yet implemented.
+    Prepare a numbered PNG frame sequence directory for the given source and preset.
+    
+    This creates (if needed) a directory named "{asset_id}_{preset.id}_frames" inside output_dir, writes a placeholder frame file into that directory, and returns the directory path. Real frame rendering is not implemented; the function currently writes a textual placeholder to indicate where frames would be produced.
+    
+    Parameters:
+    	source_path (str): Path to the source asset; used to derive the asset id.
+    	preset (MotionPreset): Preset that determines naming; only its `id` is used.
+    	output_dir (str): Root directory where the frames directory will be created.
+    	fps (int): Frames per second that would be used for the sequence.
+    
+    Returns:
+    	seq_dir (str | None): Path to the created frames directory, or `None` on failure.
     """
     asset_id = source_path_to_id(source_path)
     seq_dir = os.path.join(output_dir, f"{asset_id}_{preset.id}_frames")
