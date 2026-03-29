@@ -68,7 +68,19 @@ core_engine = StixCoreEngine()
 telegram_adapter = TelegramStixAdapter(core_engine)
 
 async def validate_and_sync_packs(bot, user_id):
-    """Check each DB pack against Telegram. Prune deleted packs, sync renamed titles."""
+    """
+    Validate a user's sticker packs against Telegram and update the database accordingly.
+    
+    Parameters:
+        user_id (int): Telegram user id whose packs will be validated.
+    
+    Returns:
+        valid_packs (list[tuple[str, str]]): List of (pack_name, title) tuples for packs that exist on Telegram after sync.
+    
+    Notes:
+        - Updates database titles when Telegram reports a different title.
+        - Removes database records for packs that cannot be fetched from Telegram and logs those removals.
+    """
     packs = get_user_packs(user_id)
     valid = []
     for name, title in packs:
@@ -95,9 +107,21 @@ STICKER_EMOJI = ["✨"]
 DIV = "◈ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ◈"
 
 def cancel_keyboard():
+    """
+    Provide the standard cancel keyboard used in forge flows.
+    
+    Returns:
+        InlineKeyboardMarkup: An inline keyboard markup containing cancel/back controls appropriate for forge dialogs.
+    """
     return forge_cancel_keyboard()
 
 def home_keyboard():
+    """
+    Builds an inline keyboard containing a single "Home" navigation button.
+    
+    Returns:
+    	InlineKeyboardMarkup: Keyboard with one `InlineKeyboardButton("✦ Home")` that sends callback data `"nav:home"`.
+    """
     return InlineKeyboardMarkup([[InlineKeyboardButton("✦ Home", callback_data="nav:home")]])
 
 def back_home_keyboard(back):
@@ -155,6 +179,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── CREATE PACK ──────────────────────────────────────────────
 
 async def create_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Start the pack forging conversation, initialize a new forge draft, and prompt the user to provide a title.
+    
+    Initializes context.user_data["forge_draft"] with an empty ForgeDraft at the TITLE step and sends the first prompt (uses a callback edit when handling a callback query, otherwise replies to the message).
+    
+    Returns:
+    	WAITING_TITLE: Conversation state indicating the handler is waiting for the pack title.
+    """
     text = create_start_text()
     context.user_data["forge_draft"] = ForgeDraft(title="", step=ForgeStep.TITLE)
     if update.callback_query:
@@ -166,6 +198,14 @@ async def create_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def create_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Validate a proposed pack title and prompt the user to either retry or confirm the validated title.
+    
+    If the provided title is invalid, replies with validation feedback and prompts the user to try again. If valid, stores a forge draft with the validated title and asks the user to confirm the title.
+    
+    Returns:
+        `WAITING_TITLE` if validation failed and the user must re-enter the title, `WAITING_TITLE_CONFIRM` if the title was accepted and confirmation is requested.
+    """
     is_valid, validated_title = validate_pack_title(update.message.text)
     if not is_valid:
         await update.message.reply_text(
@@ -185,6 +225,17 @@ async def create_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def create_title_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the title confirmation callback in the pack forging conversation and advance the draft to the next step.
+    
+    Answers the callback, validates the in-progress ForgeDraft in user_data, and either:
+    - rewinds the draft to the title step and returns WAITING_TITLE when the user chooses to edit the title,
+    - advances the draft to the sticker step, stores the confirmed title in user_data["newpack_title"], and returns WAITING_STICKER when the user confirms,
+    - or ends the conversation (ConversationHandler.END) after editing the message to indicate a lost draft if no valid draft is present.
+    
+    @returns
+    Conversation state constant: `WAITING_TITLE` if the user chose to edit the title, `WAITING_STICKER` if the title was confirmed, or `ConversationHandler.END` if the draft was missing.
+    """
     query = update.callback_query
     await query.answer()
     action = query.data
@@ -217,6 +268,15 @@ async def create_title_confirm(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the forge flow's sticker upload step: process user media, create a new Telegram sticker set, and finalize the creation flow.
+    
+    This handler accepts an image/video/GIF/sticker ingredient, converts it into a sticker, creates a new sticker set for the user, and records the pack in the database. It sends and updates progress messages, and updates the per-user forge draft state in context.user_data when present.
+    
+    Returns:
+        WAITING_STICKER (int): Continue the conversation waiting for a valid ingredient when the media is unrecognized or conversion/download fails.
+        ConversationHandler.END: End the conversation when the pack is successfully created or the flow has concluded.
+    """
     user = update.message.from_user
     title = context.user_data.get('newpack_title', 'My Pack')
 
@@ -1434,6 +1494,11 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── MAIN ─────────────────────────────────────────────────────
 
 def main():
+    """
+    Initialize and run the Telegram bot application, register handlers, and start the web API thread.
+    
+    Sets up the application with bot commands and an optional chat menu web app button, registers command, conversation, inline and callback handlers for all bot features (create/addsticker/magic/sync/catalog/feature/manage/etc.), starts a background web API thread, and begins polling for updates. Logs configuration and startup errors; exits early on configuration failure.
+    """
     try:
         settings = get_settings()
     except ConfigError as exc:
