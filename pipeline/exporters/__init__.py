@@ -203,7 +203,7 @@ def export_webm(
     This function writes a small UTF-8 placeholder file named "{asset_id}_{preset_id}.webm" into the specified output directory and logs a warning that the exporter is a placeholder.
     
     Returns:
-        out_path (str): Path to the created placeholder WebM file, or `None` if the export failed.
+        out_path (str | None): Path to the created placeholder WebM file, or `None` if the export failed.
     """
     asset_id = source_path_to_id(source_path)
     os.makedirs(output_dir, exist_ok=True)
