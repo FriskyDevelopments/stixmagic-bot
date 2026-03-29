@@ -42,17 +42,7 @@ def _strip_at_sign(value: str) -> str:
 
 def _infer_public_base_url() -> str:
     explicit = os.environ.get("STIXMAGIC_PUBLIC_BASE_URL", "").strip().rstrip("/")
-    if explicit:
-        return explicit
-
-    domains = os.environ.get("REPLIT_DOMAINS", "").strip()
-    if not domains:
-        return ""
-
-    primary = domains.split(",")[0].strip()
-    if not primary:
-        return ""
-    return f"https://{primary}"
+    return explicit
 
 
 def _env_suffix() -> str:

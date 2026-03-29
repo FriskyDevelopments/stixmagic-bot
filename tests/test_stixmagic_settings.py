@@ -4,8 +4,7 @@ Tests for stixmagic/settings.py – environment-driven configuration resolution.
 Covers:
  - get_settings() with various env var combinations
  - AppSettings computed properties (miniapp_url, miniapp_api_base_url)
- - _infer_public_base_url: explicit var, Replit domains, fallback
- - _infer_bot_username: explicit var, missing raises ValueError (caught)
+ - _infer_public_base_url: explicit var and fallback behavior
  - database_path defaults and overrides
  - bot_mode defaults and overrides
 """
@@ -19,8 +18,6 @@ class TestGetSettings(unittest.TestCase):
 
     def _get_settings_with_env(self, env: dict):
         """Helper: run get_settings() with a controlled environment."""
-        # Must import inside to avoid module-level caching issues
-        import importlib
         import stixmagic.settings as mod
         with patch.dict(os.environ, env, clear=True):
             return mod.get_settings()
@@ -147,16 +144,13 @@ class TestGetSettings(unittest.TestCase):
         s = self._get_settings_with_env(env)
         self.assertEqual(s.public_base_url, "https://example.com")
 
-    def test_public_base_url_from_replit_domains(self):
+    def test_public_base_url_ignores_replit_domains(self):
         env = {"REPLIT_DOMAINS": "myapp.replit.app,secondary.replit.app"}
         s = self._get_settings_with_env(env)
-        self.assertEqual(s.public_base_url, "https://myapp.replit.app")
+        self.assertEqual(s.public_base_url, "")
 
-    def test_public_base_url_explicit_overrides_replit(self):
-        env = {
-            "STIXMAGIC_PUBLIC_BASE_URL": "https://custom.com",
-            "REPLIT_DOMAINS": "other.replit.app",
-        }
+    def test_public_base_url_explicit_set(self):
+        env = {"STIXMAGIC_PUBLIC_BASE_URL": "https://custom.com"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.public_base_url, "https://custom.com")
 
