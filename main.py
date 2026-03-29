@@ -197,7 +197,7 @@ async def create_title_confirm(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         return ConversationHandler.END
 
-    if action == "forge_edit":
+    if action == "menu_title_edit":
         context.user_data["forge_draft"] = ForgeDraft(title=draft.title, step=ForgeStep.TITLE)
         await query.edit_message_text(
             create_start_text(),
@@ -1493,7 +1493,7 @@ def main():
         entry_points=[CommandHandler("create", create_start), CallbackQueryHandler(create_start, pattern="^menu_create$")],
         states={
             WAITING_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, create_title)],
-            WAITING_TITLE_CONFIRM: [CallbackQueryHandler(create_title_confirm, pattern="^forge_(confirm|edit)$")],
+            WAITING_TITLE_CONFIRM: [CallbackQueryHandler(create_title_confirm, pattern="^menu_title_(ok|edit)$")],
             WAITING_STICKER: [MessageHandler(filters.ALL & ~filters.COMMAND, create_sticker)]
         },
         fallbacks=[CommandHandler("cancel", cancel)]
