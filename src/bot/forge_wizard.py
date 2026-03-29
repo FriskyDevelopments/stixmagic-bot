@@ -41,8 +41,8 @@ def cancel_keyboard() -> InlineKeyboardMarkup:
 def title_confirmation_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("✅ Seal Name", callback_data="forge_title_ok")],
-            [InlineKeyboardButton("✏️ Rename", callback_data="forge_title_edit")],
+            [InlineKeyboardButton("✅ Seal Name", callback_data="forge_confirm")],
+            [InlineKeyboardButton("✏️ Rename", callback_data="forge_edit")],
             [InlineKeyboardButton("✕ Cancel", callback_data="nav:home")],
         ]
     )
@@ -53,7 +53,7 @@ def create_start_text() -> str:
         f"⚗️ <b>FORGE A PACK</b>\n"
         f"{DIVIDER}\n\n"
         "Name the vessel — what shall this pack be called?\n\n"
-        "<i>Display title · up to 64 characters.</i>"
+        f"<i>Display title · up to {TITLE_LIMIT} characters.</i>"
     )
 
 
