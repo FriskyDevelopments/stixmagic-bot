@@ -24,6 +24,9 @@ __all__ = [
     "convert_video_to_sticker",
     "download_file_bytes",
     "extract_file_info",
+    "async_convert_to_sticker",
+    "async_convert_video_to_sticker",
+    "async_apply_mask_to_image",
 ]
 
 # Expose legacy API
@@ -35,12 +38,12 @@ extract_file_info = _extract_file_info_impl
 
 
 async def async_convert_to_sticker(file_bytes: io.BytesIO) -> io.BytesIO | None:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, convert_to_sticker, file_bytes)
 
 
 async def async_convert_video_to_sticker(file_bytes: io.BytesIO) -> io.BytesIO | None:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, convert_video_to_sticker, file_bytes)
 
 
@@ -49,7 +52,7 @@ async def async_apply_mask_to_image(
     mask_bytes: io.BytesIO,
     inverted: bool = False,
 ) -> io.BytesIO:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     from functools import partial
     return await loop.run_in_executor(
         None, partial(apply_mask_to_image, source_bytes, mask_bytes, inverted=inverted)
