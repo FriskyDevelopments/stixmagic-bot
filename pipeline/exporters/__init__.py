@@ -161,7 +161,6 @@ def export_gif(
         This stub creates an empty output file so downstream pipeline
         steps can reference the expected path.
     """
-    # TODO: implement frame rendering using Pillow
     asset_id = source_path_to_id(source_path)
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, _output_name(asset_id, preset.id, "gif"))
@@ -182,7 +181,6 @@ def export_animated_webp(
     .. note::
         PLACEHOLDER – actual frame rendering is not yet implemented.
     """
-    # TODO: implement frame rendering using Pillow / webp encoder
     asset_id = source_path_to_id(source_path)
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, _output_name(asset_id, preset.id, "webp"))
@@ -203,7 +201,6 @@ def export_webm(
     .. note::
         PLACEHOLDER – actual rendering via ffmpeg is not yet implemented.
     """
-    # TODO: implement via ffmpeg libvpx-vp9 with yuva420p pixel format
     asset_id = source_path_to_id(source_path)
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, _output_name(asset_id, preset.id, "webm"))
@@ -224,7 +221,6 @@ def export_mov(
     .. note::
         PLACEHOLDER – actual rendering via ffmpeg is not yet implemented.
     """
-    # TODO: implement via ffmpeg prores_ks codec
     asset_id = source_path_to_id(source_path)
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, _output_name(asset_id, preset.id, "mov"))
@@ -249,7 +245,6 @@ def export_png_sequence(
     .. note::
         PLACEHOLDER – actual frame rendering is not yet implemented.
     """
-    # TODO: implement frame-by-frame rendering using Pillow
     asset_id = source_path_to_id(source_path)
     seq_dir = os.path.join(output_dir, f"{asset_id}_{preset.id}_frames")
     os.makedirs(seq_dir, exist_ok=True)
