@@ -1,5 +1,6 @@
 from pathlib import Path
 import sys
+import argparse
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -14,10 +15,16 @@ def _require(name: str, value: str) -> None:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Check Stix Magic configuration.")
+    parser.add_argument("--mode", choices=("ci", "production"), default="production")
+    args = parser.parse_args()
+
     settings = get_settings()
     _require("telegram_bot_token", settings.telegram_bot_token)
     _require("stixmagic_api_key", settings.stixmagic_api_key)
-    _require("webhook_secret", settings.webhook_secret)
+
+    if args.mode != "ci":
+        _require("webhook_secret", settings.webhook_secret)
 
     print(
         "Configuration OK:",

@@ -3,16 +3,27 @@ import re
 import sqlite3
 import time
 import asyncio
+import logging
 from functools import wraps
 from secrets import token_urlsafe
 from urllib.parse import urlparse
 
 from flask import Flask, g, jsonify, request, send_from_directory
 
-from stixmagic.contracts import API_VERSION, PRODUCT_NAME
+from stixmagic.contracts import (
+    API_VERSION,
+    PRODUCT_NAME,
+    START_PAYLOAD_ADD,
+    START_PAYLOAD_CREATE,
+    START_PAYLOAD_FEATURE,
+    START_PAYLOAD_MAGIC,
+    START_PAYLOAD_MANAGE,
+)
 from stixmagic.settings import get_settings
 from stixmagic.telegram_auth import TelegramInitDataError, validate_init_data
 from moderation import create_default_harness
+
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder="static")
 
@@ -43,6 +54,12 @@ _MINIAPP_CORS_ORIGINS = frozenset(
     )
     if origin
 )
+
+if not _MINIAPP_CORS_ORIGINS:
+    logger.warning(
+        "CORS for miniapp routes is disabled: neither SETTINGS.public_base_url "
+        "nor SETTINGS.miniapp_url are set. Consider setting STIXMAGIC_PUBLIC_BASE_URL."
+    )
 
 
 def get_db():
@@ -298,11 +315,11 @@ def miniapp_bootstrap():
     if _settings_str("telegram_bot_username"):
         username = _settings_str("telegram_bot_username")
         data["bot"]["links"] = {
-            "create_pack": f"https://t.me/{username}?start=create-pack",
-            "add_sticker": f"https://t.me/{username}?start=add-sticker",
-            "manage_packs": f"https://t.me/{username}?start=manage-packs",
-            "magic_cut": f"https://t.me/{username}?start=magic-cut",
-            "feature_pack": f"https://t.me/{username}?start=feature-pack",
+            "create_pack": f"https://t.me/{username}?start={START_PAYLOAD_CREATE}",
+            "add_sticker": f"https://t.me/{username}?start={START_PAYLOAD_ADD}",
+            "manage_packs": f"https://t.me/{username}?start={START_PAYLOAD_MANAGE}",
+            "magic_cut": f"https://t.me/{username}?start={START_PAYLOAD_MAGIC}",
+            "feature_pack": f"https://t.me/{username}?start={START_PAYLOAD_FEATURE}",
         }
     return ok(data)
 
@@ -315,11 +332,11 @@ def miniapp_intent():
         return err("JSON body required", 400, "invalid_body")
     action = (payload.get("action") or "").strip()
     action_to_start = {
-        "create_pack": "create-pack",
-        "add_sticker": "add-sticker",
-        "manage_packs": "manage-packs",
-        "magic_cut": "magic-cut",
-        "feature_pack": "feature-pack",
+        "create_pack": START_PAYLOAD_CREATE,
+        "add_sticker": START_PAYLOAD_ADD,
+        "manage_packs": START_PAYLOAD_MANAGE,
+        "magic_cut": START_PAYLOAD_MAGIC,
+        "feature_pack": START_PAYLOAD_FEATURE,
     }
     if action not in action_to_start:
         return err("Invalid miniapp intent action", 400, "invalid_action")
