@@ -1,3 +1,4 @@
+import logging
 import os
 import sqlite3
 import time
@@ -6,6 +7,8 @@ from functools import wraps
 from flask import Flask, jsonify, request, send_from_directory
 
 import config
+
+_log = logging.getLogger(__name__)
 
 DB_FILE = config.DB_FILE
 
@@ -158,7 +161,11 @@ def miniapp_packs():
             packs = _run_async(_validate_packs_async(config.BOT_TOKEN, uid))
             return ok(packs)
         except Exception as e:
-            print(f"[miniapp_packs] Telegram validation failed for user {uid} (BOT_TOKEN present): {e}. Falling back to DB-only response.")
+            _log.warning(
+                "[miniapp_packs] Telegram validation failed for user %s "
+                "(BOT_TOKEN present): %s. Falling back to DB-only response.",
+                uid, e,
+            )
             pass
 
     conn = get_db()

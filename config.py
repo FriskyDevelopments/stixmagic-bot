@@ -8,8 +8,8 @@ Environment is controlled via the APP_ENV environment variable:
   an immediate startup failure.
 
 Token selection:
-  - production  : TELEGRAM_BOT_TOKEN (required)
-  - development : DEV_BOT_TOKEN (required; falls back to nothing)
+  - production  : TELEGRAM_BOT_TOKEN (required; DEV_BOT_TOKEN must NOT be set)
+  - development : DEV_BOT_TOKEN (required; TELEGRAM_BOT_TOKEN must NOT be set)
 
 Quick reference:
   config.ENVIRONMENT          "development" | "production"

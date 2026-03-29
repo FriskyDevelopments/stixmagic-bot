@@ -20,6 +20,9 @@ production users:
 
 - Uses `DEV_BOT_TOKEN` (required — no fallback to `TELEGRAM_BOT_TOKEN`).
   If `DEV_BOT_TOKEN` is not set the app refuses to start.
+  `TELEGRAM_BOT_TOKEN` must NOT be set in development; if it is present the
+  app refuses to start to prevent accidentally pointing dev settings at the
+  production bot.
 - Sticker pack names are prefixed with `dev_` so they are clearly separate from
   production packs (e.g. `dev_stix_123_abcde_by_stixmagicdevbot`).
 - Debug logging is enabled (`DEBUG` level).
@@ -35,8 +38,9 @@ production users:
 - `INFO`-level logging only.
 - No experimental flags active by default.
 - **Safety checks**:
-  - If `APP_ENV=production` but the loaded token matches `DEV_BOT_TOKEN`, the
-    app refuses to start.
+  - If `APP_ENV=production` and `DEV_BOT_TOKEN` is set (even if it differs from
+    `TELEGRAM_BOT_TOKEN`), the app refuses to start. The dev token must not be
+    present in the production environment at all.
   - If `EXPECTED_PROD_BOT_ID` is set, the token's numeric bot ID must match —
     deterministic identity check independent of `DEV_BOT_TOKEN` being present.
   - The `/env` command is blocked (fail-closed) when `ADMIN_USER_IDS` is empty.
