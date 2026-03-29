@@ -20,10 +20,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     settings = get_settings()
-    _require("telegram_bot_token", settings.telegram_bot_token)
-    _require("stixmagic_api_key", settings.stixmagic_api_key)
 
     if args.mode != "ci":
+        _require("telegram_bot_token", settings.telegram_bot_token)
+        _require("stixmagic_api_key", settings.stixmagic_api_key)
         _require("webhook_secret", settings.webhook_secret)
 
     print(

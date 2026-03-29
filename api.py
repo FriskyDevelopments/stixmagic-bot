@@ -794,4 +794,4 @@ def server_error(e):
 
 
 def run_api():
-    app.run(host="0.0.0.0", port=settings.port, debug=False, use_reloader=False)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8080")), debug=False, use_reloader=False)
