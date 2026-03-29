@@ -55,7 +55,21 @@ def _infer_public_base_url() -> str:
     return f"https://{primary}"
 
 
+def _env_suffix() -> str:
+    mode = os.environ.get("APP_ENV", "development").strip().lower()
+    return {"production": "PROD", "test": "TEST"}.get(mode, "DEV")
+
+
+def _resolve_env(*names: str) -> str:
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return ""
+
+
 def get_settings() -> AppSettings:
+    suffix = _env_suffix()
     public_base_url = _infer_public_base_url()
     miniapp_path = os.environ.get("STIXMAGIC_MINIAPP_PATH", "/miniapp").strip() or "/miniapp"
     if not miniapp_path.startswith("/"):
@@ -64,9 +78,9 @@ def get_settings() -> AppSettings:
     api_base_url = f"{public_base_url}/api" if public_base_url else "/api"
 
     return AppSettings(
-        telegram_bot_token=os.environ.get("TELEGRAM_BOT_TOKEN", "").strip(),
+        telegram_bot_token=_resolve_env("TELEGRAM_BOT_TOKEN", f"BOT_TOKEN_{suffix}"),
         telegram_bot_username=_strip_at_sign(os.environ.get("TELEGRAM_BOT_USERNAME", "").strip()),
-        stixmagic_api_key=os.environ.get("STIXMAGIC_API_KEY", "").strip(),
+        stixmagic_api_key=_resolve_env("STIXMAGIC_API_KEY", f"STIXMAGIC_API_KEY_{suffix}"),
         database_path=os.environ.get("STIXMAGIC_DB_PATH", "").strip() or "bot.db",
         public_base_url=public_base_url,
         api_base_url=api_base_url,

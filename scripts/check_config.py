@@ -8,8 +8,16 @@ if str(ROOT) not in sys.path:
 from stixmagic.settings import get_settings
 
 
+def _require(name: str, value: str) -> None:
+    if not str(value).strip():
+        raise SystemExit(f"Missing required configuration: {name}")
+
+
 if __name__ == "__main__":
     settings = get_settings()
+    _require("telegram_bot_token", settings.telegram_bot_token)
+    _require("stixmagic_api_key", settings.stixmagic_api_key)
+    _require("webhook_secret", settings.webhook_secret)
 
     print(
         "Configuration OK:",

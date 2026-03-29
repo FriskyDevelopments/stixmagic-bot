@@ -42,6 +42,25 @@ class TestGetSettings(unittest.TestCase):
         self.assertEqual(s.public_base_url, "https://example.com")
         self.assertEqual(s.bot_mode, "polling")
 
+    def test_token_falls_back_to_env_suffix(self):
+        env = {"APP_ENV": "development", "BOT_TOKEN_DEV": "123:abc"}
+        s = self._get_settings_with_env(env)
+        self.assertEqual(s.telegram_bot_token, "123:abc")
+
+    def test_api_key_falls_back_to_env_suffix(self):
+        env = {"APP_ENV": "production", "STIXMAGIC_API_KEY_PROD": "prod-key"}
+        s = self._get_settings_with_env(env)
+        self.assertEqual(s.stixmagic_api_key, "prod-key")
+
+    def test_unsuffixed_token_precedence_over_fallback(self):
+        env = {
+            "APP_ENV": "production",
+            "TELEGRAM_BOT_TOKEN": "111:direct",
+            "BOT_TOKEN_PROD": "222:fallback",
+        }
+        s = self._get_settings_with_env(env)
+        self.assertEqual(s.telegram_bot_token, "111:direct")
+
     def test_defaults_when_optional_vars_absent(self):
         env = {}
         s = self._get_settings_with_env(env)
