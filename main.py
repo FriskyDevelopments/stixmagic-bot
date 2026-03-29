@@ -249,12 +249,16 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not sticker_file:
             await ctrl.stop()
             await progress.edit_text("⚠ Download failed. Please try again.")
+            if isinstance(draft, ForgeDraft):
+                context.user_data["forge_draft"] = ForgeDraft(title=draft.title, step=ForgeStep.STICKER)
             return WAITING_STICKER
 
         generated = await telegram_adapter.generate_pack(sticker_file, media.media_type)
         if not generated:
             await ctrl.stop()
             await progress.edit_text("⚠ Conversion failed. Please try again.")
+            if isinstance(draft, ForgeDraft):
+                context.user_data["forge_draft"] = ForgeDraft(title=draft.title, step=ForgeStep.STICKER)
             return WAITING_STICKER
 
         input_sticker = InputSticker(
