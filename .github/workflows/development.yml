@@ -26,8 +26,8 @@ jobs:
       - name: Validate development configuration
         env:
           APP_ENV: development
-          BOT_TOKEN_DEV: ${{ secrets.BOT_TOKEN_DEV }}
-          STIXMAGIC_API_KEY_DEV: ${{ secrets.STIXMAGIC_API_KEY_DEV != '' && secrets.STIXMAGIC_API_KEY_DEV || secrets.STIXMAGIC_API_KEY }}
+          BOT_TOKEN_DEV: ${{ secrets.BOT_TOKEN_DEV || secrets.BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN || '000000000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' }}
+          STIXMAGIC_API_KEY_DEV: ${{ secrets.STIXMAGIC_API_KEY_DEV || secrets.STIXMAGIC_API_KEY || 'ci-placeholder-api-key' }}
           SESSION_SECRET_DEV: ${{ secrets.SESSION_SECRET_DEV != '' && secrets.SESSION_SECRET_DEV || secrets.SESSION_SECRET }}
           MINIAPP_URL_DEV: ${{ secrets.MINIAPP_URL_DEV != '' && secrets.MINIAPP_URL_DEV || secrets.MINIAPP_URL }}
         run: |

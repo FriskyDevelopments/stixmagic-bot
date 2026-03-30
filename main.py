@@ -68,7 +68,14 @@ core_engine = StixCoreEngine()
 telegram_adapter = TelegramStixAdapter(core_engine)
 
 async def validate_and_sync_packs(bot, user_id):
-    """Check each DB pack against Telegram. Prune deleted packs, sync renamed titles."""
+    """
+    Validate DB packs against Telegram sticker sets, removing missing packs and updating renamed titles.
+    
+    Queries Telegram for each pack recorded for the given user. If a sticker set cannot be retrieved, its DB record is deleted; if the Telegram title differs from the DB title, the DB title is updated. Successful lookups are returned as name/title pairs.
+    
+    Returns:
+        list[tuple[str, str]]: Valid (pack_name, synced_title) pairs after synchronization.
+    """
     packs = get_user_packs(user_id)
     valid = []
     for name, title in packs:
@@ -95,9 +102,21 @@ STICKER_EMOJI = ["✨"]
 DIV = "◈ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ◈"
 
 def cancel_keyboard():
+    """
+    Builds the cancel inline keyboard used by the forge wizard.
+    
+    Returns:
+        telegram.InlineKeyboardMarkup: An inline keyboard markup with a cancel action tailored for the forge flow.
+    """
     return forge_cancel_keyboard()
 
 def home_keyboard():
+    """
+    Builds the inline keyboard used to navigate back to the home menu.
+    
+    Returns:
+        InlineKeyboardMarkup: A keyboard containing a single "✦ Home" button with callback data "nav:home".
+    """
     return InlineKeyboardMarkup([[InlineKeyboardButton("✦ Home", callback_data="nav:home")]])
 
 def back_home_keyboard(back):
@@ -155,6 +174,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── CREATE PACK ──────────────────────────────────────────────
 
 async def create_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Begin the pack creation (forge) flow by initializing a draft and prompting the user to enter the pack title.
+    
+    Initializes context.user_data["forge_draft"] with an empty title and step set to TITLE, then sends or edits a message with the forge start text and a cancel keyboard.
+    
+    Returns:
+    	WAITING_TITLE (int): Conversation state indicating the handler is waiting for the pack title.
+    """
     text = create_start_text()
     context.user_data["forge_draft"] = ForgeDraft(title="", step=ForgeStep.TITLE)
     if update.callback_query:
@@ -166,6 +193,14 @@ async def create_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def create_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Validate a proposed pack title and prompt the user to confirm or retry.
+    
+    On invalid input, sends an error reply with a cancel keyboard and keeps the conversation at the title entry state. On valid input, stores a ForgeDraft with the validated title and a confirmation step in user_data, sends a title confirmation message with a confirmation keyboard, and advances the conversation to the title-confirmation state.
+    
+    Returns:
+        int: Conversation state constant indicating the next step (`WAITING_TITLE` if validation failed, `WAITING_TITLE_CONFIRM` if validation succeeded).
+    """
     is_valid, validated_title = validate_pack_title(update.message.text)
     if not is_valid:
         await update.message.reply_text(
@@ -185,6 +220,14 @@ async def create_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def create_title_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the title confirmation callback in the forge wizard, advancing the flow to sticker upload or allowing title editing.
+    
+    If the stored draft is missing or invalid, informs the user and ends the conversation. If the user chooses to edit the title, rewinds the draft to the title entry state and prompts for a new title. If the user confirms the title, saves the finalized title into user_data, advances the draft to the sticker step, and prompts the user to send sticker media.
+    
+    @returns
+    `WAITING_TITLE` if the user chose to edit the title, `WAITING_STICKER` after a successful confirmation, or `ConversationHandler.END` if the draft was lost.
+    """
     query = update.callback_query
     await query.answer()
     action = query.data
@@ -217,6 +260,14 @@ async def create_title_confirm(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle incoming media to create a new Telegram sticker pack for the user.
+    
+    Parses the message media, converts the media into a sticker, creates a new sticker set under a generated pack name, records the pack in the database, and updates the user with progress and result messages (success UI with links/buttons or a friendly failure message with retry/home options). Clears any forge-related user state before ending the conversation.
+    
+    Returns:
+        ConversationHandler.END: Ends the conversation.
+    """
     user = update.message.from_user
     title = context.user_data.get('newpack_title', 'My Pack')
 
@@ -1438,6 +1489,11 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── MAIN ─────────────────────────────────────────────────────
 
 def main():
+    """
+    Initialize and run the Telegram bot and its supporting web API.
+    
+    Sets up configuration, registers bot commands and all command/callback/inline handlers and ConversationHandlers, starts the background web API thread, and begins the bot polling loop. Logs configuration or initialization errors and exits early on configuration failure.
+    """
     try:
         settings = get_settings()
     except ConfigError as exc:
