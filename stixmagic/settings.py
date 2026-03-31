@@ -9,6 +9,11 @@ _dotenv_loaded = False
 
 
 def _ensure_dotenv() -> None:
+    """
+    Load environment variables from a .env file once for the running process.
+    
+    This function is idempotent and does nothing if the environment file has already been loaded.
+    """
     global _dotenv_loaded
     if not _dotenv_loaded:
         load_dotenv()
@@ -30,12 +35,24 @@ class AppSettings:
 
     @property
     def miniapp_url(self) -> str:
+        """
+        Builds the full public URL for the miniapp.
+        
+        Returns:
+            The miniapp URL formed by concatenating `public_base_url` and `miniapp_path`, or an empty string if `public_base_url` is empty.
+        """
         if not self.public_base_url:
             return ""
         return f"{self.public_base_url}{self.miniapp_path}"
 
     @property
     def miniapp_api_base_url(self) -> str:
+        """
+        Return the API base URL for the miniapp.
+        
+        Returns:
+            The miniapp API base URL formed by appending "/miniapp" to `api_base_url`, or an empty string if `api_base_url` is empty.
+        """
         if not self.api_base_url:
             return ""
         return f"{self.api_base_url}/miniapp"
@@ -43,21 +60,54 @@ class AppSettings:
 
 
 def _strip_at_sign(value: str) -> str:
+    """
+    Remove a leading '@' character from a string if present.
+    
+    Parameters:
+        value (str): The input string that may begin with '@'.
+    
+    Returns:
+        str: The input string without a leading '@' if one was present, otherwise the original string.
+    """
     return value[1:] if value.startswith("@") else value
 
 
 
 def _infer_public_base_url() -> str:
+    """
+    Determine the public base URL for the application.
+    
+    Reads the STIXMAGIC_PUBLIC_BASE_URL environment variable, strips surrounding whitespace, and removes a trailing slash if present.
+    
+    Returns:
+        str: The normalized public base URL or an empty string if the environment variable is unset or blank.
+    """
     explicit = os.environ.get("STIXMAGIC_PUBLIC_BASE_URL", "").strip().rstrip("/")
     return explicit
 
 
 def _env_suffix() -> str:
+    """
+    Map the APP_ENV environment value to a short uppercase suffix.
+    
+    Reads the `APP_ENV` environment variable (trimmed and lowercased) and returns:
+    `"PROD"` if it equals `"production"`, `"TEST"` if it equals `"test"`, and
+    `"DEV"` for any other value or if `APP_ENV` is unset.
+    """
     mode = os.environ.get("APP_ENV", "development").strip().lower()
     return {"production": "PROD", "test": "TEST"}.get(mode, "DEV")
 
 
 def _resolve_env(*names: str) -> str:
+    """
+    Get the first non-empty environment variable value from the provided names, after trimming whitespace.
+    
+    Parameters:
+        names (str): Environment variable names in priority order.
+    
+    Returns:
+        str: The first non-empty trimmed value found for the given names, or an empty string if none are set.
+    """
     for name in names:
         value = os.environ.get(name, "").strip()
         if value:
@@ -66,6 +116,17 @@ def _resolve_env(*names: str) -> str:
 
 
 def get_settings() -> AppSettings:
+    """
+    Builds an AppSettings instance by reading and normalizing configuration from environment variables.
+    
+    Ensures a .env file is loaded (if present), derives an environment suffix from APP_ENV, computes base URLs and miniapp path defaults, and resolves required and optional settings from the environment.
+    
+    Returns:
+        AppSettings: Configuration values populated from environment variables.
+    
+    Raises:
+        ValueError: If no Telegram bot token is found in either `TELEGRAM_BOT_TOKEN` or `BOT_TOKEN_<suffix>`, where `<suffix>` is derived from `APP_ENV`.
+    """
     _ensure_dotenv()
 
     suffix = _env_suffix()

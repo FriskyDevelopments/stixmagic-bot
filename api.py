@@ -38,6 +38,15 @@ moderation_harness = create_default_harness()
 
 
 def _normalize_origin(url: str) -> str:
+    """
+    Normalize an origin or URL to a canonical origin string.
+    
+    Parameters:
+        url (str): The origin or URL to normalize; may be empty.
+    
+    Returns:
+        str: The canonical origin as "scheme://host[:port]" when the input includes a scheme and netloc; otherwise the input with any trailing slashes removed, or an empty string if the input is falsy.
+    """
     if not url:
         return ""
     parsed = urlparse(url)
@@ -63,17 +72,40 @@ if not _MINIAPP_CORS_ORIGINS:
 
 
 def get_db():
+    """
+    Open a SQLite connection to the configured database path.
+    
+    Returns:
+        sqlite3.Connection: A connection to SETTINGS.database_path with `row_factory` set to `sqlite3.Row`.
+    """
     conn = sqlite3.connect(SETTINGS.database_path)
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def _settings_str(name: str, default: str = "") -> str:
+    """
+    Get a SETTINGS attribute by name and return it as a string, falling back to a default if absent or not a string.
+    
+    Returns:
+        The SETTINGS.<name> value if it exists and is a string, otherwise `default`.
+    """
     value = getattr(SETTINGS, name, default)
     return value if isinstance(value, str) else default
 
 
 def ok(data, status=200, **meta):
+    """
+    Create a Flask JSON response for a successful API call.
+    
+    Parameters:
+        data: The payload to include under the "data" key.
+        status (int): HTTP status code for the response (default 200).
+        **meta: Additional top-level fields to merge into the JSON body.
+    
+    Returns:
+        flask.Response: A JSON response with structure `{"ok": True, "data": <data>, ...}` and the given HTTP status code.
+    """
     body = {"ok": True, "data": data}
     body.update(meta)
     resp = jsonify(body)
@@ -92,6 +124,17 @@ def err(message, status=400, code=None):
 
 @app.after_request
 def add_headers(response):
+    """
+    Apply CORS, allowed headers/methods, and the API version header to the given Flask response.
+    
+    For requests under /api/miniapp/, set Access-Control-Allow-Origin to the request Origin only if that origin matches the configured miniapp CORS origins and set Vary: Origin; for other routes set Access-Control-Allow-Origin to "*". Always set Access-Control-Allow-Headers, Access-Control-Allow-Methods, and X-API-Version.
+    
+    Parameters:
+        response: The Flask response object to modify.
+    
+    Returns:
+        The modified Flask response object with CORS and version headers applied.
+    """
     is_miniapp_route = request.path.startswith("/api/miniapp/")
     origin = _normalize_origin(request.headers.get("Origin", ""))
 
@@ -115,6 +158,15 @@ def handle_preflight():
 
 
 def require_api_key(f):
+    """
+    Decorator that requires the incoming request to present the configured API key.
+    
+    Parameters:
+        f (callable): The Flask view function to wrap.
+    
+    Returns:
+        callable: A wrapped view function that returns a 401 JSON error with code "unauthorized" when the `X-API-Key` header or `api_key` query parameter is missing or does not match the configured API key; otherwise calls the original view.
+    """
     @wraps(f)
     def decorated(*args, **kwargs):
         key = request.headers.get("X-API-Key") or request.args.get("api_key")
@@ -125,6 +177,13 @@ def require_api_key(f):
 
 
 def _telegram_init_data_from_request() -> str:
+    """
+    Extract Telegram Mini App init data from the current Flask request.
+    
+    Checks the `X-Telegram-Init-Data` header first, then the `Authorization` header for a value prefixed with `tma `.
+    Returns:
+        str: The init data string if found, or an empty string otherwise.
+    """
     header_value = request.headers.get("X-Telegram-Init-Data", "").strip()
     if header_value:
         return header_value
@@ -136,6 +195,21 @@ def _telegram_init_data_from_request() -> str:
 
 
 def require_miniapp_auth(f):
+    """
+    Require valid Telegram Mini App init data for a Flask route and attach the validated session to flask.g.
+    
+    Wraps a view function to:
+    - extract Telegram init data from the request,
+    - validate it using the configured Telegram bot token,
+    - ensure the session contains an integer `user.id`,
+    - store the validated session as `g.miniapp_session` and the user id as `g.miniapp_user_id` before calling the wrapped handler.
+    
+    Parameters:
+        f (callable): The Flask view function to wrap.
+    
+    Returns:
+        callable: A wrapper around `f` that enforces Mini App authentication. On invalid or missing init data the wrapper returns an HTTP 401 JSON error with code `"miniapp_unauthorized"`.
+    """
     @wraps(f)
     def decorated(*args, **kwargs):
         init_data = _telegram_init_data_from_request()
@@ -157,6 +231,21 @@ def require_miniapp_auth(f):
 
 
 def paginate(query_result):
+    """
+    Builds a paginated view of query_result according to `page` and `limit` URL query parameters.
+    
+    Parameters:
+        query_result (Sequence): Full list-like sequence of items to paginate.
+    
+    Returns:
+        tuple: A pair (items, pagination) where:
+            - items (list): Slice of `query_result` for the requested page.
+            - pagination (dict): Metadata with keys:
+                - page (int): Requested page number, coerced to at least 1 (defaults to 1 on invalid input).
+                - limit (int): Number of items per page, coerced to the range 1–100 (defaults to PAGE_SIZE on invalid input).
+                - total (int): Total number of items in `query_result`.
+                - pages (int): Total number of pages (at least 1).
+    """
     try:
         page = max(1, int(request.args.get("page", 1)))
     except ValueError:
@@ -240,6 +329,14 @@ async def _validate_packs_async(token, user_id):
 @app.route("/api/miniapp/packs")
 @require_miniapp_auth
 def miniapp_packs():
+    """
+    Fetch the authenticated miniapp user's sticker packs, validating stored titles against Telegram when a valid bot token is available.
+    
+    If Telegram validation is unavailable or fails, returns the packs as read from the local database without external verification.
+    
+    Returns:
+        A JSON `ok` payload whose data is a list of pack objects. Each object contains `name`, `title`, and `link` (a t.me addstickers URL).
+    """
     uid = g.miniapp_user_id
 
     raw_token = SETTINGS.telegram_bot_token
@@ -266,6 +363,12 @@ def miniapp_packs():
 @app.route("/api/miniapp/settings")
 @require_miniapp_auth
 def miniapp_settings_get():
+    """
+    Return the miniapp settings for the currently authenticated miniapp user.
+    
+    Returns:
+        dict: Contains `user_id` (int) and `mask_inverted` (`true` if the user's mask setting is inverted, `false` otherwise). Default `mask_inverted` is `false` when no settings exist for the user.
+    """
     user_id = g.miniapp_user_id
     conn = get_db()
     c = conn.cursor()
@@ -278,6 +381,15 @@ def miniapp_settings_get():
 @app.route("/api/miniapp/settings", methods=["PATCH"])
 @require_miniapp_auth
 def miniapp_settings_patch():
+    """
+    Update the authenticated miniapp user's `mask_inverted` setting and return the stored value.
+    
+    If `"mask_inverted"` is present in the JSON body it is coerced to a boolean and upserted into the user's settings; the handler then returns the resulting stored value. If the request has no JSON body, an error response is returned indicating a JSON body is required with code `"invalid_body"`.
+    
+    @returns
+        On success: JSON object {"user_id": <int>, "mask_inverted": <bool>}.
+        On error (missing JSON): JSON error response with message "JSON body required" and code "invalid_body".
+    """
     user_id = g.miniapp_user_id
     data = request.get_json(silent=True)
     if not data:
@@ -301,6 +413,14 @@ def miniapp_settings_patch():
 @app.route("/api/miniapp/bootstrap")
 @require_miniapp_auth
 def miniapp_bootstrap():
+    """
+    Builds the bootstrap payload for the authenticated Telegram mini app session.
+    
+    The payload includes the authenticated user's session info, bot configuration (including deep links when a bot username is configured), launch metadata (surface and start parameter), and API base URLs.
+    
+    Returns:
+    	A Flask JSON response containing the bootstrap payload with keys: `user`, `bot` (may include `username` and `links`), `launch`, and `api`.
+    """
     session = g.miniapp_session
     user = session["user"]
     data = {
@@ -327,6 +447,22 @@ def miniapp_bootstrap():
 @app.route("/api/miniapp/intent", methods=["POST"])
 @require_miniapp_auth
 def miniapp_intent():
+    """
+    Validate the miniapp intent request and return a generated action token and an optional Telegram deep link.
+    
+    Expects a JSON body with an "action" field matching one of: "create_pack", "add_sticker", "manage_packs", "magic_cut", "feature_pack".
+    If the application setting `telegram_bot_username` is configured, the response includes a deep link to start the bot with the corresponding start payload.
+    
+    Returns:
+        dict: Object with keys:
+            - action (str): The validated action string.
+            - token (str): A short, URL-safe token for the intent.
+            - deep_link (str): A Telegram deep link when a bot username is configured, otherwise an empty string.
+    
+    Errors:
+        Returns a 400 error with code "invalid_body" if the request body is missing or not JSON.
+        Returns a 400 error with code "invalid_action" if the "action" value is missing or not one of the allowed actions.
+    """
     payload = request.get_json(silent=True)
     if not payload:
         return err("JSON body required", 400, "invalid_body")
@@ -378,6 +514,20 @@ def moderation_dev_replay():
 
 @app.route("/api/health")
 def health():
+    """
+    Return a JSON health-check payload summarizing service status.
+    
+    The response payload includes service name, API version, bot mode, database status, and the current UNIX timestamp.
+    
+    Returns:
+        Flask response: JSON object with keys:
+            - status: "ok"
+            - service: product name
+            - version: API version
+            - bot_mode: current bot mode from settings
+            - db: "ok" if the database query succeeded, "error" otherwise
+            - timestamp: integer UNIX timestamp
+    """
     conn = get_db()
     try:
         conn.execute("SELECT 1")
@@ -794,4 +944,9 @@ def server_error(e):
 
 
 def run_api():
+    """
+    Start the Flask API server bound to all network interfaces using the PORT environment variable or 8080 by default.
+    
+    Runs the app with debug mode disabled and the reloader disabled; this call blocks the current thread until the server stops.
+    """
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8080")), debug=False, use_reloader=False)

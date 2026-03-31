@@ -10,6 +10,16 @@ from stixmagic.settings import get_settings
 
 
 def _require(name: str, value: str) -> None:
+    """
+    Abort the program if a named configuration value is empty or contains only whitespace.
+    
+    Parameters:
+        name (str): Human-readable name of the configuration entry used in the error message.
+        value (str): The configuration value to check; treated as missing if empty after stripping whitespace.
+    
+    Raises:
+        SystemExit: If `value` is empty or contains only whitespace; the message will be "Missing required configuration: {name}".
+    """
     if not str(value).strip():
         raise SystemExit(f"Missing required configuration: {name}")
 

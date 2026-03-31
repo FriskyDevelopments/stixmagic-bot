@@ -13,6 +13,16 @@ class TelegramInitDataError(ValueError):
 
 
 def _compute_hash(data: dict[str, str], bot_token: str) -> str:
+    """
+    Compute the Telegram Web App verification HMAC-SHA256 hex digest for the given init data.
+    
+    Parameters:
+    	data (dict[str, str]): Mapping of init_data key/value pairs; the optional 'hash' key, if present, will be ignored when computing the value.
+    	bot_token (str): Telegram bot token used to derive the secret for the HMAC.
+    
+    Returns:
+    	hex_digest (str): Lowercase hex digest of the HMAC-SHA256 verification hash.
+    """
     payload = {k: v for k, v in data.items() if k != "hash"}
     data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(payload.items()))
     secret = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
@@ -21,6 +31,26 @@ def _compute_hash(data: dict[str, str], bot_token: str) -> str:
 
 
 def validate_init_data(init_data: str, bot_token: str, *, max_age_seconds: int = 3600) -> dict:
+    """
+    Validate Telegram Web App `init_data` (URL-encoded query string) and return selected parsed fields.
+    
+    Parameters:
+        init_data (str): URL-encoded query string provided by Telegram Web App initData (contains `hash`, `auth_date`, `user`, etc.).
+        bot_token (str): Telegram bot token used to verify the HMAC signature.
+        max_age_seconds (int): Maximum allowed age of `auth_date` in seconds. Defaults to 3600.
+    
+    Returns:
+        dict: Parsed and validated fields:
+            - auth_date (int): UNIX epoch seconds from the `auth_date` field.
+            - chat_type (str | None)
+            - chat_instance (str | None)
+            - query_id (str | None)
+            - start_param (str | None)
+            - user (dict): JSON-decoded `user` payload.
+    
+    Raises:
+        TelegramInitDataError: If validation fails for any reason, including missing inputs, missing or invalid `hash`, invalid or expired `auth_date`, or missing/invalid `user` payload.
+    """
     if not init_data:
         raise TelegramInitDataError("Missing Telegram init data")
     if not bot_token:

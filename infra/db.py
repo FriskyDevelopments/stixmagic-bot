@@ -17,6 +17,12 @@ logger = logging.getLogger(__name__)
 
 
 def _db_file() -> str:
+    """
+    Get the configured SQLite database file path.
+    
+    Returns:
+        str: Filesystem path to the SQLite database as specified by application settings.
+    """
     return get_settings().database_path
 
 
@@ -77,6 +83,15 @@ def init_db() -> None:
 # ── User Settings ─────────────────────────────────────────────
 
 def get_mask_inverted(user_id: int) -> bool:
+    """
+    Determine whether the user's mask display is inverted.
+    
+    Parameters:
+        user_id (int): The user's numeric identifier.
+    
+    Returns:
+        `true` if the user's `mask_inverted` value is 1, `false` otherwise.
+    """
     conn = sqlite3.connect(_db_file())
     c = conn.cursor()
     c.execute("SELECT mask_inverted FROM user_settings WHERE user_id = ?", (user_id,))
@@ -86,6 +101,13 @@ def get_mask_inverted(user_id: int) -> bool:
 
 
 def set_mask_inverted(user_id: int, inverted: bool) -> None:
+    """
+    Set the user's mask inversion setting.
+    
+    Parameters:
+        user_id (int): ID of the user whose setting will be updated.
+        inverted (bool): Whether the mask should be inverted (True sets inverted, False clears it).
+    """
     conn = sqlite3.connect(_db_file())
     c = conn.cursor()
     c.execute(
@@ -100,6 +122,14 @@ def set_mask_inverted(user_id: int, inverted: bool) -> None:
 # ── Pack CRUD ─────────────────────────────────────────────────
 
 def add_pack(user_id: int, name: str, title: str) -> None:
+    """
+    Create a new pack record for the specified user in the database.
+    
+    Parameters:
+        user_id (int): ID of the user who owns the pack.
+        name (str): Internal name or identifier for the pack.
+        title (str): Human-readable title for the pack.
+    """
     conn = sqlite3.connect(_db_file())
     c = conn.cursor()
     c.execute(
@@ -111,6 +141,13 @@ def add_pack(user_id: int, name: str, title: str) -> None:
 
 
 def delete_pack(user_id: int, name: str) -> None:
+    """
+    Delete a user's pack identified by its name from the database.
+    
+    Parameters:
+        user_id (int): ID of the user who owns the pack.
+        name (str): Pack name to remove.
+    """
     conn = sqlite3.connect(_db_file())
     c = conn.cursor()
     c.execute("DELETE FROM packs WHERE user_id = ? AND name = ?", (user_id, name))
@@ -119,7 +156,12 @@ def delete_pack(user_id: int, name: str) -> None:
 
 
 def get_user_packs(user_id: int) -> list[tuple[str, str]]:
-    """Return a list of (name, title) tuples for the given user."""
+    """
+    Retrieve the user's packs as a list of (name, title) tuples.
+    
+    Returns:
+        list[tuple[str, str]]: List of (name, title) tuples for the given user; empty list if the user has no packs.
+    """
     conn = sqlite3.connect(_db_file())
     c = conn.cursor()
     c.execute("SELECT name, title FROM packs WHERE user_id = ?", (user_id,))
@@ -129,6 +171,14 @@ def get_user_packs(user_id: int) -> list[tuple[str, str]]:
 
 
 def update_pack_title(user_id: int, name: str, title: str) -> None:
+    """
+    Update the title of a pack belonging to a specific user.
+    
+    Parameters:
+    	user_id (int): ID of the owner of the pack to update.
+    	name (str): Unique name/identifier of the pack.
+    	title (str): New title to set for the pack.
+    """
     conn = sqlite3.connect(_db_file())
     c = conn.cursor()
     c.execute(
@@ -142,7 +192,12 @@ def update_pack_title(user_id: int, name: str, title: str) -> None:
 # ── User state helpers ────────────────────────────────────────
 
 def is_new_user(user_id: int) -> bool:
-    """Return True if the user has never created a pack or changed settings."""
+    """
+    Check whether a user is new (has no packs and no stored user settings).
+    
+    Returns:
+        True if the user has not created any packs and has no entry in user_settings, False otherwise.
+    """
     conn = sqlite3.connect(_db_file())
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM packs WHERE user_id = ?", (user_id,))
@@ -162,7 +217,19 @@ def catalog_add_pack(
     description: str = "",
     pack_type: str = "image",
 ) -> bool:
-    """Add a pack to the catalog. Returns True if inserted, False if already exists."""
+    """
+    Add a new pack to the public catalog.
+    
+    Parameters:
+        name (str): Unique identifier for the pack.
+        title (str): Human-readable title for the pack.
+        added_by (int): User ID of the account adding the pack.
+        description (str): Optional descriptive text for the pack (default: "").
+        pack_type (str): Pack category/type (default: "image").
+    
+    Returns:
+        bool: `True` if the pack was inserted, `False` if a pack with the same name already exists.
+    """
     conn = sqlite3.connect(_db_file())
     c = conn.cursor()
     c.execute("SELECT id FROM catalog_packs WHERE name = ?", (name,))
@@ -182,7 +249,12 @@ def catalog_add_pack(
 
 
 def catalog_get_pack(name: str) -> dict | None:
-    """Return a catalog pack as a dict, or None."""
+    """
+    Retrieve a public catalog pack by its name.
+    
+    Returns:
+        dict: A mapping of the pack's columns (e.g., name, title, description, type, public, safe, likes, dislikes, view_count, added_at, added_by) if a public pack with the given name exists, `None` otherwise.
+    """
     conn = sqlite3.connect(_db_file())
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
@@ -198,7 +270,20 @@ def catalog_search(
     limit: int = 20,
     offset: int = 0,
 ) -> list[dict]:
-    """Search the catalog.  sort: 'popular' | 'trending' | 'new' | 'search'."""
+    """
+    Search public catalog packs with optional text filtering, sorting, and pagination.
+    
+    When sort is "popular", "trending", or "new" results are ordered by likes, view_count then likes, or added_at respectively; for any other sort value the query string is matched against title, name, and description using SQL LIKE. Results include only packs marked public and are limited/offset by the provided pagination parameters.
+    
+    Parameters:
+        query (str): Text to match against title, name, and description when performing a search; ignored for the predefined sort modes.
+        sort (str): One of "popular", "trending", "new", or any other value to perform a text search.
+        limit (int): Maximum number of results to return.
+        offset (int): Number of results to skip before returning.
+    
+    Returns:
+        list[dict]: A list of rows from `catalog_packs` converted to dictionaries (one dict per pack).
+    """
     conn = sqlite3.connect(_db_file())
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
@@ -236,7 +321,16 @@ def catalog_search(
 
 
 def catalog_count(query: str = "", sort: str = "popular") -> int:
-    """Return total count for a catalog query."""
+    """
+    Count catalog packs that match the given search and visibility criteria.
+    
+    Parameters:
+        query (str): Substring to match against title, name, or description when used (ignored for certain sorts).
+        sort (str): If "popular", "trending", or "new", the function counts all public packs and ignores `query`; otherwise it counts public packs whose title, name, or description contain `query`.
+    
+    Returns:
+        int: Total number of matching catalog packs.
+    """
     conn = sqlite3.connect(_db_file())
     c = conn.cursor()
     if sort in ("popular", "trending", "new"):
@@ -254,6 +348,12 @@ def catalog_count(query: str = "", sort: str = "popular") -> int:
 
 
 def catalog_increment_views(name: str) -> None:
+    """
+    Increment the view count for the catalog pack identified by `name`.
+    
+    Parameters:
+        name (str): The unique catalog pack name whose `view_count` will be incremented in the database.
+    """
     conn = sqlite3.connect(_db_file())
     conn.execute(
         "UPDATE catalog_packs SET view_count = view_count + 1 WHERE name = ?", (name,)
@@ -264,7 +364,16 @@ def catalog_increment_views(name: str) -> None:
 
 def catalog_react(user_id: int, pack_name: str, reaction: str) -> dict:
     """
-    Toggle like/dislike.  Returns {"likes": int, "dislikes": int, "current": str|None}.
+    Toggle a user's like or dislike reaction for a catalog pack.
+    
+    Adds, removes, or switches the user's reaction and updates the pack's like/dislike counters accordingly.
+    
+    Returns:
+        result (dict): {
+            "likes": int — current total likes for the pack,
+            "dislikes": int — current total dislikes for the pack,
+            "current": str | None — the user's current reaction ("like" or "dislike"), or None if no reaction
+        }
     """
     conn = sqlite3.connect(_db_file())
     conn.row_factory = sqlite3.Row
@@ -346,6 +455,16 @@ def catalog_react(user_id: int, pack_name: str, reaction: str) -> dict:
 
 
 def catalog_get_user_reaction(user_id: int, pack_name: str) -> str | None:
+    """
+    Retrieve the reaction a user has recorded for a catalog pack.
+    
+    Parameters:
+        user_id (int): ID of the user.
+        pack_name (str): Name of the catalog pack.
+    
+    Returns:
+        str | None: The reaction string (e.g., 'like' or 'dislike') if a reaction exists, `None` otherwise.
+    """
     conn = sqlite3.connect(_db_file())
     c = conn.cursor()
     c.execute(
