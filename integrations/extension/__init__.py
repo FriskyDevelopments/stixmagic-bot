@@ -1,37 +1,19 @@
 """
-integrations/extension/__init__.py – Browser / Nebulosa extension scaffold.
+integrations/extension/__init__.py – Browser / Nebulosa extension integration.
 
-FUTURE INTEGRATION — not yet implemented.
+This module provides a lightweight local integration contract between the
+MagicStix asset pipeline and an external browser extension process.
 
-This module will provide the interface between the MagicStix asset pipeline
-and a browser extension (codenamed "Nebulosa") that triggers visual assets
-during chat events.
-
-Planned trigger events
-----------------------
-- chat_message   : Display an animated sticker in response to a message
-- hand_raise     : Overlay a signal asset when a user raises their hand
-- dj_cue         : Fire a DJ-pack animation on a DJ event
-- moderation     : Show a moderation signal on kick / mute events
-
-Planned interface
------------------
-The extension will communicate with a local or remote MagicStix service
-endpoint to fetch pre-rendered assets by pack_id, asset_id, and preset_id.
-
-Example future call
--------------------
->>> from integrations.extension import trigger_asset
->>> trigger_asset(event="hand_raise", pack_id="neon_signals", asset_id="signal_hand")
-
-Implementation notes
---------------------
-- Assets must already be rendered and accessible via HTTP or local path.
-- The extension communicates over WebSocket or REST with a MagicStix server.
-- Authentication / API key integration will use the existing STIXMAGIC_API_KEY.
+The function below intentionally avoids network side-effects so callers can
+use it safely in tests and dry-runs.  It validates inputs and returns a
+structured payload that can be sent over REST/WebSocket by higher layers.
 """
 
-# TODO: implement browser extension integration
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+_ALLOWED_EVENTS = {"chat_message", "hand_raise", "dj_cue", "moderation"}
 
 
 def trigger_asset(
@@ -39,13 +21,44 @@ def trigger_asset(
     pack_id: str,
     asset_id: str,
     preset_id: str = "pulse",
-) -> None:
+) -> dict[str, str]:
     """
-    Trigger a visual asset in response to a browser/extension event.
+    Build a normalized trigger payload for browser-extension consumers.
+    
+    Validates inputs and returns a dictionary suitable for forwarding to a browser/Nebulosa extension transport. Raises ValueError if any of `event`, `pack_id`, `asset_id`, or `preset_id` is not a non-empty string, or if the normalized `event` is not one of the allowed events.
+    
+    Parameters:
+        event (str): Trigger type emitted by the extension; will be stripped and lowercased.
+        pack_id (str): Pack identifier where the asset lives; will be stripped.
+        asset_id (str): Asset identifier inside the pack; will be stripped.
+        preset_id (str): Optional motion preset identifier; will be stripped. Defaults to "pulse".
+    
+    Returns:
+        dict[str, str]: Payload with keys:
+            - `event`: normalized event name
+            - `pack_id`: stripped pack identifier
+            - `asset_id`: stripped asset identifier
+            - `preset_id`: stripped preset identifier
+            - `triggered_at`: UTC ISO 8601 timestamp of when the trigger was created
+    """
+    for field_name, value in {
+        "event": event,
+        "pack_id": pack_id,
+        "asset_id": asset_id,
+        "preset_id": preset_id,
+    }.items():
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{field_name} must be a non-empty string")
 
-    NOT YET IMPLEMENTED.
-    """
-    raise NotImplementedError(
-        "integrations.extension.trigger_asset is not yet implemented. "
-        "See the module docstring for the planned interface."
-    )
+    normalized_event = event.strip().lower()
+    if normalized_event not in _ALLOWED_EVENTS:
+        allowed = ", ".join(sorted(_ALLOWED_EVENTS))
+        raise ValueError(f"Unsupported event '{event}'. Allowed events: {allowed}")
+
+    return {
+        "event": normalized_event,
+        "pack_id": pack_id.strip(),
+        "asset_id": asset_id.strip(),
+        "preset_id": preset_id.strip(),
+        "triggered_at": datetime.now(timezone.utc).isoformat(),
+    }

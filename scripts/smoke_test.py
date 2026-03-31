@@ -16,6 +16,9 @@ if __name__ == "__main__":
     print(
         "Smoke test OK:",
         {
+            "app_env": settings.app_env,
+            "runtime_mode": "DEVELOPMENT" if settings.is_development else "PRODUCTION",
+            "telegram_token_source": settings.telegram_token_source,
             "db_initialized": True,
             "miniapp_enabled": bool(settings.miniapp_url),
             "bot_mode": settings.bot_mode,

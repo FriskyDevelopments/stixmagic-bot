@@ -110,7 +110,7 @@ The preset will automatically be available to all exporters and pack builders.
 ## Implementing an Exporter
 
 Each unimplemented exporter in `pipeline/exporters/__init__.py` has a
-`# TODO:` comment describing what needs to be built.  Replace the
+placeholder note describing what needs to be built. Replace the
 `_write_placeholder()` + `_log_placeholder()` calls with real rendering logic.
 
 Example for GIF:
