@@ -38,18 +38,13 @@ jobs:
       - name: Syntax check
         run: python -m compileall .
 
-      - name: Runtime unit checks (no secrets required)
-        run: python -m unittest tests.test_config_runtime
-
-      - name: Runtime architecture smoke
+      - name: Smoke test (config + DB)
+        env:
+          APP_ENV: development
+          BOT_TOKEN_DEV: ${{ secrets.BOT_TOKEN_DEV }}
+          STIXMAGIC_API_KEY_DEV: ${{ secrets.STIXMAGIC_API_KEY_DEV != '' && secrets.STIXMAGIC_API_KEY_DEV || secrets.STIXMAGIC_API_KEY }}
+          SESSION_SECRET_DEV: ${{ secrets.SESSION_SECRET_DEV != '' && secrets.SESSION_SECRET_DEV || secrets.SESSION_SECRET }}
+          MINIAPP_URL_DEV: ${{ secrets.MINIAPP_URL_DEV != '' && secrets.MINIAPP_URL_DEV || secrets.MINIAPP_URL }}
         run: |
-          python - <<'PY'
-          from src.bot import build_runtime_summary
-          from src.animations import describe_animation_stack
-          summary = build_runtime_summary()
-          stack = describe_animation_stack()
-          assert any(item["owner"] == "src/stickers" for item in summary["core"])
-          assert any(plugin["slug"] == "truck-club" for plugin in summary["plugins"])
-          assert "pipeline.motion_presets" in stack["pipeline_modules"]
-          print("Runtime summary and animation stack validated")
-          PY
+          python scripts/check_config.py
+          python scripts/smoke_test.py

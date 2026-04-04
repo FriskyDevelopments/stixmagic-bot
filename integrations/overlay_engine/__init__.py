@@ -76,9 +76,15 @@ class OverlayCompositor:
         if not isinstance(asset_id, str) or not asset_id.strip():
             raise ValueError("asset_id must be a non-empty string")
 
+        # Normalize preset: None or empty/whitespace -> "pulse"
+        if preset is None or (isinstance(preset, str) and not preset.strip()):
+            normalized_preset = "pulse"
+        else:
+            normalized_preset = str(preset).strip()
+
         layer = OverlayLayer(
             asset_id=asset_id.strip(),
-            preset=str(preset).strip() or "pulse",
+            preset=normalized_preset,
             x=int(kwargs.get("x", 0)),
             y=int(kwargs.get("y", 0)),
             scale=float(kwargs.get("scale", 1.0)),

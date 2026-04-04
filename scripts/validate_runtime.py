@@ -85,10 +85,8 @@ def main() -> None:
     run_smoke_tests()
 
     if args.mode == "production":
-        require_env(("APP_ENV",))
-        if os.environ.get("APP_ENV") != "production":
-            raise SystemExit("When --mode production is used, APP_ENV must be set to production.")
-        token = validate_token("TELEGRAM_BOT_TOKEN")
+        require_env(("BOT_TOKEN_PROD", "STIXMAGIC_API_KEY", "SESSION_SECRET"))
+        token = validate_token("BOT_TOKEN_PROD")
         if args.check_telegram:
             asyncio.run(telegram_get_me(token))
     else:

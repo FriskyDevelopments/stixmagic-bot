@@ -116,36 +116,46 @@ def _run_async(coro):
         loop.close()
 
 
+def _get_user_packs(user_id):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT name, title FROM packs WHERE user_id = ? ORDER BY id", (user_id,))
+    rows = [{"name": r["name"], "title": r["title"]} for r in c.fetchall()]
+    conn.close()
+    return rows
+
+def _update_pack_title(user_id, name, title):
+    upd = get_db()
+    upd.execute(
+        "UPDATE packs SET title = ? WHERE user_id = ? AND name = ?",
+        (title, user_id, name)
+    )
+    upd.commit()
+    upd.close()
+
+def _delete_pack(user_id, name):
+    rm = get_db()
+    rm.execute("DELETE FROM packs WHERE user_id = ? AND name = ?", (user_id, name))
+    rm.commit()
+    rm.close()
+
 async def _validate_packs_async(token, user_id):
     """Validate all DB packs against Telegram; prune deleted, sync renamed titles."""
     from telegram import Bot as TelegramBot
     bot = TelegramBot(token=token)
     try:
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("SELECT name, title FROM packs WHERE user_id = ? ORDER BY id", (user_id,))
-        rows = c.fetchall()
-        conn.close()
+        rows = await asyncio.to_thread(_get_user_packs, user_id)
         valid = []
         for row in rows:
             name, title = row["name"], row["title"]
             try:
                 ss = await bot.get_sticker_set(name)
                 if ss.title != title:
-                    upd = get_db()
-                    upd.execute(
-                        "UPDATE packs SET title = ? WHERE user_id = ? AND name = ?",
-                        (ss.title, user_id, name)
-                    )
-                    upd.commit()
-                    upd.close()
+                    await asyncio.to_thread(_update_pack_title, user_id, name, ss.title)
                     title = ss.title
                 valid.append({"name": name, "title": title, "link": f"https://t.me/addstickers/{name}"})
             except Exception:
-                rm = get_db()
-                rm.execute("DELETE FROM packs WHERE user_id = ? AND name = ?", (user_id, name))
-                rm.commit()
-                rm.close()
+                await asyncio.to_thread(_delete_pack, user_id, name)
         return valid
     finally:
         await bot.close()

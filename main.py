@@ -46,16 +46,6 @@ from core.engine import StixCoreEngine
 from platforms.telegram import TelegramStixAdapter
 from loaders import LoaderController, get_loader_for_context
 from menus import build_keyboard, get_menu_text
-from src.bot.forge_wizard import (
-    ForgeDraft,
-    ForgeStep,
-    cancel_keyboard as forge_cancel_keyboard,
-    create_start_text,
-    sticker_prompt_text,
-    title_confirmation_keyboard,
-    title_confirmation_text,
-    validate_pack_title,
-)
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -83,24 +73,19 @@ async def validate_and_sync_packs(bot, user_id):
     return valid
 
 
-WAITING_TITLE, WAITING_TITLE_CONFIRM, WAITING_STICKER = range(3)
-CHOOSING_PACK, WAITING_STICKER_ADD = range(3, 5)
-WAITING_SOURCE_IMAGE, WAITING_MASK_IMAGE, WAITING_CUT_PACK = range(5, 8)
-WAITING_SYNC_NAME = 8
-WAITING_FEATURE_PACK, WAITING_FEATURE_DESC = range(9, 11)
-WAITING_CATALOG_SEARCH = 11
+WAITING_TITLE, WAITING_STICKER = range(2)
+CHOOSING_PACK, WAITING_STICKER_ADD = range(2, 4)
+WAITING_SOURCE_IMAGE, WAITING_MASK_IMAGE, WAITING_CUT_PACK = range(4, 7)
+WAITING_SYNC_NAME = 7
+WAITING_FEATURE_PACK, WAITING_FEATURE_DESC = range(8, 10)
+WAITING_CATALOG_SEARCH = 10
 
 STICKER_EMOJI = ["✨"]
 
 DIV = "◈ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ◈"
 
-
-def _pack_namespace_prefix() -> str:
-    settings = get_settings()
-    return "devstix" if settings.is_development else "stix"
-
 def cancel_keyboard():
-    return forge_cancel_keyboard()
+    return InlineKeyboardMarkup([[InlineKeyboardButton("✕ Cancel", callback_data="nav:home")]])
 
 def home_keyboard():
     return InlineKeyboardMarkup([[InlineKeyboardButton("✦ Home", callback_data="nav:home")]])
@@ -160,8 +145,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── CREATE PACK ──────────────────────────────────────────────
 
 async def create_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = create_start_text()
-    context.user_data["forge_draft"] = ForgeDraft(title="", step=ForgeStep.TITLE)
+    text = (
+        f"⚗️ <b>FORGE A PACK</b>\n"
+        f"{DIV}\n\n"
+        "Name the vessel — what shall this pack be called?\n\n"
+        "<i>Display title · up to 64 characters.</i>"
+    )
     if update.callback_query:
         await update.callback_query.answer()
         await update.callback_query.edit_message_text(text, parse_mode="HTML", reply_markup=cancel_keyboard())
@@ -171,52 +160,26 @@ async def create_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def create_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    is_valid, validated_title = validate_pack_title(update.message.text)
-    if not is_valid:
+    title = update.message.text.strip()
+    if len(title) > 64:
         await update.message.reply_text(
-            f"⚠ {validated_title}\nTry again:",
+            f"⚠ Name too long — <b>{len(title)}</b> characters.\n"
+            "Keep it under 64. Try again:",
             parse_mode="HTML",
             reply_markup=cancel_keyboard()
         )
         return WAITING_TITLE
 
-    context.user_data["forge_draft"] = ForgeDraft(title=validated_title, step=ForgeStep.CONFIRM_TITLE)
+    context.user_data['newpack_title'] = title
     await update.message.reply_text(
-        title_confirmation_text(validated_title),
+        f"⚗️ <b>{html.escape(title)}</b>\n"
+        f"{DIV}\n\n"
+        "The vessel is named. Now send the <b>seed sticker</b>.\n\n"
+        "◦ Any image, photo, or GIF\n"
+        "◦ Videos transmute as animated stickers\n"
+        "◦ Or forward an existing sticker",
         parse_mode="HTML",
-        reply_markup=title_confirmation_keyboard(),
-    )
-    return WAITING_TITLE_CONFIRM
-
-
-async def create_title_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    action = query.data
-
-    draft = context.user_data.get("forge_draft")
-    if not isinstance(draft, ForgeDraft):
-        await query.edit_message_text(
-            "⚠ Draft lost. Restart pack forging.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⚗️ Restart", callback_data="menu_create")]]),
-        )
-        return ConversationHandler.END
-
-    if action == "forge_edit":
-        context.user_data["forge_draft"] = ForgeDraft(title=draft.title, step=ForgeStep.TITLE)
-        await query.edit_message_text(
-            create_start_text(),
-            parse_mode="HTML",
-            reply_markup=cancel_keyboard(),
-        )
-        return WAITING_TITLE
-
-    context.user_data["newpack_title"] = draft.title
-    context.user_data["forge_draft"] = ForgeDraft(title=draft.title, step=ForgeStep.STICKER)
-    await query.edit_message_text(
-        sticker_prompt_text(draft.title),
-        parse_mode="HTML",
-        reply_markup=cancel_keyboard(),
+        reply_markup=cancel_keyboard()
     )
     return WAITING_STICKER
 
@@ -235,9 +198,6 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Select loader and send initial static caption as the progress message.
     loader = get_loader_for_context("create_pack" if media.media_type != "video" else "video_convert")
-    draft = context.user_data.get("forge_draft")
-    if isinstance(draft, ForgeDraft):
-        context.user_data["forge_draft"] = ForgeDraft(title=draft.title, step=ForgeStep.LOADING)
     initial_caption = loader["captions"][0]
     progress = await update.message.reply_text(initial_caption)
 
@@ -247,23 +207,19 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     bot_username = context.bot.username
     suffix = "".join(random.choices(string.ascii_lowercase, k=5))
-    pack_name = f"{_pack_namespace_prefix()}_{user.id}_{suffix}_by_{bot_username}"
+    pack_name = f"stix_{user.id}_{suffix}_by_{bot_username}"
 
     try:
         sticker_file = await download_file_bytes(context.bot, media.file_id)
         if not sticker_file:
             await ctrl.stop()
             await progress.edit_text("⚠ Download failed. Please try again.")
-            if isinstance(draft, ForgeDraft):
-                context.user_data["forge_draft"] = ForgeDraft(title=draft.title, step=ForgeStep.STICKER)
             return WAITING_STICKER
 
         generated = await telegram_adapter.generate_pack(sticker_file, media.media_type)
         if not generated:
             await ctrl.stop()
             await progress.edit_text("⚠ Conversion failed. Please try again.")
-            if isinstance(draft, ForgeDraft):
-                context.user_data["forge_draft"] = ForgeDraft(title=draft.title, step=ForgeStep.STICKER)
             return WAITING_STICKER
 
         input_sticker = InputSticker(
@@ -299,8 +255,6 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
             reply_markup=keyboard
         )
-        if isinstance(draft, ForgeDraft):
-            context.user_data["forge_draft"] = ForgeDraft(title=draft.title, step=ForgeStep.SUCCESS)
     except Exception as e:
         logger.error(f"Error creating sticker set: {e}")
         err = str(e)
@@ -321,8 +275,6 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
             reply_markup=keyboard
         )
-        if isinstance(draft, ForgeDraft):
-            context.user_data["forge_draft"] = ForgeDraft(title=draft.title, step=ForgeStep.ERROR)
 
     context.user_data.clear()
     return ConversationHandler.END
@@ -1450,14 +1402,6 @@ def main():
         return
 
     token = settings.telegram_bot_token
-    runtime_mode = "DEVELOPMENT" if settings.is_development else "PRODUCTION"
-    logger.info(
-        "Runtime mode: %s (APP_ENV=%s). Telegram token source: %s. Pack namespace prefix: %s.",
-        runtime_mode,
-        settings.app_env,
-        settings.telegram_token_source,
-        _pack_namespace_prefix(),
-    )
 
     from menus import MINIAPP_URL
 
@@ -1506,7 +1450,6 @@ def main():
         entry_points=[CommandHandler("create", create_start), CallbackQueryHandler(create_start, pattern="^menu_create$")],
         states={
             WAITING_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, create_title)],
-            WAITING_TITLE_CONFIRM: [CallbackQueryHandler(create_title_confirm, pattern="^forge_(confirm|edit)$")],
             WAITING_STICKER: [MessageHandler(filters.ALL & ~filters.COMMAND, create_sticker)]
         },
         fallbacks=[CommandHandler("cancel", cancel)]
