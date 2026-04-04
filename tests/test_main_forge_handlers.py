@@ -30,7 +30,42 @@ def _make_stub(name):
 
 def _patch_heavy_imports():
     """Inject lightweight stubs for modules main.py pulls in at import time."""
+    telegram = _make_stub("telegram")
+    telegram_ext = _make_stub("telegram.ext")
+    telegram_error = _make_stub("telegram.error")
+
+    # Add necessary classes to stubs to avoid import errors
+    class StubMock:
+        def __init__(self, *args, **kwargs):
+            if args and isinstance(args[0], list):
+                self.inline_keyboard = args[0]
+            if "inline_keyboard" in kwargs:
+                self.inline_keyboard = kwargs["inline_keyboard"]
+            if "callback_data" in kwargs:
+                self.callback_data = kwargs["callback_data"]
+        DEFAULT_TYPE = MagicMock()
+
+    # telegram module
+    for cls in ["InputSticker", "InlineKeyboardButton", "InlineKeyboardMarkup",
+                "InlineQueryResultArticle", "InputTextMessageContent",
+                "MenuButtonWebApp", "Update", "WebAppInfo"]:
+        setattr(telegram, cls, StubMock)
+
+    # telegram.ext module
+    for cls in ["Application", "CallbackQueryHandler", "CommandHandler",
+                "ContextTypes", "ConversationHandler", "InlineQueryHandler",
+                "MessageHandler"]:
+        setattr(telegram_ext, cls, StubMock)
+    telegram_ext.ConversationHandler.END = -1
+    telegram_ext.filters = MagicMock()
+
+    # telegram.error module
+    telegram_error.BadRequest = Exception
+
     stubs = {
+        "telegram": telegram,
+        "telegram.ext": telegram_ext,
+        "telegram.error": telegram_error,
         "config": _make_stub("config"),
         "config.runtime": _make_stub("config.runtime"),
         "core": _make_stub("core"),
@@ -88,6 +123,7 @@ from main import (
     WAITING_TITLE_CONFIRM,
     cancel_keyboard,
     create_start,
+    create_sticker,
     create_title,
     create_title_confirm,
 )
@@ -533,6 +569,30 @@ class TestCreateTitleConfirm(unittest.TestCase):
         ctx = _make_context({})
         _run(create_title_confirm(update, ctx))
         update.callback_query.answer.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# create_sticker handler
+# ---------------------------------------------------------------------------
+
+class TestCreateSticker(unittest.TestCase):
+    """create_sticker handles unsupported media by rejecting it."""
+
+    @patch("main.telegram_adapter")
+    def test_unsupported_media_returns_waiting_sticker(self, mock_adapter):
+        # Mock parse_message_media to return None (unsupported media)
+        mock_adapter.parse_message_media.return_value = None
+
+        update = _make_message_update("some text")
+        update.message.from_user = MagicMock()
+        ctx = _make_context({"newpack_title": "My Pack"})
+
+        result = _run(create_sticker(update, ctx))
+
+        self.assertEqual(result, WAITING_STICKER)
+        update.message.reply_text.assert_awaited_once()
+        args, _ = update.message.reply_text.call_args
+        self.assertIn("unrecognised", args[0])
 
 
 if __name__ == "__main__":
