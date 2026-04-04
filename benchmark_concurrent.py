@@ -1,0 +1,72 @@
+import asyncio
+import time
+import sqlite3
+import os
+
+from api import get_db, _validate_packs_async
+
+# Mock Bot to simulate Telegram network responses
+class DummyStickerSet:
+    def __init__(self, title):
+        self.title = title
+
+class DummyBot:
+    def __init__(self, token):
+        self.token = token
+
+    async def get_sticker_set(self, name):
+        await asyncio.sleep(0.01) # Small delay
+        if "deleted" in name:
+            raise Exception("Sticker set not found")
+        if "renamed" in name:
+            return DummyStickerSet(title="New Title")
+        return DummyStickerSet(title="Title for " + name)
+
+    async def close(self):
+        pass
+
+import telegram
+telegram.Bot = DummyBot
+
+def setup_db():
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("CREATE TABLE IF NOT EXISTS packs (id INTEGER PRIMARY KEY, user_id INTEGER, name TEXT, title TEXT)")
+    c.execute("DELETE FROM packs WHERE user_id = 999")
+
+    # Insert 10000 packs
+    for i in range(10000):
+        name = f"pack_{i}"
+        title = f"Title for pack_{i}"
+        c.execute("INSERT INTO packs (user_id, name, title) VALUES (?, ?, ?)", (999, name, title))
+    conn.commit()
+    conn.close()
+
+async def blocking_task():
+    # Simulate another async task trying to run concurrently
+    start_time = time.perf_counter()
+    count = 0
+    while time.perf_counter() - start_time < 2:
+        await asyncio.sleep(0)
+        count += 1
+    return count
+
+async def run_validation_and_measure():
+    start = time.perf_counter()
+    await _validate_packs_async("dummy_token", 999)
+    end = time.perf_counter()
+    return end - start
+
+async def main():
+    setup_db()
+
+    start_time = time.perf_counter()
+    validation_time = await run_validation_and_measure()
+
+    print(f"Validation took {validation_time:.4f} seconds")
+
+if __name__ == "__main__":
+    os.environ["DEV_BOT_TOKEN"] = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+    os.environ["STIXMAGIC_API_KEY_DEV"] = "dummy_key"
+    os.environ["STICKER_BOT_ENV"] = "dev"
+    asyncio.run(main())
