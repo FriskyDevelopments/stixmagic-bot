@@ -1,6 +1,6 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
-from config.runtime import get_settings
+from stixmagic.settings import get_settings
 
 DIVIDER = "◈ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ◈"
 
@@ -164,6 +164,15 @@ def build_keyboard(menu_id):
 
 
 def get_menu_text(menu_id):
+    """
+    Compose the display text for a menu identified by menu_id.
+    
+    Parameters:
+        menu_id (str): The key of the menu in MENU_STRUCTURE.
+    
+    Returns:
+        str: The assembled menu text (header followed by a divider and, if present, the body). Returns "Menu not found." if the menu_id is not present.
+    """
     menu = MENU_STRUCTURE.get(menu_id)
     if not menu:
         return "Menu not found."
