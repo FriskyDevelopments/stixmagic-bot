@@ -1,7 +1,6 @@
 import html
 import io
 import logging
-import os
 import random
 import re
 import string
