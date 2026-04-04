@@ -588,6 +588,7 @@ class TestCreateSticker(unittest.TestCase):
         ctx = _make_context({"newpack_title": "My Pack"})
 
         result = _run(create_sticker(update, ctx))
+        mock_adapter.parse_message_media.assert_called_once_with(update.message)
 
         self.assertEqual(result, WAITING_STICKER)
         update.message.reply_text.assert_awaited_once()
