@@ -25,7 +25,7 @@ class TelegramMediaEnvelope:
 class TelegramStixAdapter:
     """Legacy Telegram transport adapter retained for the existing main.py wiring."""
 
-    def __init__(self, core_engine=None):
+    def __init__(self, core_engine=None) -> None:
         # ``core_engine`` is accepted for backward compatibility but the adapter
         # now delegates directly to domain media helpers.
         self._core_engine = core_engine
@@ -53,7 +53,6 @@ class TelegramStixAdapter:
             PackGenerationRequest,
             StickerGenerationInput,
             PackItemResult,
-            PackGenerationResult,
             StickerGenerationOutput,
         )
 
@@ -99,7 +98,6 @@ class TelegramStixAdapter:
                 sticker_inputs=[sticker_input],
             )
 
-            from core.capabilities import TELEGRAM_CAPABILITIES
             result = await self._core_engine.generate_pack(request, capabilities=TELEGRAM_CAPABILITIES)
 
             # Normalize sticker_format values: "webp" -> "static", "webm" -> "video"
