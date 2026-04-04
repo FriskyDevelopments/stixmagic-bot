@@ -10,7 +10,6 @@ from core.types import (
     PackGenerationResult,
     PlatformEventContext,
     ReactionRenderInput,
-    ReactionRenderResult,
 )
 from domain.media import extract_file_info
 
