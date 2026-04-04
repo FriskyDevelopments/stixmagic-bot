@@ -125,27 +125,23 @@ async def _validate_packs_async(token, user_id):
         c = conn.cursor()
         c.execute("SELECT name, title FROM packs WHERE user_id = ? ORDER BY id", (user_id,))
         rows = c.fetchall()
-        conn.close()
         valid = []
         for row in rows:
             name, title = row["name"], row["title"]
             try:
                 ss = await bot.get_sticker_set(name)
                 if ss.title != title:
-                    upd = get_db()
-                    upd.execute(
+                    c.execute(
                         "UPDATE packs SET title = ? WHERE user_id = ? AND name = ?",
                         (ss.title, user_id, name)
                     )
-                    upd.commit()
-                    upd.close()
+                    conn.commit()
                     title = ss.title
                 valid.append({"name": name, "title": title, "link": f"https://t.me/addstickers/{name}"})
             except Exception:
-                rm = get_db()
-                rm.execute("DELETE FROM packs WHERE user_id = ? AND name = ?", (user_id, name))
-                rm.commit()
-                rm.close()
+                c.execute("DELETE FROM packs WHERE user_id = ? AND name = ?", (user_id, name))
+                conn.commit()
+        conn.close()
         return valid
     finally:
         await bot.close()
