@@ -11,6 +11,7 @@ Covers:
  - miniapp_bootstrap route structure
 """
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -19,7 +20,7 @@ import sys
 import time
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 from urllib.parse import urlencode
 
 
@@ -505,6 +506,416 @@ class TestMiniappIntentRoute(ApiTestBase):
                 json={"action": "create_pack"},
             )
         self.assertEqual(resp.status_code, 401)
+
+
+# ── _validate_packs_async tests ───────────────────────────────
+#
+# These tests exercise the N+1 DB connection fix introduced in this PR.
+# The function opens exactly ONE connection and reuses it across all
+# pack-validation iterations, rather than opening a fresh connection for
+# every UPDATE or DELETE operation.
+#
+
+
+def _ensure_api_importable():
+    """Inject minimal stubs for api.py's top-level imports if not present."""
+    if "flask" not in sys.modules:
+        flask_stub = MagicMock()
+        flask_stub.Flask = MagicMock(return_value=MagicMock())
+        flask_stub.jsonify = MagicMock()
+        flask_stub.request = MagicMock()
+        flask_stub.send_from_directory = MagicMock()
+        sys.modules["flask"] = flask_stub
+
+    # telegram stub needed for _validate_packs_async's `from telegram import Bot`
+    if "telegram" not in sys.modules:
+        telegram_stub = MagicMock()
+        telegram_stub.__name__ = "telegram"
+        telegram_stub.Bot = MagicMock()
+        sys.modules["telegram"] = telegram_stub
+
+    for mod in ("config", "config.runtime", "moderation"):
+        if mod not in sys.modules:
+            sys.modules[mod] = MagicMock()
+
+    # Ensure config.runtime.get_settings returns something safe
+    sys.modules["config.runtime"].get_settings = MagicMock(
+        return_value=MagicMock(
+            api_key="test-key",
+            session_secret="secret",
+        )
+    )
+    sys.modules["moderation"].create_default_harness = MagicMock(return_value=MagicMock())
+
+
+def _make_db_row(name, title):
+    """Return a MagicMock that behaves like a sqlite3.Row for name/title access."""
+    row = MagicMock()
+    row.__getitem__ = lambda self, key: name if key == "name" else title
+    return row
+
+
+def _run_async(coro):
+    return asyncio.get_event_loop().run_until_complete(coro)
+
+
+class TestValidatePacksAsync(unittest.TestCase):
+    """_validate_packs_async – connection-reuse and validation logic."""
+
+    @classmethod
+    def setUpClass(cls):
+        _ensure_api_importable()
+        # Force api into sys.modules so later patches on "api.get_db" resolve
+        if "api" not in sys.modules:
+            import importlib
+            sys.modules["api"] = importlib.import_module("api")
+
+    def _make_bot(self, sticker_sets=None, raise_for=None):
+        """
+        Build an AsyncMock Bot.
+
+        sticker_sets  – dict mapping pack name → StickerSet stub (title attr)
+        raise_for     – set of pack names for which get_sticker_set raises
+        """
+        bot = MagicMock()
+        bot.close = AsyncMock()
+
+        async def _get_sticker_set(name):
+            if raise_for and name in raise_for:
+                raise Exception(f"Pack {name} not found")
+            ss = MagicMock()
+            ss.title = (sticker_sets or {}).get(name, name)
+            return ss
+
+        bot.get_sticker_set = _get_sticker_set
+        return bot
+
+    def _make_conn(self, rows):
+        """Return a mock connection/cursor pair with pre-loaded rows."""
+        conn = MagicMock()
+        cursor = MagicMock()
+        cursor.fetchall.return_value = rows
+        conn.cursor.return_value = cursor
+        return conn, cursor
+
+    # ── happy-path: empty pack list ───────────────────────────
+
+    def test_empty_packs_returns_empty_list(self):
+        conn, cursor = self._make_conn([])
+        bot = self._make_bot()
+
+        with patch("api.get_db", return_value=conn), \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            result = _run_async(_validate_packs_async("fake:token", 1))
+
+        self.assertEqual(result, [])
+
+    # ── happy-path: valid pack with matching title ─────────────
+
+    def test_valid_pack_returned_when_title_matches(self):
+        row = _make_db_row("mypack", "My Pack")
+        conn, cursor = self._make_conn([row])
+        bot = self._make_bot(sticker_sets={"mypack": "My Pack"})
+
+        with patch("api.get_db", return_value=conn), \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            result = _run_async(_validate_packs_async("fake:token", 1))
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["name"], "mypack")
+        self.assertEqual(result[0]["title"], "My Pack")
+
+    def test_valid_pack_link_format(self):
+        row = _make_db_row("coolpack", "Cool Pack")
+        conn, cursor = self._make_conn([row])
+        bot = self._make_bot(sticker_sets={"coolpack": "Cool Pack"})
+
+        with patch("api.get_db", return_value=conn), \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            result = _run_async(_validate_packs_async("fake:token", 1))
+
+        self.assertEqual(result[0]["link"], "https://t.me/addstickers/coolpack")
+
+    # ── title-sync: updated title propagated to DB and result ─
+
+    def test_title_update_when_telegram_title_differs(self):
+        row = _make_db_row("mypack", "Old Title")
+        conn, cursor = self._make_conn([row])
+        bot = self._make_bot(sticker_sets={"mypack": "New Title"})
+
+        with patch("api.get_db", return_value=conn), \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            result = _run_async(_validate_packs_async("fake:token", 1))
+
+        self.assertEqual(result[0]["title"], "New Title")
+
+    def test_title_update_executes_sql_update_on_same_cursor(self):
+        row = _make_db_row("mypack", "Old Title")
+        conn, cursor = self._make_conn([row])
+        bot = self._make_bot(sticker_sets={"mypack": "New Title"})
+
+        with patch("api.get_db", return_value=conn), \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            _run_async(_validate_packs_async("fake:token", 42))
+
+        # cursor.execute should have been called for SELECT + UPDATE
+        calls = cursor.execute.call_args_list
+        update_calls = [c for c in calls if "UPDATE" in str(c)]
+        self.assertEqual(len(update_calls), 1)
+        # The UPDATE must carry the new title and correct user_id / name
+        update_args = update_calls[0][0]
+        self.assertIn("UPDATE packs SET title", update_args[0])
+        self.assertEqual(update_args[1][0], "New Title")
+        self.assertEqual(update_args[1][1], 42)
+        self.assertEqual(update_args[1][2], "mypack")
+
+    def test_title_update_commits_on_existing_connection(self):
+        """conn.commit() must be called for a title change (not a new connection)."""
+        row = _make_db_row("mypack", "Old Title")
+        conn, cursor = self._make_conn([row])
+        bot = self._make_bot(sticker_sets={"mypack": "New Title"})
+
+        with patch("api.get_db", return_value=conn), \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            _run_async(_validate_packs_async("fake:token", 1))
+
+        conn.commit.assert_called()
+
+    # ── pack deletion when Telegram raises ────────────────────
+
+    def test_missing_pack_deleted_from_db(self):
+        row = _make_db_row("deadpack", "Dead Pack")
+        conn, cursor = self._make_conn([row])
+        bot = self._make_bot(raise_for={"deadpack"})
+
+        with patch("api.get_db", return_value=conn), \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            result = _run_async(_validate_packs_async("fake:token", 7))
+
+        self.assertEqual(result, [])
+
+    def test_missing_pack_executes_delete_on_same_cursor(self):
+        row = _make_db_row("deadpack", "Dead Pack")
+        conn, cursor = self._make_conn([row])
+        bot = self._make_bot(raise_for={"deadpack"})
+
+        with patch("api.get_db", return_value=conn), \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            _run_async(_validate_packs_async("fake:token", 7))
+
+        calls = cursor.execute.call_args_list
+        delete_calls = [c for c in calls if "DELETE" in str(c)]
+        self.assertEqual(len(delete_calls), 1)
+        delete_args = delete_calls[0][0]
+        self.assertIn("DELETE FROM packs", delete_args[0])
+        self.assertEqual(delete_args[1][0], 7)   # user_id
+        self.assertEqual(delete_args[1][1], "deadpack")
+
+    def test_missing_pack_commits_delete_on_existing_connection(self):
+        row = _make_db_row("deadpack", "Dead Pack")
+        conn, cursor = self._make_conn([row])
+        bot = self._make_bot(raise_for={"deadpack"})
+
+        with patch("api.get_db", return_value=conn), \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            _run_async(_validate_packs_async("fake:token", 1))
+
+        conn.commit.assert_called()
+
+    # ── single-connection guarantee (N+1 fix) ─────────────────
+
+    def test_get_db_called_exactly_once_for_multiple_packs(self):
+        """Only one DB connection opened regardless of the number of packs."""
+        rows = [
+            _make_db_row("pack1", "Pack One"),
+            _make_db_row("pack2", "Old Two"),   # title differs → UPDATE
+            _make_db_row("pack3", "Pack Three"),
+        ]
+        conn, cursor = self._make_conn(rows)
+        bot = self._make_bot(
+            sticker_sets={"pack1": "Pack One", "pack2": "New Two", "pack3": "Pack Three"}
+        )
+
+        with patch("api.get_db", return_value=conn) as mock_get_db, \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            _run_async(_validate_packs_async("fake:token", 1))
+
+        mock_get_db.assert_called_once()
+
+    def test_get_db_called_exactly_once_when_pack_deleted(self):
+        """Deleting a stale pack must not open a second connection."""
+        rows = [_make_db_row("deadpack", "Dead Pack")]
+        conn, cursor = self._make_conn(rows)
+        bot = self._make_bot(raise_for={"deadpack"})
+
+        with patch("api.get_db", return_value=conn) as mock_get_db, \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            _run_async(_validate_packs_async("fake:token", 1))
+
+        mock_get_db.assert_called_once()
+
+    def test_get_db_called_exactly_once_when_title_updated(self):
+        """Syncing a renamed title must not open a second connection."""
+        rows = [_make_db_row("renamed", "Old Name")]
+        conn, cursor = self._make_conn(rows)
+        bot = self._make_bot(sticker_sets={"renamed": "New Name"})
+
+        with patch("api.get_db", return_value=conn) as mock_get_db, \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            _run_async(_validate_packs_async("fake:token", 1))
+
+        mock_get_db.assert_called_once()
+
+    # ── connection lifecycle ───────────────────────────────────
+
+    def test_conn_close_called_after_loop(self):
+        rows = [_make_db_row("pack1", "Pack One")]
+        conn, cursor = self._make_conn(rows)
+        bot = self._make_bot(sticker_sets={"pack1": "Pack One"})
+
+        with patch("api.get_db", return_value=conn), \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            _run_async(_validate_packs_async("fake:token", 1))
+
+        conn.close.assert_called_once()
+
+    def test_conn_close_called_when_all_packs_fail(self):
+        """conn.close() is reached even if every pack raises on Telegram lookup."""
+        rows = [
+            _make_db_row("dead1", "Dead One"),
+            _make_db_row("dead2", "Dead Two"),
+        ]
+        conn, cursor = self._make_conn(rows)
+        bot = self._make_bot(raise_for={"dead1", "dead2"})
+
+        with patch("api.get_db", return_value=conn), \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            _run_async(_validate_packs_async("fake:token", 1))
+
+        conn.close.assert_called_once()
+
+    def test_bot_close_called_in_finally(self):
+        """bot.close() is always invoked regardless of outcome."""
+        rows = [_make_db_row("pack1", "Pack One")]
+        conn, cursor = self._make_conn(rows)
+        bot = self._make_bot(sticker_sets={"pack1": "Pack One"})
+
+        with patch("api.get_db", return_value=conn), \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            _run_async(_validate_packs_async("fake:token", 1))
+
+        bot.close.assert_awaited_once()
+
+    def test_bot_close_called_when_get_sticker_set_raises(self):
+        """bot.close() must be awaited even when pack validation fails."""
+        rows = [_make_db_row("deadpack", "Dead")]
+        conn, cursor = self._make_conn(rows)
+        bot = self._make_bot(raise_for={"deadpack"})
+
+        with patch("api.get_db", return_value=conn), \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            _run_async(_validate_packs_async("fake:token", 1))
+
+        bot.close.assert_awaited_once()
+
+    # ── mixed scenario ─────────────────────────────────────────
+
+    def test_mixed_valid_renamed_and_deleted_packs(self):
+        """All three branches (match / rename / delete) work in one call."""
+        rows = [
+            _make_db_row("good",    "Good Pack"),
+            _make_db_row("renamed", "Old Name"),
+            _make_db_row("dead",    "Dead Pack"),
+        ]
+        conn, cursor = self._make_conn(rows)
+        bot = self._make_bot(
+            sticker_sets={"good": "Good Pack", "renamed": "New Name"},
+            raise_for={"dead"},
+        )
+
+        with patch("api.get_db", return_value=conn) as mock_get_db, \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            result = _run_async(_validate_packs_async("fake:token", 99))
+
+        # Only one DB connection opened throughout
+        mock_get_db.assert_called_once()
+
+        # Two valid packs returned; deleted pack excluded
+        self.assertEqual(len(result), 2)
+        names = {r["name"] for r in result}
+        self.assertIn("good", names)
+        self.assertIn("renamed", names)
+        self.assertNotIn("dead", names)
+
+        # Renamed pack carries the updated title
+        renamed = next(r for r in result if r["name"] == "renamed")
+        self.assertEqual(renamed["title"], "New Name")
+
+        # bot.close() called exactly once
+        bot.close.assert_awaited_once()
+
+    # ── boundary / regression cases ────────────────────────────
+
+    def test_returns_all_packs_when_all_valid(self):
+        rows = [
+            _make_db_row(f"pack{i}", f"Pack {i}") for i in range(5)
+        ]
+        conn, cursor = self._make_conn(rows)
+        sticker_sets = {f"pack{i}": f"Pack {i}" for i in range(5)}
+        bot = self._make_bot(sticker_sets=sticker_sets)
+
+        with patch("api.get_db", return_value=conn), \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            result = _run_async(_validate_packs_async("fake:token", 1))
+
+        self.assertEqual(len(result), 5)
+
+    def test_result_contains_all_expected_keys(self):
+        row = _make_db_row("mypack", "My Pack")
+        conn, cursor = self._make_conn([row])
+        bot = self._make_bot(sticker_sets={"mypack": "My Pack"})
+
+        with patch("api.get_db", return_value=conn), \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            result = _run_async(_validate_packs_async("fake:token", 1))
+
+        self.assertIn("name", result[0])
+        self.assertIn("title", result[0])
+        self.assertIn("link", result[0])
+
+    def test_title_not_changed_when_titles_match(self):
+        """No UPDATE executed when Telegram title equals the stored title."""
+        row = _make_db_row("samepack", "Same Title")
+        conn, cursor = self._make_conn([row])
+        bot = self._make_bot(sticker_sets={"samepack": "Same Title"})
+
+        with patch("api.get_db", return_value=conn), \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            _run_async(_validate_packs_async("fake:token", 1))
+
+        calls = cursor.execute.call_args_list
+        update_calls = [c for c in calls if "UPDATE" in str(c)]
+        self.assertEqual(len(update_calls), 0)
 
 
 if __name__ == "__main__":
