@@ -69,6 +69,7 @@ telegram_adapter = TelegramStixAdapter(core_engine)
 
 async def validate_and_sync_packs(bot, user_id):
     """Check each DB pack against Telegram. Prune deleted packs, sync renamed titles."""
+    import telegram.error
     packs = get_user_packs(user_id)
     valid = []
     for name, title in packs:
@@ -77,7 +78,7 @@ async def validate_and_sync_packs(bot, user_id):
             if ss.title != title:
                 update_pack_title_in_db(user_id, name, ss.title)
             valid.append((name, ss.title))
-        except Exception:
+        except telegram.error.BadRequest:
             delete_pack_from_db(user_id, name)
             logger.info(f"Pruned stale pack {name} for user {user_id}")
     return valid

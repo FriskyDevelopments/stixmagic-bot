@@ -119,6 +119,7 @@ def _run_async(coro):
 async def _validate_packs_async(token, user_id):
     """Validate all DB packs against Telegram; prune deleted, sync renamed titles."""
     from telegram import Bot as TelegramBot
+    import telegram.error
     bot = TelegramBot(token=token)
     try:
         conn = get_db()
@@ -126,22 +127,26 @@ async def _validate_packs_async(token, user_id):
         c.execute("SELECT name, title FROM packs WHERE user_id = ? ORDER BY id", (user_id,))
         rows = c.fetchall()
         valid = []
-        for row in rows:
-            name, title = row["name"], row["title"]
-            try:
-                ss = await bot.get_sticker_set(name)
-                if ss.title != title:
-                    c.execute(
-                        "UPDATE packs SET title = ? WHERE user_id = ? AND name = ?",
-                        (ss.title, user_id, name)
-                    )
-                    conn.commit()
-                    title = ss.title
-                valid.append({"name": name, "title": title, "link": f"https://t.me/addstickers/{name}"})
-            except Exception:
-                c.execute("DELETE FROM packs WHERE user_id = ? AND name = ?", (user_id, name))
-                conn.commit()
-        conn.close()
+        try:
+            for row in rows:
+                name, title = row["name"], row["title"]
+                try:
+                    ss = await bot.get_sticker_set(name)
+                    if ss.title != title:
+                        c.execute(
+                            "UPDATE packs SET title = ? WHERE user_id = ? AND name = ?",
+                            (ss.title, user_id, name)
+                        )
+                        title = ss.title
+                    valid.append({"name": name, "title": title, "link": f"https://t.me/addstickers/{name}"})
+                except telegram.error.BadRequest:
+                    c.execute("DELETE FROM packs WHERE user_id = ? AND name = ?", (user_id, name))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
         return valid
     finally:
         await bot.close()
