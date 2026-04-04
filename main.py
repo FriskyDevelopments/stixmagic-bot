@@ -964,7 +964,7 @@ async def buy_premium_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             currency="XTR",
             prices=[LabeledPrice(label=f"Premium {plan['label']}", amount=plan["stars"])],
         )
-    except Exception as e:
+    except Exception:
         logger.exception(f"Failed to send invoice for plan '{plan_key}': {plan}")
         try:
             await query.message.reply_text(
