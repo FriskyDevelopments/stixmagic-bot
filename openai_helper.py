@@ -7,7 +7,7 @@ from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
-IMAGE_DOWNLOAD_USER_AGENT = "ChatGPT-Telegram-Bot/1.0"
+IMAGE_DOWNLOAD_USER_AGENT = os.environ.get("IMAGE_DOWNLOAD_USER_AGENT", "Stix Magic/1.0")
 
 _client = None
 
