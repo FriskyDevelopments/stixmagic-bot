@@ -41,10 +41,10 @@ jobs:
       - name: Smoke test (config + DB)
         env:
           APP_ENV: development
-          BOT_TOKEN_DEV: ${{ secrets.BOT_TOKEN_DEV }}
-          STIXMAGIC_API_KEY_DEV: ${{ secrets.STIXMAGIC_API_KEY_DEV != '' && secrets.STIXMAGIC_API_KEY_DEV || secrets.STIXMAGIC_API_KEY }}
-          SESSION_SECRET_DEV: ${{ secrets.SESSION_SECRET_DEV != '' && secrets.SESSION_SECRET_DEV || secrets.SESSION_SECRET }}
-          MINIAPP_URL_DEV: ${{ secrets.MINIAPP_URL_DEV != '' && secrets.MINIAPP_URL_DEV || secrets.MINIAPP_URL }}
+          BOT_TOKEN_DEV: ${{ secrets.BOT_TOKEN_DEV != '' && secrets.BOT_TOKEN_DEV || '123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11' }}
+          STIXMAGIC_API_KEY_DEV: ${{ secrets.STIXMAGIC_API_KEY_DEV != '' && secrets.STIXMAGIC_API_KEY_DEV || secrets.STIXMAGIC_API_KEY != '' && secrets.STIXMAGIC_API_KEY || 'dummy_key' }}
+          SESSION_SECRET_DEV: ${{ secrets.SESSION_SECRET_DEV != '' && secrets.SESSION_SECRET_DEV || secrets.SESSION_SECRET != '' && secrets.SESSION_SECRET || 'dummy_secret' }}
+          MINIAPP_URL_DEV: ${{ secrets.MINIAPP_URL_DEV != '' && secrets.MINIAPP_URL_DEV || secrets.MINIAPP_URL != '' && secrets.MINIAPP_URL || 'https://dummy.url' }}
         run: |
           python scripts/check_config.py
           python scripts/smoke_test.py
