@@ -265,50 +265,40 @@ class TestCancelKeyboardDelegates(unittest.TestCase):
 class TestCreateStart(unittest.TestCase):
     """create_start initialises a ForgeDraft and returns WAITING_TITLE."""
 
-    def test_returns_waiting_title_via_message(self):
-        update = _make_callback_update.__wrapped__ if hasattr(_make_callback_update, "__wrapped__") else None
+    def test_create_start_initialization_message(self):
         update = MagicMock()
         update.callback_query = None
         update.message = MagicMock()
         update.message.reply_text = AsyncMock()
         ctx = _make_context()
-        result = _run(create_start(update, ctx))
-        self.assertEqual(result, WAITING_TITLE)
 
-    def test_returns_waiting_title_via_callback(self):
-        update = _make_callback_update("menu_create")
-        ctx = _make_context()
         result = _run(create_start(update, ctx))
-        self.assertEqual(result, WAITING_TITLE)
 
-    def test_initialises_forge_draft_in_user_data(self):
-        update = MagicMock()
-        update.callback_query = None
-        update.message = MagicMock()
-        update.message.reply_text = AsyncMock()
-        ctx = _make_context()
-        _run(create_start(update, ctx))
+        self.assertEqual(result, WAITING_TITLE)
         self.assertIn("forge_draft", ctx.user_data)
         draft = ctx.user_data["forge_draft"]
         self.assertIsInstance(draft, ForgeDraft)
+        self.assertEqual(draft.step, ForgeStep.TITLE)
+        self.assertEqual(draft.title, "")
 
-    def test_initial_draft_step_is_title(self):
-        update = MagicMock()
-        update.callback_query = None
-        update.message = MagicMock()
-        update.message.reply_text = AsyncMock()
+    def test_create_start_initialization_callback(self):
+        update = _make_callback_update("menu_create")
+        ctx = _make_context()
+
+        result = _run(create_start(update, ctx))
+
+        self.assertEqual(result, WAITING_TITLE)
+        self.assertIn("forge_draft", ctx.user_data)
+        draft = ctx.user_data["forge_draft"]
+        self.assertIsInstance(draft, ForgeDraft)
+        self.assertEqual(draft.step, ForgeStep.TITLE)
+        self.assertEqual(draft.title, "")
+
+    def test_callback_path_calls_query_answer(self):
+        update = _make_callback_update("menu_create")
         ctx = _make_context()
         _run(create_start(update, ctx))
-        self.assertEqual(ctx.user_data["forge_draft"].step, ForgeStep.TITLE)
-
-    def test_initial_draft_title_is_empty_string(self):
-        update = MagicMock()
-        update.callback_query = None
-        update.message = MagicMock()
-        update.message.reply_text = AsyncMock()
-        ctx = _make_context()
-        _run(create_start(update, ctx))
-        self.assertEqual(ctx.user_data["forge_draft"].title, "")
+        update.callback_query.answer.assert_awaited_once()
 
     def test_callback_path_calls_edit_message_text(self):
         update = _make_callback_update("menu_create")
