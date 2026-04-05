@@ -1855,7 +1855,7 @@ async def draft_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 file_bytes = await download_file_bytes(context.bot, generated_file_id)
                 if not file_bytes:
                     await query.edit_message_text(
-                        f"⚠ Failed to download draft file. Please try again.",
+                        "⚠ Failed to download draft file. Please try again.",
                         parse_mode="HTML",
                         reply_markup=home_keyboard()
                     )
@@ -1937,7 +1937,7 @@ async def draft_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
                         reply_markup=home_keyboard()
                     )
         except Exception as e:
-            logger.error(f"Error publishing draft {draft_id}: {e}")
+            logger.exception(f"Error publishing draft {draft_id}: {e}")
             await query.edit_message_text(
                 f"⚠ <b>Publishing failed</b>\n{DIV}\n\n"
                 f"<i>{html.escape(str(e))}</i>",
