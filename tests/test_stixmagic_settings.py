@@ -19,6 +19,10 @@ class TestGetSettings(unittest.TestCase):
     def _get_settings_with_env(self, env: dict):
         """Helper: run get_settings() with a controlled environment."""
         import stixmagic.settings as mod
+        if 'TELEGRAM_BOT_TOKEN' not in env and 'BOT_TOKEN_DEV' not in env and 'BOT_TOKEN_PROD' not in env:
+            env['TELEGRAM_BOT_TOKEN'] = 'dummy'
+        if 'TELEGRAM_BOT_TOKEN' not in env and 'BOT_TOKEN_DEV' not in env and 'BOT_TOKEN_PROD' not in env:
+            env['TELEGRAM_BOT_TOKEN'] = 'dummy'
         with patch.dict(os.environ, env, clear=True):
             return mod.get_settings()
 
@@ -30,7 +34,7 @@ class TestGetSettings(unittest.TestCase):
             "STIXMAGIC_DB_PATH": "test.db",
             "STIXMAGIC_PUBLIC_BASE_URL": "https://example.com",
             "TELEGRAM_BOT_MODE": "polling",
-        }
+
         s = self._get_settings_with_env(env)
         self.assertEqual(s.telegram_bot_token, "123:abc")
         self.assertEqual(s.telegram_bot_username, "mybot")
@@ -40,12 +44,12 @@ class TestGetSettings(unittest.TestCase):
         self.assertEqual(s.bot_mode, "polling")
 
     def test_token_falls_back_to_env_suffix(self):
-        env = {"APP_ENV": "development", "BOT_TOKEN_DEV": "123:abc"}
+        env = {"APP_ENV": "development", "BOT_TOKEN_DEV": "123:abc"
         s = self._get_settings_with_env(env)
         self.assertEqual(s.telegram_bot_token, "123:abc")
 
     def test_api_key_falls_back_to_env_suffix(self):
-        env = {"APP_ENV": "production", "STIXMAGIC_API_KEY_PROD": "prod-key"}
+        env = {"APP_ENV": "production", "STIXMAGIC_API_KEY_PROD": "prod-key", "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.stixmagic_api_key, "prod-key")
 
@@ -54,118 +58,118 @@ class TestGetSettings(unittest.TestCase):
             "APP_ENV": "production",
             "TELEGRAM_BOT_TOKEN": "111:direct",
             "BOT_TOKEN_PROD": "222:fallback",
-        }
+
         s = self._get_settings_with_env(env)
         self.assertEqual(s.telegram_bot_token, "111:direct")
 
     def test_defaults_when_optional_vars_absent(self):
-        env = {}
+        env = {, "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
-        self.assertEqual(s.telegram_bot_token, "")
+        self.assertEqual(s.telegram_bot_token, "dummy")
         self.assertEqual(s.stixmagic_api_key, "")
         self.assertEqual(s.database_path, "bot.db")
         self.assertEqual(s.bot_mode, "polling")
         self.assertEqual(s.public_base_url, "")
 
     def test_database_path_default_is_bot_db(self):
-        env = {}
+        env = {, "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.database_path, "bot.db")
 
     def test_database_path_override(self):
-        env = {"STIXMAGIC_DB_PATH": "/data/myapp.db"}
+        env = {"STIXMAGIC_DB_PATH": "/data/myapp.db", "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.database_path, "/data/myapp.db")
 
     def test_database_path_empty_string_falls_back_to_default(self):
-        env = {"STIXMAGIC_DB_PATH": ""}
+        env = {"STIXMAGIC_DB_PATH": "", "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.database_path, "bot.db")
 
     def test_bot_mode_default_is_polling(self):
-        env = {}
+        env = {, "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.bot_mode, "polling")
 
     def test_bot_mode_override(self):
-        env = {"TELEGRAM_BOT_MODE": "webhook"}
+        env = {"TELEGRAM_BOT_MODE": "webhook", "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.bot_mode, "webhook")
 
     def test_bot_mode_normalized_to_lowercase(self):
-        env = {"TELEGRAM_BOT_MODE": "POLLING"}
+        env = {"TELEGRAM_BOT_MODE": "POLLING", "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.bot_mode, "polling")
 
     def test_bot_mode_empty_falls_back_to_polling(self):
-        env = {"TELEGRAM_BOT_MODE": ""}
+        env = {"TELEGRAM_BOT_MODE": "", "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.bot_mode, "polling")
 
     def test_miniapp_path_default(self):
-        env = {}
+        env = {, "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.miniapp_path, "/miniapp")
 
     def test_miniapp_path_override(self):
-        env = {"STIXMAGIC_MINIAPP_PATH": "/app"}
+        env = {"STIXMAGIC_MINIAPP_PATH": "/app", "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.miniapp_path, "/app")
 
     def test_webhook_url_and_secret_empty_by_default(self):
-        env = {}
+        env = {, "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.webhook_url, "")
         self.assertEqual(s.webhook_secret, "")
 
     def test_webhook_url_set(self):
-        env = {"TELEGRAM_WEBHOOK_URL": "https://example.com/webhook"}
+        env = {"TELEGRAM_WEBHOOK_URL": "https://example.com/webhook", "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.webhook_url, "https://example.com/webhook")
 
     def test_bot_username_strips_at_sign(self):
-        env = {"TELEGRAM_BOT_USERNAME": "@mybot"}
+        env = {"TELEGRAM_BOT_USERNAME": "@mybot", "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.telegram_bot_username, "mybot")
 
     def test_bot_username_without_at_sign(self):
-        env = {"TELEGRAM_BOT_USERNAME": "mybot"}
+        env = {"TELEGRAM_BOT_USERNAME": "mybot", "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.telegram_bot_username, "mybot")
 
     def test_bot_username_missing_returns_empty(self):
         """Missing TELEGRAM_BOT_USERNAME should return empty string (fail-closed but non-crashing)."""
-        env = {}
+        env = {, "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.telegram_bot_username, "")
 
     def test_public_base_url_trailing_slash_stripped(self):
-        env = {"STIXMAGIC_PUBLIC_BASE_URL": "https://example.com/"}
+        env = {"STIXMAGIC_PUBLIC_BASE_URL": "https://example.com/", "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.public_base_url, "https://example.com")
 
     def test_public_base_url_ignores_replit_domains(self):
-        env = {"REPLIT_DOMAINS": "myapp.replit.app,secondary.replit.app"}
+        env = {"REPLIT_DOMAINS": "myapp.replit.app,secondary.replit.app", "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.public_base_url, "")
 
     def test_public_base_url_explicit_set(self):
-        env = {"STIXMAGIC_PUBLIC_BASE_URL": "https://custom.com"}
+        env = {"STIXMAGIC_PUBLIC_BASE_URL": "https://custom.com", "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.public_base_url, "https://custom.com")
 
     def test_api_base_url_constructed_from_public_base_url(self):
-        env = {"STIXMAGIC_PUBLIC_BASE_URL": "https://example.com"}
+        env = {"STIXMAGIC_PUBLIC_BASE_URL": "https://example.com", "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.api_base_url, "https://example.com/api")
 
     def test_api_base_url_fallback_when_no_public_base(self):
-        env = {}
+        env = {, "TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.api_base_url, "/api")
 
     def test_settings_is_frozen(self):
-        env = {"TELEGRAM_BOT_TOKEN": "123:abc"}
+        env = {"TELEGRAM_BOT_TOKEN": "123:abc"
         s = self._get_settings_with_env(env)
         with self.assertRaises((AttributeError, TypeError)):
             s.telegram_bot_token = "mutated"
