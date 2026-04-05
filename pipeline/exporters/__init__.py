@@ -145,6 +145,23 @@ def _output_name(asset_id: str, preset_id: str, ext: str) -> str:
     return f"{asset_id}_{preset_id}.{ext}"
 
 
+def _export_placeholder_file(
+    exporter_name: str,
+    ext: str,
+    format_name: str,
+    source_path: str,
+    preset_id: str,
+    output_dir: str,
+) -> str | None:
+    """Helper to generate a generic placeholder file export."""
+    asset_id = source_path_to_id(source_path)
+    os.makedirs(output_dir, exist_ok=True)
+    out_path = os.path.join(output_dir, _output_name(asset_id, preset_id, ext))
+    _write_placeholder(out_path, f"{format_name} placeholder | asset={source_path} | preset={preset_id}")
+    _log_placeholder(exporter_name, out_path)
+    return out_path
+
+
 # ── Individual format exporters ───────────────────────────────
 
 def export_gif(
@@ -161,12 +178,7 @@ def export_gif(
     Returns:
         out_path (str | None): Path to the created placeholder GIF file, or `None` if the export failed.
     """
-    asset_id = source_path_to_id(source_path)
-    os.makedirs(output_dir, exist_ok=True)
-    out_path = os.path.join(output_dir, _output_name(asset_id, preset.id, "gif"))
-    _write_placeholder(out_path, f"GIF placeholder | asset={source_path} | preset={preset.id}")
-    _log_placeholder("export_gif", out_path)
-    return out_path
+    return _export_placeholder_file("export_gif", "gif", "GIF", source_path, preset.id, output_dir)
 
 
 def export_animated_webp(
@@ -183,12 +195,7 @@ def export_animated_webp(
     Returns:
         str | None: Path to the created placeholder `.webp` file, or `None` if the export failed.
     """
-    asset_id = source_path_to_id(source_path)
-    os.makedirs(output_dir, exist_ok=True)
-    out_path = os.path.join(output_dir, _output_name(asset_id, preset.id, "webp"))
-    _write_placeholder(out_path, f"WEBP placeholder | asset={source_path} | preset={preset.id}")
-    _log_placeholder("export_animated_webp", out_path)
-    return out_path
+    return _export_placeholder_file("export_animated_webp", "webp", "WEBP", source_path, preset.id, output_dir)
 
 
 def export_webm(
@@ -205,12 +212,7 @@ def export_webm(
     Returns:
         out_path (str): Path to the created placeholder WebM file, or `None` if the export failed.
     """
-    asset_id = source_path_to_id(source_path)
-    os.makedirs(output_dir, exist_ok=True)
-    out_path = os.path.join(output_dir, _output_name(asset_id, preset.id, "webm"))
-    _write_placeholder(out_path, f"WEBM placeholder | asset={source_path} | preset={preset.id}")
-    _log_placeholder("export_webm", out_path)
-    return out_path
+    return _export_placeholder_file("export_webm", "webm", "WEBM", source_path, preset.id, output_dir)
 
 
 def export_mov(
@@ -227,12 +229,7 @@ def export_mov(
     Returns:
         out_path (str | None): Filesystem path to the created placeholder MOV file, or `None` if creation failed.
     """
-    asset_id = source_path_to_id(source_path)
-    os.makedirs(output_dir, exist_ok=True)
-    out_path = os.path.join(output_dir, _output_name(asset_id, preset.id, "mov"))
-    _write_placeholder(out_path, f"MOV placeholder | asset={source_path} | preset={preset.id}")
-    _log_placeholder("export_mov", out_path)
-    return out_path
+    return _export_placeholder_file("export_mov", "mov", "MOV", source_path, preset.id, output_dir)
 
 
 def export_png_sequence(
