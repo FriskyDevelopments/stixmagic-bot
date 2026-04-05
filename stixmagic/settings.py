@@ -137,7 +137,7 @@ def get_settings() -> AppSettings:
 
     api_base_url = f"{public_base_url}/api" if public_base_url else "/api"
 
-    telegram_bot_token = _resolve_env("TELEGRAM_BOT_TOKEN", f"BOT_TOKEN_{suffix}")
+    telegram_bot_token = _resolve_env("TELEGRAM_BOT_TOKEN", f"BOT_TOKEN_{suffix}", f"{suffix}_BOT_TOKEN", f"TELEGRAM_BOT_TOKEN_{suffix}", "BOT_TOKEN")
     if not telegram_bot_token:
         raise ValueError(
             f"Missing required telegram_bot_token. Set either TELEGRAM_BOT_TOKEN or BOT_TOKEN_{suffix} "
