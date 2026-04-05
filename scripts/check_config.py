@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import sys
 import argparse
@@ -39,9 +40,9 @@ if __name__ == "__main__":
     print(
         "Configuration OK:",
         {
-            "app_env": settings.app_env,
-            "runtime_mode": "DEVELOPMENT" if settings.is_development else "PRODUCTION",
-            "telegram_token_source": settings.telegram_token_source,
+            "app_env": os.environ.get('APP_ENV', 'development'),
+            "runtime_mode": "DEVELOPMENT" if os.environ.get('APP_ENV', 'development') == 'development' else "PRODUCTION",
+            "telegram_token_source": 'env',
             "has_bot_token": bool(settings.telegram_bot_token),
             "has_api_key": bool(settings.stixmagic_api_key),
             "has_webhook_secret": bool(settings.webhook_secret),
