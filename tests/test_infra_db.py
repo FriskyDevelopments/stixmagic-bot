@@ -1,8 +1,8 @@
 """
 Tests for infra/db.py – SQLite persistence layer.
 
-Uses an in-memory SQLite database injected via a mock of get_settings()
-so tests never touch the file-system.
+Uses a temp-file SQLite database injected by patching infra.db.DB_FILE
+so tests never touch the production file-system.
 
 Covers:
  - init_db: tables created (packs, user_settings, catalog_packs, catalog_reactions)
@@ -16,7 +16,7 @@ Covers:
  - catalog_increment_views
  - catalog_react: like, dislike, toggle, switch
  - catalog_get_user_reaction: returns correct reaction
- - _connect: uses settings.database_path
+ - DB_FILE: constant used instead of get_settings().database_path (PR change)
 """
 
 import sqlite3
@@ -24,40 +24,27 @@ import time
 import unittest
 from unittest.mock import MagicMock, patch
 
-
-# We patch stixmagic.settings.get_settings to return a settings object
-# whose .database_path is ":memory:".  Because ":memory:" gives a new DB
-# per connection we use a file-backed temp DB instead so all functions
-# see the same state.
-
 import tempfile
 import os
 
 
-def _patched_get_settings(db_path: str):
-    """Return a mock settings object pointing at the given db_path."""
-    settings = MagicMock()
-    settings.database_path = db_path
-    return settings
-
-
 class InfraDbTestCase(unittest.TestCase):
-    """Base class that wires a temp-file SQLite DB for every test."""
+    """Base class that wires a temp-file SQLite DB for every test.
+
+    PR change: infra/db.py now uses a DB_FILE module-level constant instead
+    of get_settings().database_path.  We patch that constant directly.
+    """
 
     def setUp(self):
         # Create a temp file that persists for the duration of the test
         fd, self.db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
 
-        # Patch get_settings in infra.db's own namespace (it uses `from stixmagic.settings import get_settings`)
-        self._patcher = patch(
-            "infra.db.get_settings",
-            return_value=_patched_get_settings(self.db_path),
-        )
+        # PR change: patch infra.db.DB_FILE instead of get_settings()
+        import infra.db as db_mod
+        self._patcher = patch.object(db_mod, "DB_FILE", self.db_path)
         self._patcher.start()
 
-        # Now safe to import and call init_db
-        import infra.db as db_mod
         self.db = db_mod
         db_mod.init_db()
 
@@ -67,6 +54,30 @@ class InfraDbTestCase(unittest.TestCase):
             os.unlink(self.db_path)
         except FileNotFoundError:
             pass
+
+
+class TestDbFileConstant(unittest.TestCase):
+    """PR change: infra/db.py now uses DB_FILE constant, not get_settings()."""
+
+    def test_db_file_constant_exists(self):
+        import infra.db as db_mod
+        self.assertTrue(hasattr(db_mod, "DB_FILE"))
+
+    def test_db_file_is_string(self):
+        import infra.db as db_mod
+        self.assertIsInstance(db_mod.DB_FILE, str)
+
+    def test_db_file_default_value(self):
+        import infra.db as db_mod
+        # Default should be "bot.db"
+        self.assertEqual(db_mod.DB_FILE, "bot.db")
+
+    def test_no_get_settings_import_needed(self):
+        """Verify infra.db no longer imports from stixmagic.settings."""
+        import infra.db as db_mod
+        # The module should not have a get_settings attribute imported
+        # (it was removed in this PR)
+        self.assertFalse(hasattr(db_mod, "get_settings"))
 
 
 class TestInitDb(InfraDbTestCase):
