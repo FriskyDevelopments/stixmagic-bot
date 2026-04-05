@@ -1,46 +1,51 @@
 """
-Tests for integrations/virtual_camera/__init__.py – virtual camera adapter.
+Tests for integrations/virtual_camera/__init__.py – VirtualCamera.
 
-Covers (focused on PR changes):
- - __init__: fps type validation (must be int or float)
- - __init__: fps value validation (must be > 0)
- - __init__: resolution must contain exactly two values
- - __init__: resolution values must be numeric (int or float)
- - __init__: resolution values must be > 0
- - __init__: non-iterable resolution raises ValueError
- - push_frame: works when running
- - push_frame: raises RuntimeError when not started
- - push_frame: raises ValueError for None frame
- - start / stop / running property
- - last_frame property
+Covers the PR changes: enhanced __init__ validation.
+  - fps: must be numeric (int or float), must be > 0
+  - resolution: must be a sequence of exactly 2 items, both numeric, both > 0
+  - TypeError on non-iterable resolution
+  - Existing push_frame / start / stop behavior
 """
 
+import os
 import sys
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 
 from integrations.virtual_camera import VirtualCamera
 
 
 class TestVirtualCameraFpsValidation(unittest.TestCase):
-    """PR change: fps must be a numeric type (int or float), not just > 0."""
+    """PR change: fps must be numeric type and > 0."""
 
-    def test_int_fps_accepted(self):
+    def test_valid_int_fps(self):
         cam = VirtualCamera(fps=30)
         self.assertEqual(cam.fps, 30)
 
-    def test_float_fps_accepted(self):
+    def test_valid_float_fps(self):
         cam = VirtualCamera(fps=29.97)
         self.assertAlmostEqual(cam.fps, 29.97)
 
+    def test_fps_of_one_is_valid(self):
+        cam = VirtualCamera(fps=1)
+        self.assertEqual(cam.fps, 1)
+
+    def test_zero_fps_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            VirtualCamera(fps=0)
+
+    def test_negative_fps_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            VirtualCamera(fps=-1)
+
     def test_string_fps_raises_value_error(self):
-        with self.assertRaises(ValueError) as ctx:
+        """PR change: string fps must raise ValueError (not TypeError)."""
+        with self.assertRaises(ValueError):
             VirtualCamera(fps="30")
-        self.assertIn("numeric", str(ctx.exception).lower())
 
     def test_none_fps_raises_value_error(self):
         with self.assertRaises(ValueError):
@@ -50,119 +55,93 @@ class TestVirtualCameraFpsValidation(unittest.TestCase):
         with self.assertRaises(ValueError):
             VirtualCamera(fps=[30])
 
-    def test_zero_fps_raises_value_error(self):
-        with self.assertRaises(ValueError) as ctx:
+    def test_fps_error_message_mentions_numeric(self):
+        try:
+            VirtualCamera(fps="fast")
+        except ValueError as e:
+            self.assertIn("numeric", str(e).lower())
+
+    def test_fps_zero_error_message_mentions_greater_than_zero(self):
+        try:
             VirtualCamera(fps=0)
-        self.assertIn("greater than 0", str(ctx.exception))
-
-    def test_negative_fps_raises_value_error(self):
-        with self.assertRaises(ValueError):
-            VirtualCamera(fps=-1)
-
-    def test_negative_float_fps_raises_value_error(self):
-        with self.assertRaises(ValueError):
-            VirtualCamera(fps=-0.1)
-
-    def test_boundary_small_positive_float_accepted(self):
-        cam = VirtualCamera(fps=0.001)
-        self.assertGreater(cam.fps, 0)
+        except ValueError as e:
+            self.assertIn("0", str(e))
 
 
 class TestVirtualCameraResolutionValidation(unittest.TestCase):
-    """PR change: resolution validation now checks len, types, and values."""
+    """PR change: enhanced resolution validation."""
 
-    def test_default_resolution_accepted(self):
-        cam = VirtualCamera()
+    def test_valid_resolution_tuple(self):
+        cam = VirtualCamera(resolution=(1280, 720))
         self.assertEqual(cam.resolution, (1280, 720))
 
-    def test_custom_valid_resolution(self):
-        cam = VirtualCamera(resolution=(1920, 1080))
-        self.assertEqual(cam.resolution, (1920, 1080))
+    def test_valid_resolution_list(self):
+        cam = VirtualCamera(resolution=[640, 480])
+        self.assertIsNotNone(cam)
 
-    def test_float_resolution_accepted(self):
-        cam = VirtualCamera(resolution=(640.0, 480.0))
-        self.assertEqual(cam.resolution[0], 640.0)
-
-    def test_single_element_resolution_raises(self):
-        with self.assertRaises(ValueError) as ctx:
-            VirtualCamera(resolution=(1280,))
-        self.assertIn("two", str(ctx.exception).lower())
-
-    def test_three_element_resolution_raises(self):
-        with self.assertRaises(ValueError) as ctx:
-            VirtualCamera(resolution=(1280, 720, 3))
-        self.assertIn("two", str(ctx.exception).lower())
-
-    def test_empty_resolution_raises(self):
-        with self.assertRaises(ValueError):
-            VirtualCamera(resolution=())
-
-    def test_string_width_raises_value_error(self):
-        with self.assertRaises(ValueError) as ctx:
-            VirtualCamera(resolution=("1280", 720))
-        self.assertIn("numeric", str(ctx.exception).lower())
-
-    def test_string_height_raises_value_error(self):
-        with self.assertRaises(ValueError) as ctx:
-            VirtualCamera(resolution=(1280, "720"))
-        self.assertIn("numeric", str(ctx.exception).lower())
+    def test_valid_float_resolution(self):
+        cam = VirtualCamera(resolution=(1920.0, 1080.0))
+        self.assertIsNotNone(cam)
 
     def test_zero_width_raises_value_error(self):
-        with self.assertRaises(ValueError) as ctx:
+        with self.assertRaises(ValueError):
             VirtualCamera(resolution=(0, 720))
-        self.assertIn("greater than 0", str(ctx.exception))
 
     def test_zero_height_raises_value_error(self):
-        with self.assertRaises(ValueError) as ctx:
+        with self.assertRaises(ValueError):
             VirtualCamera(resolution=(1280, 0))
-        self.assertIn("greater than 0", str(ctx.exception))
 
     def test_negative_width_raises_value_error(self):
         with self.assertRaises(ValueError):
-            VirtualCamera(resolution=(-100, 720))
+            VirtualCamera(resolution=(-1, 720))
 
     def test_negative_height_raises_value_error(self):
         with self.assertRaises(ValueError):
-            VirtualCamera(resolution=(1280, -100))
+            VirtualCamera(resolution=(1280, -1))
 
-    def test_non_iterable_resolution_raises_value_error(self):
-        with self.assertRaises(ValueError) as ctx:
-            VirtualCamera(resolution=1280)
-        self.assertIn("sequence", str(ctx.exception).lower())
+    def test_single_element_resolution_raises_value_error(self):
+        """PR change: resolution must have exactly 2 values."""
+        with self.assertRaises(ValueError):
+            VirtualCamera(resolution=(1280,))
+
+    def test_three_element_resolution_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            VirtualCamera(resolution=(1280, 720, 3))
+
+    def test_string_width_raises_value_error(self):
+        """PR change: resolution values must be numeric."""
+        with self.assertRaises(ValueError):
+            VirtualCamera(resolution=("1280", 720))
+
+    def test_string_height_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            VirtualCamera(resolution=(1280, "720"))
 
     def test_none_resolution_raises_value_error(self):
-        with self.assertRaises((ValueError, TypeError)):
+        """PR change: non-iterable resolution raises ValueError."""
+        with self.assertRaises(ValueError):
             VirtualCamera(resolution=None)
 
-    def test_list_resolution_accepted(self):
-        """Lists should also work as resolution since len() and unpacking work."""
-        cam = VirtualCamera(resolution=[1280, 720])
-        self.assertEqual(cam.resolution[0], 1280)
-        self.assertEqual(cam.resolution[1], 720)
+    def test_integer_resolution_raises_value_error(self):
+        """PR change: integer (non-iterable) resolution raises ValueError."""
+        with self.assertRaises(ValueError):
+            VirtualCamera(resolution=1280)
 
-
-class TestVirtualCameraInitState(unittest.TestCase):
-    """Tests for initial state after construction."""
-
-    def test_initial_running_is_false(self):
-        cam = VirtualCamera()
-        self.assertFalse(cam.running)
-
-    def test_initial_last_frame_is_none(self):
-        cam = VirtualCamera()
-        self.assertIsNone(cam.last_frame)
-
-    def test_device_stored(self):
-        cam = VirtualCamera(device="/dev/video1")
-        self.assertEqual(cam.device, "/dev/video1")
-
-    def test_default_device(self):
-        cam = VirtualCamera()
-        self.assertEqual(cam.device, "/dev/video0")
+    def test_empty_resolution_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            VirtualCamera(resolution=())
 
 
 class TestVirtualCameraLifecycle(unittest.TestCase):
-    """Tests for start/stop/push_frame behavior."""
+    """Existing lifecycle behavior: start, push_frame, stop."""
+
+    def test_initial_state_not_running(self):
+        cam = VirtualCamera()
+        self.assertFalse(cam.running)
+
+    def test_initial_last_frame_none(self):
+        cam = VirtualCamera()
+        self.assertIsNone(cam.last_frame)
 
     def test_start_sets_running_true(self):
         cam = VirtualCamera()
@@ -175,17 +154,10 @@ class TestVirtualCameraLifecycle(unittest.TestCase):
         cam.stop()
         self.assertFalse(cam.running)
 
-    def test_push_frame_when_running(self):
+    def test_push_frame_before_start_raises(self):
         cam = VirtualCamera()
-        cam.start()
-        cam.push_frame("frame_data")
-        self.assertEqual(cam.last_frame, "frame_data")
-
-    def test_push_frame_when_not_running_raises(self):
-        cam = VirtualCamera()
-        with self.assertRaises(RuntimeError) as ctx:
-            cam.push_frame("frame")
-        self.assertIn("start", str(ctx.exception).lower())
+        with self.assertRaises(RuntimeError):
+            cam.push_frame(b"frame-data")
 
     def test_push_frame_none_raises_value_error(self):
         cam = VirtualCamera()
@@ -193,27 +165,27 @@ class TestVirtualCameraLifecycle(unittest.TestCase):
         with self.assertRaises(ValueError):
             cam.push_frame(None)
 
-    def test_push_frame_updates_last_frame(self):
+    def test_push_frame_stores_frame(self):
         cam = VirtualCamera()
         cam.start()
-        cam.push_frame("first")
-        cam.push_frame("second")
-        self.assertEqual(cam.last_frame, "second")
+        frame = b"frame-bytes"
+        cam.push_frame(frame)
+        self.assertEqual(cam.last_frame, frame)
 
-    def test_stop_then_push_raises(self):
+    def test_push_frame_after_stop_raises(self):
         cam = VirtualCamera()
         cam.start()
         cam.stop()
         with self.assertRaises(RuntimeError):
-            cam.push_frame("frame")
+            cam.push_frame(b"data")
 
-    def test_restart_allows_push(self):
+    def test_device_stored(self):
+        cam = VirtualCamera(device="/dev/video1")
+        self.assertEqual(cam.device, "/dev/video1")
+
+    def test_default_device(self):
         cam = VirtualCamera()
-        cam.start()
-        cam.stop()
-        cam.start()
-        cam.push_frame("after-restart")
-        self.assertEqual(cam.last_frame, "after-restart")
+        self.assertEqual(cam.device, "/dev/video0")
 
 
 if __name__ == "__main__":

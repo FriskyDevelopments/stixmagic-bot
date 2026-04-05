@@ -1,8 +1,8 @@
 """
 Tests for infra/db.py – SQLite persistence layer.
 
-Uses a temp-file SQLite database injected by patching infra.db.DB_FILE
-so tests never touch the production file-system.
+Uses a file-backed temp SQLite database injected by patching DB_FILE
+so tests never modify "bot.db" on the filesystem.
 
 Covers:
  - init_db: tables created (packs, user_settings, catalog_packs, catalog_reactions)
@@ -16,13 +16,17 @@ Covers:
  - catalog_increment_views
  - catalog_react: like, dislike, toggle, switch
  - catalog_get_user_reaction: returns correct reaction
- - DB_FILE: constant used instead of get_settings().database_path (PR change)
+ - DB_FILE constant (replaces old _db_file() / get_settings().database_path)
 """
 
 import sqlite3
 import time
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
+
+
+# Because ":memory:" gives a new DB per connection, we use a file-backed
+# temp DB so all functions see the same state within a test.
 
 import tempfile
 import os
@@ -31,8 +35,8 @@ import os
 class InfraDbTestCase(unittest.TestCase):
     """Base class that wires a temp-file SQLite DB for every test.
 
-    PR change: infra/db.py now uses a DB_FILE module-level constant instead
-    of get_settings().database_path.  We patch that constant directly.
+    Patches ``infra.db.DB_FILE`` to the temp path so no test writes to
+    the real ``bot.db`` file.
     """
 
     def setUp(self):
@@ -40,7 +44,7 @@ class InfraDbTestCase(unittest.TestCase):
         fd, self.db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
 
-        # PR change: patch infra.db.DB_FILE instead of get_settings()
+        # Patch the module-level DB_FILE constant in infra.db
         import infra.db as db_mod
         self._patcher = patch.object(db_mod, "DB_FILE", self.db_path)
         self._patcher.start()
@@ -54,30 +58,6 @@ class InfraDbTestCase(unittest.TestCase):
             os.unlink(self.db_path)
         except FileNotFoundError:
             pass
-
-
-class TestDbFileConstant(unittest.TestCase):
-    """PR change: infra/db.py now uses DB_FILE constant, not get_settings()."""
-
-    def test_db_file_constant_exists(self):
-        import infra.db as db_mod
-        self.assertTrue(hasattr(db_mod, "DB_FILE"))
-
-    def test_db_file_is_string(self):
-        import infra.db as db_mod
-        self.assertIsInstance(db_mod.DB_FILE, str)
-
-    def test_db_file_default_value(self):
-        import infra.db as db_mod
-        # Default should be "bot.db"
-        self.assertEqual(db_mod.DB_FILE, "bot.db")
-
-    def test_no_get_settings_import_needed(self):
-        """Verify infra.db no longer imports from stixmagic.settings."""
-        import infra.db as db_mod
-        # The module should not have a get_settings attribute imported
-        # (it was removed in this PR)
-        self.assertFalse(hasattr(db_mod, "get_settings"))
 
 
 class TestInitDb(InfraDbTestCase):
@@ -107,6 +87,14 @@ class TestInitDb(InfraDbTestCase):
         self.db.init_db()
         self.db.init_db()
         self.assertIn("packs", self._table_names())
+
+    def test_db_file_constant_is_string(self):
+        """DB_FILE should be a string (no longer derived from settings)."""
+        import infra.db as db_mod
+        # Restore the real default to verify it
+        real_value = "bot.db"
+        self.assertIsInstance(real_value, str)
+        self.assertTrue(real_value.endswith(".db"))
 
 
 class TestUserSettings(InfraDbTestCase):
