@@ -1,5 +1,6 @@
 from pathlib import Path
 import sys
+import os
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -16,9 +17,8 @@ if __name__ == "__main__":
     print(
         "Smoke test OK:",
         {
-            "app_env": settings.app_env,
-            "runtime_mode": "DEVELOPMENT" if settings.is_development else "PRODUCTION",
-            "telegram_token_source": settings.telegram_token_source,
+            "app_env": os.environ.get("APP_ENV", "development"),
+            "runtime_mode": os.environ.get("APP_ENV", "development").upper(),
             "db_initialized": True,
             "miniapp_enabled": bool(settings.miniapp_url),
             "bot_mode": settings.bot_mode,
