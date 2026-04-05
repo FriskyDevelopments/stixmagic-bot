@@ -18,7 +18,7 @@ Telegram bot for creating and managing sticker packs. Built with Python, `python
 - Menus: home, my_packs, settings, help, tips
 
 ## Web API (api.py)
-All endpoints except `/` and `/api/health` require API key auth via `X-API-Key` header or `api_key` query param.
+All endpoints except `/` and `/api/health` require API key auth via `X-API-Key` header.
 - `GET /` — Landing page
 - `GET /api/health` — Health check (public)
 - `GET /api/stats` — Total users, packs, settings users count
