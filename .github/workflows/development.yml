@@ -33,5 +33,5 @@ jobs:
           SESSION_SECRET_DEV: "smoke-test-secret"
           MINIAPP_URL_DEV: "https://example.com/miniapp"
         run: |
-          python scripts/check_config.py
+          python scripts/check_config.py --mode ci
           python scripts/smoke_test.py
