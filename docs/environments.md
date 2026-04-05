@@ -166,7 +166,7 @@ Access rules (fail-closed in production):
 
 ## Release / promotion workflow
 
-```
+```text
 1. Develop feature on a branch
 2. Test via @StixMagicdevBot  (APP_ENV=development)
 3. Verify bot responses, pack flows, and logs look correct
