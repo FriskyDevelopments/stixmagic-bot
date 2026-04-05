@@ -28,10 +28,11 @@ jobs:
       - name: Validate development configuration
         env:
           APP_ENV: development
-          DEV_BOT_TOKEN: "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+          BOT_TOKEN_DEV: "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
           STIXMAGIC_API_KEY_DEV: "smoke-test-only-key"
           SESSION_SECRET_DEV: "smoke-test-secret"
           MINIAPP_URL_DEV: "https://example.com/miniapp"
+          TELEGRAM_WEBHOOK_SECRET: "smoke-test-webhook-secret"
         run: |
           python scripts/check_config.py
           python scripts/smoke_test.py
