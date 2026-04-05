@@ -32,10 +32,23 @@ class VirtualCamera:
         Initial state:
             The instance starts stopped (not running) and has no last frame stored.
         """
+        # Validate fps is numeric and > 0
+        if not isinstance(fps, (int, float)):
+            raise ValueError("fps must be a numeric type")
         if fps <= 0:
             raise ValueError("fps must be greater than 0")
-        if resolution[0] <= 0 or resolution[1] <= 0:
-            raise ValueError("resolution values must be greater than 0")
+
+        # Validate resolution is a sequence of exactly two numeric items, both > 0
+        try:
+            if len(resolution) != 2:
+                raise ValueError("resolution must contain exactly two values (width, height)")
+            width, height = resolution
+            if not isinstance(width, (int, float)) or not isinstance(height, (int, float)):
+                raise ValueError("resolution values must be numeric (int or float)")
+            if width <= 0 or height <= 0:
+                raise ValueError("resolution values must be greater than 0")
+        except TypeError:
+            raise ValueError("resolution must be a sequence/iterable of two numeric values")
 
         self.device = device
         self.fps = fps

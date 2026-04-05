@@ -15,7 +15,6 @@ concurrency:
 jobs:
   promote-production:
     name: Validate production release candidate
-    if: ${{ inputs.git_ref == 'main' || startsWith(inputs.git_ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     environment:
       name: production
@@ -49,14 +48,10 @@ jobs:
       - name: Validate production configuration and runtime
         env:
           APP_ENV: production
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          STIXMAGIC_API_KEY_PROD: ${{ secrets.STIXMAGIC_API_KEY_PROD }}
-          STIXMAGIC_API_KEY: ${{ secrets.STIXMAGIC_API_KEY }}
-          SESSION_SECRET_PROD: ${{ secrets.SESSION_SECRET_PROD }}
-          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
-          MINIAPP_URL_PROD: ${{ secrets.MINIAPP_URL_PROD }}
-          MINIAPP_URL: ${{ secrets.MINIAPP_URL }}
+          BOT_TOKEN_PROD: ${{ secrets.BOT_TOKEN_PROD }}
+          STIXMAGIC_API_KEY_PROD: ${{ secrets.STIXMAGIC_API_KEY_PROD != '' && secrets.STIXMAGIC_API_KEY_PROD || secrets.STIXMAGIC_API_KEY }}
+          SESSION_SECRET_PROD: ${{ secrets.SESSION_SECRET_PROD != '' && secrets.SESSION_SECRET_PROD || secrets.SESSION_SECRET }}
+          MINIAPP_URL_PROD: ${{ secrets.MINIAPP_URL_PROD != '' && secrets.MINIAPP_URL_PROD || secrets.MINIAPP_URL }}
         run: |
           python scripts/check_config.py
           python scripts/smoke_test.py
@@ -64,4 +59,4 @@ jobs:
       - name: Record operator reminder
         run: |
           echo "Production preflight passed for ref ${{ inputs.git_ref }}."
-          echo "Next: deploy/restart the persistent production host with APP_ENV=production and production-only variables."
+          echo "Next: deploy or restart the persistent production host with TELEGRAM_BOT_TOKEN (from the BOT_TOKEN_PROD secret) and the production app secrets."
