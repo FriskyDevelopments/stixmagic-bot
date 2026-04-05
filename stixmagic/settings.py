@@ -33,6 +33,19 @@ class AppSettings:
     webhook_url: str
     webhook_secret: str
 
+
+    @property
+    def app_env(self) -> str:
+        return os.environ.get("APP_ENV", "development").strip().lower()
+
+    @property
+    def is_development(self) -> bool:
+        return self.app_env != "production"
+
+    @property
+    def telegram_token_source(self) -> str:
+        return "env" if os.environ.get("TELEGRAM_BOT_TOKEN") else f"BOT_TOKEN_{_env_suffix()}"
+
     @property
     def miniapp_url(self) -> str:
         """
