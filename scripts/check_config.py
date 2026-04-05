@@ -1,6 +1,7 @@
 from pathlib import Path
 import sys
 import argparse
+import os
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -34,14 +35,14 @@ if __name__ == "__main__":
     if args.mode != "ci":
         _require("telegram_bot_token", settings.telegram_bot_token)
         _require("stixmagic_api_key", settings.stixmagic_api_key)
-        _require("webhook_secret", settings.webhook_secret)
+        if settings.bot_mode == "webhook":
+            _require("webhook_secret", settings.webhook_secret)
 
     print(
         "Configuration OK:",
         {
-            "app_env": settings.app_env,
-            "runtime_mode": "DEVELOPMENT" if settings.is_development else "PRODUCTION",
-            "telegram_token_source": settings.telegram_token_source,
+            "app_env": os.environ.get("APP_ENV", "development"),
+            "runtime_mode": os.environ.get("APP_ENV", "development").upper(),
             "has_bot_token": bool(settings.telegram_bot_token),
             "has_api_key": bool(settings.stixmagic_api_key),
             "has_webhook_secret": bool(settings.webhook_secret),
