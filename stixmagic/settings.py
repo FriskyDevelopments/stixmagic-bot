@@ -32,6 +32,9 @@ class AppSettings:
     bot_mode: str
     webhook_url: str
     webhook_secret: str
+    app_env: str
+    is_development: bool
+    telegram_token_source: str
 
     @property
     def miniapp_url(self) -> str:
@@ -144,6 +147,9 @@ def get_settings() -> AppSettings:
             f"environment variable. Current APP_ENV suffix: {suffix}"
         )
 
+    app_env = os.environ.get("APP_ENV", "development").strip().lower()
+    telegram_token_source = "TELEGRAM_BOT_TOKEN" if os.environ.get("TELEGRAM_BOT_TOKEN", "").strip() else f"BOT_TOKEN_{suffix}"
+
     return AppSettings(
         telegram_bot_token=telegram_bot_token,
         telegram_bot_username=_strip_at_sign(os.environ.get("TELEGRAM_BOT_USERNAME", "").strip()),
@@ -155,4 +161,7 @@ def get_settings() -> AppSettings:
         bot_mode=(os.environ.get("TELEGRAM_BOT_MODE", "polling").strip() or "polling").lower(),
         webhook_url=os.environ.get("TELEGRAM_WEBHOOK_URL", "").strip(),
         webhook_secret=os.environ.get("TELEGRAM_WEBHOOK_SECRET", "").strip(),
+        app_env=app_env,
+        is_development=app_env in ("development", "dev"),
+        telegram_token_source=telegram_token_source,
     )
