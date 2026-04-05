@@ -399,6 +399,20 @@ class TestCreateTitle(unittest.TestCase):
         if draft is not None:
             self.assertNotEqual(draft.step, ForgeStep.CONFIRM_TITLE)
 
+
+    @patch("main.validate_pack_title")
+    def test_mocked_validate_pack_title_false(self, mock_validate):
+        mock_validate.return_value = (False, "Mocked Error Message")
+        update = _make_message_update("Any Title")
+        ctx = _make_context()
+        result = _run(create_title(update, ctx))
+
+        self.assertEqual(result, WAITING_TITLE)
+        update.message.reply_text.assert_awaited_once()
+        args, _ = update.message.reply_text.call_args
+        self.assertIn("Mocked Error Message", args[0])
+        self.assertIn("⚠", args[0])
+
     def test_invalid_title_sends_error_reply(self):
         update = _make_message_update("")
         ctx = _make_context()
