@@ -1,161 +1,256 @@
 """
-Tests for api.py – changed helpers and routes.
+Tests for api.py – helpers and routes (post-refactor).
 
 Covers:
- - _normalize_origin: various URL shapes
- - CORS add_headers: wildcard for public routes, restricted for /api/miniapp/*
- - require_miniapp_auth: passes with valid session, 401 on TelegramInitDataError
  - ok() / err() response envelopes
- - health endpoint includes bot_mode
- - _telegram_init_data_from_request: Authorization header and X-Telegram-Init-Data header
- - miniapp_bootstrap route structure
+ - paginate(): page/limit logic, total/pages metadata
+ - require_api_key decorator: missing key, wrong key, correct key
+ - add_headers (CORS): always wildcard "*" for all routes
+ - /api/health endpoint: service name, no bot_mode, db status, version
+ - /api/miniapp/packs: requires valid user_id query param
+ - /api/miniapp/settings GET: requires user_id, returns mask_inverted
+ - /api/miniapp/settings PATCH: requires user_id and JSON body
+ - _get_user_packs, _update_pack_title, _delete_pack DB helpers
 """
 
-import asyncio
-import hashlib
-import hmac
 import json
 import os
 import sys
-import time
 import tempfile
 import unittest
-from unittest.mock import AsyncMock, MagicMock, call, patch
-from urllib.parse import urlencode
+from unittest.mock import MagicMock, patch
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 
 
-# ── Helpers to build valid Telegram initData ──────────────────
+# ---------------------------------------------------------------------------
+# Minimal stubs so api.py can be imported without real Telegram / Flask deps
+# ---------------------------------------------------------------------------
 
-FAKE_BOT_TOKEN = "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef_gh"
-FAKE_USER = {"id": 42, "first_name": "Alice", "username": "alice"}
-
-
-def _build_init_data(bot_token: str, user: dict, auth_date: int | None = None) -> str:
-    if auth_date is None:
-        auth_date = int(time.time())
-    pairs = {
-        "auth_date": str(auth_date),
-        "user": json.dumps(user, separators=(",", ":")),
-    }
-    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(pairs.items()))
-    secret = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
-    pairs["hash"] = hmac.new(secret, data_check_string.encode(), hashlib.sha256).hexdigest()
-    return urlencode(pairs)
+def _ensure_stubs():
+    """Inject minimal stubs for api.py's module-level imports if needed."""
+    if "moderation" not in sys.modules:
+        mod_stub = MagicMock()
+        mod_stub.create_default_harness = MagicMock(return_value=MagicMock())
+        sys.modules["moderation"] = mod_stub
 
 
-# ── _normalize_origin (pure function, importable separately) ──
-
-class TestNormalizeOrigin(unittest.TestCase):
-    """Tests for the api._normalize_origin helper."""
-
-    def _get_fn(self):
-        # Import lazily so we can patch SETTINGS before module load
-        from api import _normalize_origin
-        return _normalize_origin
-
-    def test_empty_string_returns_empty(self):
-        fn = self._get_fn()
-        self.assertEqual(fn(""), "")
-
-    def test_none_like_empty_returns_empty(self):
-        # The function guards on `if not url`
-        fn = self._get_fn()
-        self.assertEqual(fn(""), "")
-
-    def test_full_url_returns_origin(self):
-        fn = self._get_fn()
-        self.assertEqual(fn("https://example.com/some/path?q=1"), "https://example.com")
-
-    def test_url_with_port(self):
-        fn = self._get_fn()
-        self.assertEqual(fn("http://localhost:5000/api/miniapp"), "http://localhost:5000")
-
-    def test_url_without_path(self):
-        fn = self._get_fn()
-        self.assertEqual(fn("https://example.com"), "https://example.com")
-
-    def test_url_with_trailing_slash(self):
-        fn = self._get_fn()
-        # No scheme+netloc path → strips trailing slash
-        self.assertEqual(fn("https://example.com/"), "https://example.com")
-
-    def test_bare_string_without_scheme_strips_trailing_slash(self):
-        fn = self._get_fn()
-        result = fn("example.com/")
-        self.assertFalse(result.endswith("/"))
-
-    def test_https_scheme_preserved(self):
-        fn = self._get_fn()
-        result = fn("https://secure.example.com/path")
-        self.assertTrue(result.startswith("https://"))
-
-    def test_http_scheme_preserved(self):
-        fn = self._get_fn()
-        result = fn("http://insecure.example.com/path")
-        self.assertTrue(result.startswith("http://"))
-
-    def test_subdomain_preserved(self):
-        fn = self._get_fn()
-        self.assertEqual(fn("https://api.example.com/v1/data"), "https://api.example.com")
+_ensure_stubs()
 
 
-# ── Flask application tests ───────────────────────────────────
+FAKE_BOT_TOKEN = "123456:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef_gh"
 
-def _make_mock_settings(db_path: str = ":memory:", **kwargs):
+
+def _make_mock_settings(**kwargs):
     s = MagicMock()
-    s.database_path = db_path
-    s.stixmagic_api_key = "test-api-key"
-    s.telegram_bot_token = FAKE_BOT_TOKEN
-    s.telegram_bot_username = "testbot"
-    s.public_base_url = "https://example.com"
-    s.miniapp_url = "https://example.com/miniapp"
-    s.bot_mode = "polling"
-    for k, v in kwargs.items():
-        setattr(s, k, v)
+    s.api_key = kwargs.get("api_key", "test-api-key")
+    s.telegram_bot_token = kwargs.get("telegram_bot_token", FAKE_BOT_TOKEN)
+    s.session_secret = kwargs.get("session_secret", "test-secret")
+    s.miniapp_url = kwargs.get("miniapp_url", "")
+    s.port = kwargs.get("port", 5000)
     return s
 
 
 class ApiTestBase(unittest.TestCase):
-    """Base class that creates a Flask test client with a temp DB."""
+    """Base class: wires a temp SQLite DB and a Flask test client."""
 
     def setUp(self):
-        # Create a real temp DB file (not :memory: since api.py uses get_db per request)
+        # Create a real temp DB file
         fd, self.db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
-        self.mock_settings = _make_mock_settings(db_path=self.db_path)
 
-        # Patch get_settings in all relevant modules before importing api
-        self._patch_settings = patch("stixmagic.settings.get_settings", return_value=self.mock_settings)
-        self._patch_settings.start()
+        self.mock_settings = _make_mock_settings()
 
-        # Force re-import of api module with patched settings if already loaded
+        # Patch get_settings from config.runtime before importing api
+        self._patch_runtime = patch(
+            "config.runtime.get_settings", return_value=self.mock_settings
+        )
+        self._patch_runtime.start()
+
+        import importlib
         if "api" in sys.modules:
-            # Update SETTINGS directly in the already-loaded module
             import api as api_mod
-            api_mod.SETTINGS = self.mock_settings
-            api_mod.API_KEY = self.mock_settings.stixmagic_api_key
-            self.app = api_mod.app
         else:
             import api as api_mod
-            api_mod.SETTINGS = self.mock_settings
-            api_mod.API_KEY = self.mock_settings.stixmagic_api_key
-            self.app = api_mod.app
 
-        # Initialize DB tables in the temp file so API routes can use them
+        # Overwrite module-level state to use mock settings + temp DB
+        api_mod.settings = self.mock_settings
+        api_mod.API_KEY = self.mock_settings.api_key
+        api_mod.DB_FILE = self.db_path
+
+        # Also patch DB_FILE in infra.db to the same temp file
         import infra.db as db_mod
-        with patch("infra.db.get_settings", return_value=self.mock_settings):
-            db_mod.init_db()
+        db_mod.DB_FILE = self.db_path
+        db_mod.init_db()
 
+        self.app = api_mod.app
         self.app.config["TESTING"] = True
         self.client = self.app.test_client()
 
     def tearDown(self):
-        self._patch_settings.stop()
+        # Restore DB_FILE to its default after each test
+        import api as api_mod
+        import infra.db as db_mod
+        api_mod.DB_FILE = "bot.db"
+        db_mod.DB_FILE = "bot.db"
+
+        self._patch_runtime.stop()
         try:
             os.unlink(self.db_path)
         except FileNotFoundError:
             pass
 
+
+# ---------------------------------------------------------------------------
+# Response envelope helpers
+# ---------------------------------------------------------------------------
+
+class TestResponseEnvelopes(ApiTestBase):
+
+    def test_ok_returns_200_by_default(self):
+        with self.app.test_request_context("/"):
+            import api as api_mod
+            resp = api_mod.ok({"key": "val"})
+        self.assertEqual(resp.status_code, 200)
+
+    def test_ok_body_structure(self):
+        with self.app.test_request_context("/"):
+            import api as api_mod
+            resp = api_mod.ok({"key": "val"})
+        body = json.loads(resp.data)
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["data"]["key"], "val")
+
+    def test_ok_custom_status(self):
+        with self.app.test_request_context("/"):
+            import api as api_mod
+            resp = api_mod.ok({}, status=201)
+        self.assertEqual(resp.status_code, 201)
+
+    def test_ok_includes_meta_fields(self):
+        with self.app.test_request_context("/"):
+            import api as api_mod
+            resp = api_mod.ok({}, pagination={"page": 1})
+        body = json.loads(resp.data)
+        self.assertIn("pagination", body)
+
+    def test_err_returns_400_by_default(self):
+        with self.app.test_request_context("/"):
+            import api as api_mod
+            resp = api_mod.err("bad request")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_err_body_structure(self):
+        with self.app.test_request_context("/"):
+            import api as api_mod
+            resp = api_mod.err("bad request", code="bad_req")
+        body = json.loads(resp.data)
+        self.assertFalse(body["ok"])
+        self.assertEqual(body["error"]["message"], "bad request")
+        self.assertEqual(body["error"]["code"], "bad_req")
+
+    def test_err_without_code(self):
+        with self.app.test_request_context("/"):
+            import api as api_mod
+            resp = api_mod.err("simple error")
+        body = json.loads(resp.data)
+        self.assertNotIn("code", body["error"])
+
+
+# ---------------------------------------------------------------------------
+# paginate()
+# ---------------------------------------------------------------------------
+
+class TestPaginate(ApiTestBase):
+
+    def test_first_page_default_limit(self):
+        with self.app.test_request_context("/?page=1"):
+            import api as api_mod
+            items, meta = api_mod.paginate(list(range(50)))
+        self.assertEqual(len(items), api_mod.PAGE_SIZE)
+        self.assertEqual(meta["page"], 1)
+
+    def test_page_2(self):
+        with self.app.test_request_context("/?page=2&limit=10"):
+            import api as api_mod
+            items, meta = api_mod.paginate(list(range(25)))
+        self.assertEqual(items[0], 10)
+        self.assertEqual(meta["page"], 2)
+
+    def test_limit_capped_at_100(self):
+        with self.app.test_request_context("/?limit=200"):
+            import api as api_mod
+            items, meta = api_mod.paginate(list(range(150)))
+        self.assertEqual(meta["limit"], 100)
+
+    def test_invalid_page_defaults_to_1(self):
+        with self.app.test_request_context("/?page=abc"):
+            import api as api_mod
+            items, meta = api_mod.paginate(list(range(5)))
+        self.assertEqual(meta["page"], 1)
+
+    def test_invalid_limit_uses_page_size(self):
+        with self.app.test_request_context("/?limit=xyz"):
+            import api as api_mod
+            items, meta = api_mod.paginate(list(range(5)))
+        self.assertEqual(meta["limit"], api_mod.PAGE_SIZE)
+
+    def test_total_correct(self):
+        with self.app.test_request_context("/"):
+            import api as api_mod
+            _, meta = api_mod.paginate(list(range(37)))
+        self.assertEqual(meta["total"], 37)
+
+    def test_pages_ceiling_division(self):
+        with self.app.test_request_context("/?limit=10"):
+            import api as api_mod
+            _, meta = api_mod.paginate(list(range(25)))
+        self.assertEqual(meta["pages"], 3)
+
+    def test_empty_result_one_page(self):
+        with self.app.test_request_context("/"):
+            import api as api_mod
+            _, meta = api_mod.paginate([])
+        self.assertEqual(meta["pages"], 1)
+        self.assertEqual(meta["total"], 0)
+
+
+# ---------------------------------------------------------------------------
+# CORS headers
+# ---------------------------------------------------------------------------
+
+class TestCORSHeaders(ApiTestBase):
+
+    def test_all_routes_get_wildcard_cors(self):
+        resp = self.client.get("/api/health")
+        self.assertEqual(resp.headers.get("Access-Control-Allow-Origin"), "*")
+
+    def test_miniapp_route_also_gets_wildcard_cors(self):
+        resp = self.client.get("/api/miniapp/settings?user_id=42")
+        self.assertEqual(resp.headers.get("Access-Control-Allow-Origin"), "*")
+
+    def test_api_version_header_always_present(self):
+        resp = self.client.get("/api/health")
+        self.assertIn("X-API-Version", resp.headers)
+
+    def test_api_version_value(self):
+        resp = self.client.get("/api/health")
+        self.assertEqual(resp.headers["X-API-Version"], "1.1")
+
+    def test_allow_headers_includes_x_api_key(self):
+        resp = self.client.get("/api/health")
+        self.assertIn("X-API-Key", resp.headers.get("Access-Control-Allow-Headers", ""))
+
+    def test_allow_methods_includes_patch(self):
+        resp = self.client.get("/api/health")
+        self.assertIn("PATCH", resp.headers.get("Access-Control-Allow-Methods", ""))
+
+
+# ---------------------------------------------------------------------------
+# /api/health
+# ---------------------------------------------------------------------------
 
 class TestHealthEndpoint(ApiTestBase):
 
@@ -164,758 +259,262 @@ class TestHealthEndpoint(ApiTestBase):
         self.assertEqual(resp.status_code, 200)
 
     def test_health_ok_true(self):
-        resp = self.client.get("/api/health")
-        data = json.loads(resp.data)
+        data = json.loads(self.client.get("/api/health").data)
         self.assertTrue(data["ok"])
 
-    def test_health_includes_bot_mode(self):
-        resp = self.client.get("/api/health")
-        data = json.loads(resp.data)
-        self.assertIn("bot_mode", data["data"])
+    def test_health_service_is_stixmagic(self):
+        data = json.loads(self.client.get("/api/health").data)
+        self.assertEqual(data["data"]["service"], "stixmagic")
 
-    def test_health_service_name(self):
-        resp = self.client.get("/api/health")
-        data = json.loads(resp.data)
-        self.assertEqual(data["data"]["service"], "stixmagic-product-backend")
+    def test_health_no_bot_mode_field(self):
+        """bot_mode was removed from health response in this PR."""
+        data = json.loads(self.client.get("/api/health").data)
+        self.assertNotIn("bot_mode", data["data"])
 
-    def test_health_includes_api_version(self):
-        resp = self.client.get("/api/health")
-        data = json.loads(resp.data)
+    def test_health_includes_version(self):
+        data = json.loads(self.client.get("/api/health").data)
         self.assertIn("version", data["data"])
 
+    def test_health_db_ok(self):
+        data = json.loads(self.client.get("/api/health").data)
+        self.assertEqual(data["data"]["db"], "ok")
 
-class TestCORSHeaders(ApiTestBase):
-
-    def test_public_route_has_wildcard_cors(self):
-        resp = self.client.get("/api/health")
-        self.assertEqual(resp.headers.get("Access-Control-Allow-Origin"), "*")
-
-    def test_api_version_header_present(self):
-        resp = self.client.get("/api/health")
-        self.assertIn("X-API-Version", resp.headers)
-
-    def test_miniapp_route_with_trusted_origin_gets_cors(self):
-        """A request from a trusted origin should get the CORS header set."""
-        import api as api_mod
-        # Add the origin to the allowlist
-        api_mod._MINIAPP_CORS_ORIGINS = frozenset(["https://example.com"])
-
-        valid_init_data = _build_init_data(FAKE_BOT_TOKEN, FAKE_USER)
-
-        with patch("api.validate_init_data", return_value={"user": FAKE_USER, "start_param": None}):
-            resp = self.client.get(
-                "/api/miniapp/settings",
-                headers={
-                    "Origin": "https://example.com",
-                    "X-Telegram-Init-Data": valid_init_data,
-                },
-            )
-        # Should get the specific origin back, not wildcard
-        origin_header = resp.headers.get("Access-Control-Allow-Origin")
-        self.assertEqual(origin_header, "https://example.com")
-
-    def test_miniapp_route_with_untrusted_origin_no_cors(self):
-        """A request from an untrusted origin should not get a CORS header."""
-        import api as api_mod
-        api_mod._MINIAPP_CORS_ORIGINS = frozenset(["https://example.com"])
-
-        with patch("api.validate_init_data", return_value={"user": FAKE_USER, "start_param": None}):
-            resp = self.client.get(
-                "/api/miniapp/settings",
-                headers={
-                    "Origin": "https://evil.com",
-                    "X-Telegram-Init-Data": "fake",
-                },
-            )
-        origin_header = resp.headers.get("Access-Control-Allow-Origin")
-        self.assertNotEqual(origin_header, "https://evil.com")
+    def test_health_includes_timestamp(self):
+        data = json.loads(self.client.get("/api/health").data)
+        self.assertIn("timestamp", data["data"])
 
 
-class TestRequireMiniappAuth(ApiTestBase):
+# ---------------------------------------------------------------------------
+# require_api_key decorator
+# ---------------------------------------------------------------------------
 
-    def test_valid_init_data_proceeds(self):
-        """Valid initData should pass the auth guard and reach the route."""
-        fake_session = {"user": {"id": 42, "first_name": "Alice"}, "start_param": None}
-        with patch("api.validate_init_data", return_value=fake_session):
-            resp = self.client.get(
-                "/api/miniapp/settings",
-                headers={"X-Telegram-Init-Data": "any-value"},
-            )
-        # Route reached — not a 401
+class TestRequireApiKey(ApiTestBase):
+
+    def test_missing_key_returns_401(self):
+        resp = self.client.get("/api/stats")
+        self.assertEqual(resp.status_code, 401)
+
+    def test_wrong_key_returns_401(self):
+        resp = self.client.get("/api/stats", headers={"X-API-Key": "wrong-key"})
+        self.assertEqual(resp.status_code, 401)
+
+    def test_correct_key_in_header_passes(self):
+        resp = self.client.get("/api/stats", headers={"X-API-Key": "test-api-key"})
         self.assertNotEqual(resp.status_code, 401)
 
-    def test_missing_init_data_returns_401(self):
-        """Missing initData should return 401 with miniapp_unauthorized code."""
-        from stixmagic.telegram_auth import TelegramInitDataError
-        with patch("api.validate_init_data", side_effect=TelegramInitDataError("Missing")):
-            resp = self.client.get("/api/miniapp/settings")
-        self.assertEqual(resp.status_code, 401)
-        data = json.loads(resp.data)
-        self.assertFalse(data["ok"])
-        self.assertEqual(data["error"]["code"], "miniapp_unauthorized")
+    def test_correct_key_as_query_param_passes(self):
+        resp = self.client.get("/api/stats?api_key=test-api-key")
+        self.assertNotEqual(resp.status_code, 401)
 
-    def test_invalid_init_data_returns_401(self):
-        from stixmagic.telegram_auth import TelegramInitDataError
-        with patch("api.validate_init_data", side_effect=TelegramInitDataError("Invalid signature")):
-            resp = self.client.get(
-                "/api/miniapp/settings",
-                headers={"X-Telegram-Init-Data": "bad-data"},
-            )
-        self.assertEqual(resp.status_code, 401)
+    def test_unauthorized_code_in_error(self):
+        data = json.loads(self.client.get("/api/stats").data)
+        self.assertEqual(data["error"]["code"], "unauthorized")
 
 
-class TestTelegramInitDataFromRequest(ApiTestBase):
+# ---------------------------------------------------------------------------
+# /api/miniapp/packs
+# ---------------------------------------------------------------------------
 
-    def test_x_telegram_init_data_header_used(self):
-        """X-Telegram-Init-Data header should be extracted."""
-        captured = {}
+class TestMiniappPacksRoute(ApiTestBase):
 
-        def _capture(init_data, token, **kwargs):
-            captured["init_data"] = init_data
-            raise __import__("stixmagic.telegram_auth", fromlist=["TelegramInitDataError"]).TelegramInitDataError("test")
+    def test_missing_user_id_returns_400(self):
+        resp = self.client.get("/api/miniapp/packs")
+        self.assertEqual(resp.status_code, 400)
 
-        with patch("api.validate_init_data", side_effect=_capture):
-            self.client.get(
-                "/api/miniapp/settings",
-                headers={"X-Telegram-Init-Data": "my-init-data"},
-            )
-        self.assertEqual(captured.get("init_data"), "my-init-data")
+    def test_non_numeric_user_id_returns_400(self):
+        resp = self.client.get("/api/miniapp/packs?user_id=abc")
+        self.assertEqual(resp.status_code, 400)
 
-    def test_authorization_tma_prefix_extracted(self):
-        """Authorization: TMA <data> header should strip the prefix."""
-        captured = {}
+    def test_empty_user_id_returns_400(self):
+        resp = self.client.get("/api/miniapp/packs?user_id=")
+        self.assertEqual(resp.status_code, 400)
 
-        def _capture(init_data, token, **kwargs):
-            captured["init_data"] = init_data
-            raise __import__("stixmagic.telegram_auth", fromlist=["TelegramInitDataError"]).TelegramInitDataError("test")
+    def test_missing_user_id_error_code(self):
+        data = json.loads(self.client.get("/api/miniapp/packs").data)
+        self.assertEqual(data["error"]["code"], "missing_param")
 
-        with patch("api.validate_init_data", side_effect=_capture):
-            self.client.get(
-                "/api/miniapp/settings",
-                headers={"Authorization": "TMA my-actual-init-data"},
-            )
-        self.assertEqual(captured.get("init_data"), "my-actual-init-data")
-
-
-class TestMiniappBootstrap(ApiTestBase):
-
-    def _session(self, user_id: int = 42) -> dict:
-        return {
-            "user": {"id": user_id, "first_name": "Alice"},
-            "start_param": "create-pack",
-            "chat_type": None,
-            "chat_instance": None,
-            "query_id": None,
-            "auth_date": int(time.time()),
-        }
-
-    def test_bootstrap_returns_200(self):
-        with patch("api.validate_init_data", return_value=self._session()):
-            resp = self.client.get(
-                "/api/miniapp/bootstrap",
-                headers={"X-Telegram-Init-Data": "valid"},
-            )
-        self.assertEqual(resp.status_code, 200)
-
-    def test_bootstrap_includes_user(self):
-        with patch("api.validate_init_data", return_value=self._session()):
-            resp = self.client.get(
-                "/api/miniapp/bootstrap",
-                headers={"X-Telegram-Init-Data": "valid"},
-            )
-        data = json.loads(resp.data)
-        self.assertIn("user", data["data"])
-        self.assertEqual(data["data"]["user"]["id"], 42)
-
-    def test_bootstrap_includes_bot_info(self):
-        with patch("api.validate_init_data", return_value=self._session()):
-            resp = self.client.get(
-                "/api/miniapp/bootstrap",
-                headers={"X-Telegram-Init-Data": "valid"},
-            )
-        data = json.loads(resp.data)
-        self.assertIn("bot", data["data"])
-
-    def test_bootstrap_includes_deep_links_when_username_set(self):
-        with patch("api.validate_init_data", return_value=self._session()):
-            resp = self.client.get(
-                "/api/miniapp/bootstrap",
-                headers={"X-Telegram-Init-Data": "valid"},
-            )
-        data = json.loads(resp.data)
-        bot = data["data"]["bot"]
-        self.assertIn("links", bot)
-        links = bot["links"]
-        self.assertIn("create_pack", links)
-        self.assertIn("add_sticker", links)
-        self.assertIn("manage_packs", links)
-        self.assertIn("magic_cut", links)
-        self.assertIn("feature_pack", links)
-
-    def test_bootstrap_includes_launch_surface(self):
-        with patch("api.validate_init_data", return_value=self._session()):
-            resp = self.client.get(
-                "/api/miniapp/bootstrap",
-                headers={"X-Telegram-Init-Data": "valid"},
-            )
-        data = json.loads(resp.data)
-        launch = data["data"]["launch"]
-        self.assertEqual(launch["surface"], "miniapp")
-
-    def test_bootstrap_without_bot_username_no_links(self):
-        """When bot_username is empty, links should not be present."""
+    def test_valid_user_id_returns_200_empty_list(self):
+        # Bypass telegram validation by giving invalid-format token
         import api as api_mod
-        original = api_mod.SETTINGS.telegram_bot_username
-        api_mod.SETTINGS = _make_mock_settings(
-            db_path=self.db_path, telegram_bot_username=""
-        )
-        try:
-            with patch("api.validate_init_data", return_value=self._session()):
-                resp = self.client.get(
-                    "/api/miniapp/bootstrap",
-                    headers={"X-Telegram-Init-Data": "valid"},
-                )
-            data = json.loads(resp.data)
-            bot = data["data"]["bot"]
-            self.assertNotIn("links", bot)
-        finally:
-            api_mod.SETTINGS = self.mock_settings
-
-    def test_bootstrap_requires_auth(self):
-        from stixmagic.telegram_auth import TelegramInitDataError
-        with patch("api.validate_init_data", side_effect=TelegramInitDataError("No auth")):
-            resp = self.client.get("/api/miniapp/bootstrap")
-        self.assertEqual(resp.status_code, 401)
-
-
-class TestMiniappSettingsRoute(ApiTestBase):
-
-    def _session(self, user_id: int = 42) -> dict:
-        return {"user": {"id": user_id, "first_name": "Alice"}, "start_param": None}
-
-    def test_settings_get_returns_defaults(self):
-        with patch("api.validate_init_data", return_value=self._session(42)):
-            resp = self.client.get(
-                "/api/miniapp/settings",
-                headers={"X-Telegram-Init-Data": "valid"},
-            )
+        api_mod.settings.telegram_bot_token = "no-token"
+        resp = self.client.get("/api/miniapp/packs?user_id=42")
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.data)
-        self.assertIn("mask_inverted", data["data"])
+        self.assertEqual(data["data"], [])
+
+    def test_valid_user_id_returns_packs_from_db(self):
+        import infra.db as db_mod
+        db_mod.add_pack(42, "pack_alpha", "Alpha Pack")
+
+        import api as api_mod
+        api_mod.settings.telegram_bot_token = "no-token"
+        resp = self.client.get("/api/miniapp/packs?user_id=42")
+        data = json.loads(resp.data)
+        self.assertEqual(len(data["data"]), 1)
+        self.assertEqual(data["data"][0]["name"], "pack_alpha")
+
+    def test_packs_response_includes_link(self):
+        import infra.db as db_mod
+        db_mod.add_pack(99, "mypacks", "My Packs")
+
+        import api as api_mod
+        api_mod.settings.telegram_bot_token = "no-token"
+        resp = self.client.get("/api/miniapp/packs?user_id=99")
+        data = json.loads(resp.data)
+        self.assertIn("link", data["data"][0])
+        self.assertIn("t.me/addstickers", data["data"][0]["link"])
+
+    def test_negative_user_id_returns_400(self):
+        resp = self.client.get("/api/miniapp/packs?user_id=-5")
+        self.assertEqual(resp.status_code, 400)
+
+
+# ---------------------------------------------------------------------------
+# /api/miniapp/settings GET
+# ---------------------------------------------------------------------------
+
+class TestMiniappSettingsGet(ApiTestBase):
+
+    def test_missing_user_id_returns_400(self):
+        resp = self.client.get("/api/miniapp/settings")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_non_numeric_user_id_returns_400(self):
+        resp = self.client.get("/api/miniapp/settings?user_id=foo")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_valid_user_id_default_mask_inverted_false(self):
+        resp = self.client.get("/api/miniapp/settings?user_id=42")
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.data)
         self.assertFalse(data["data"]["mask_inverted"])
 
-    def test_settings_patch_updates_value(self):
-        with patch("api.validate_init_data", return_value=self._session(42)):
-            resp = self.client.patch(
-                "/api/miniapp/settings",
-                json={"mask_inverted": True},
-                headers={"X-Telegram-Init-Data": "valid"},
-            )
+    def test_returns_correct_user_id_in_response(self):
+        resp = self.client.get("/api/miniapp/settings?user_id=42")
+        data = json.loads(resp.data)
+        self.assertEqual(data["data"]["user_id"], 42)
+
+    def test_reflects_existing_setting(self):
+        import infra.db as db_mod
+        db_mod.set_mask_inverted(77, True)
+        resp = self.client.get("/api/miniapp/settings?user_id=77")
+        data = json.loads(resp.data)
+        self.assertTrue(data["data"]["mask_inverted"])
+
+
+# ---------------------------------------------------------------------------
+# /api/miniapp/settings PATCH
+# ---------------------------------------------------------------------------
+
+class TestMiniappSettingsPatch(ApiTestBase):
+
+    def test_missing_user_id_returns_400(self):
+        resp = self.client.patch(
+            "/api/miniapp/settings",
+            json={"mask_inverted": True},
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_non_numeric_user_id_returns_400(self):
+        resp = self.client.patch(
+            "/api/miniapp/settings?user_id=xyz",
+            json={"mask_inverted": True},
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_missing_json_body_returns_400(self):
+        resp = self.client.patch(
+            "/api/miniapp/settings?user_id=42",
+            data="not-json",
+            content_type="text/plain",
+        )
+        self.assertEqual(resp.status_code, 400)
+        data = json.loads(resp.data)
+        self.assertEqual(data["error"]["code"], "invalid_body")
+
+    def test_patch_sets_mask_inverted_true(self):
+        resp = self.client.patch(
+            "/api/miniapp/settings?user_id=42",
+            json={"mask_inverted": True},
+        )
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.data)
         self.assertTrue(data["data"]["mask_inverted"])
 
-    def test_settings_patch_requires_json_body(self):
-        with patch("api.validate_init_data", return_value=self._session(42)):
-            resp = self.client.patch(
-                "/api/miniapp/settings",
-                data="not-json",
-                content_type="text/plain",
-                headers={"X-Telegram-Init-Data": "valid"},
-            )
-        self.assertEqual(resp.status_code, 400)
-
-    def test_settings_user_id_from_session_not_query_string(self):
-        """user_id must come from the auth session, not query string (security)."""
-        with patch("api.validate_init_data", return_value=self._session(42)):
-            # Passing a different user_id in query string should be ignored
-            resp = self.client.get(
-                "/api/miniapp/settings?user_id=999",
-                headers={"X-Telegram-Init-Data": "valid"},
-            )
-        data = json.loads(resp.data)
-        self.assertEqual(data["data"]["user_id"], 42)
-
-
-class TestMiniappIntentRoute(ApiTestBase):
-
-    def _session(self, user_id: int = 42) -> dict:
-        return {"user": {"id": user_id, "first_name": "Alice"}, "start_param": None}
-
-    def test_intent_create_pack_returns_token_and_link(self):
-        with patch("api.validate_init_data", return_value=self._session()):
-            resp = self.client.post(
-                "/api/miniapp/intent",
-                json={"action": "create_pack"},
-                headers={"X-Telegram-Init-Data": "valid"},
-            )
-        self.assertEqual(resp.status_code, 200)
-        data = json.loads(resp.data)
-        self.assertIn("token", data["data"])
-        self.assertIn("deep_link", data["data"])
-        self.assertIn("action", data["data"])
-
-    def test_intent_deep_link_contains_bot_username(self):
-        with patch("api.validate_init_data", return_value=self._session()):
-            resp = self.client.post(
-                "/api/miniapp/intent",
-                json={"action": "add_sticker"},
-                headers={"X-Telegram-Init-Data": "valid"},
-            )
-        data = json.loads(resp.data)
-        self.assertIn("testbot", data["data"]["deep_link"])
-
-    def test_intent_invalid_action_returns_400(self):
-        with patch("api.validate_init_data", return_value=self._session()):
-            resp = self.client.post(
-                "/api/miniapp/intent",
-                json={"action": "do_something_evil"},
-                headers={"X-Telegram-Init-Data": "valid"},
-            )
-        self.assertEqual(resp.status_code, 400)
-        data = json.loads(resp.data)
-        self.assertEqual(data["error"]["code"], "invalid_action")
-
-    def test_intent_without_body_returns_400(self):
-        with patch("api.validate_init_data", return_value=self._session()):
-            resp = self.client.post(
-                "/api/miniapp/intent",
-                headers={"X-Telegram-Init-Data": "valid"},
-                content_type="text/plain",
-                data="no json",
-            )
-        self.assertEqual(resp.status_code, 400)
-
-    def test_intent_all_valid_actions(self):
-        valid_actions = ["create_pack", "add_sticker", "manage_packs", "magic_cut", "feature_pack"]
-        for action in valid_actions:
-            with self.subTest(action=action):
-                with patch("api.validate_init_data", return_value=self._session()):
-                    resp = self.client.post(
-                        "/api/miniapp/intent",
-                        json={"action": action},
-                        headers={"X-Telegram-Init-Data": "valid"},
-                    )
-                self.assertEqual(resp.status_code, 200, f"Action {action!r} should be valid")
-
-    def test_intent_requires_auth(self):
-        from stixmagic.telegram_auth import TelegramInitDataError
-        with patch("api.validate_init_data", side_effect=TelegramInitDataError("No auth")):
-            resp = self.client.post(
-                "/api/miniapp/intent",
-                json={"action": "create_pack"},
-            )
-        self.assertEqual(resp.status_code, 401)
-
-
-# ── _validate_packs_async tests ───────────────────────────────
-#
-# These tests exercise the N+1 DB connection fix introduced in this PR.
-# The function opens exactly ONE connection and reuses it across all
-# pack-validation iterations, rather than opening a fresh connection for
-# every UPDATE or DELETE operation.
-#
-
-
-def _ensure_api_importable():
-    """Inject minimal stubs for api.py's top-level imports if not present."""
-    if "flask" not in sys.modules:
-        flask_stub = MagicMock()
-        flask_stub.Flask = MagicMock(return_value=MagicMock())
-        flask_stub.jsonify = MagicMock()
-        flask_stub.request = MagicMock()
-        flask_stub.send_from_directory = MagicMock()
-        sys.modules["flask"] = flask_stub
-
-    # telegram stub needed for _validate_packs_async's `from telegram import Bot`
-    if "telegram" not in sys.modules:
-        telegram_stub = MagicMock()
-        telegram_stub.__name__ = "telegram"
-        telegram_stub.Bot = MagicMock()
-        sys.modules["telegram"] = telegram_stub
-
-    for mod in ("config", "config.runtime", "moderation"):
-        if mod not in sys.modules:
-            sys.modules[mod] = MagicMock()
-
-    # Ensure config.runtime.get_settings returns something safe
-    sys.modules["config.runtime"].get_settings = MagicMock(
-        return_value=MagicMock(
-            api_key="test-key",
-            session_secret="secret",
+    def test_patch_sets_mask_inverted_false(self):
+        import infra.db as db_mod
+        db_mod.set_mask_inverted(42, True)
+        resp = self.client.patch(
+            "/api/miniapp/settings?user_id=42",
+            json={"mask_inverted": False},
         )
-    )
-    sys.modules["moderation"].create_default_harness = MagicMock(return_value=MagicMock())
+        data = json.loads(resp.data)
+        self.assertFalse(data["data"]["mask_inverted"])
+
+    def test_patch_returns_user_id(self):
+        resp = self.client.patch(
+            "/api/miniapp/settings?user_id=55",
+            json={"mask_inverted": True},
+        )
+        data = json.loads(resp.data)
+        self.assertEqual(data["data"]["user_id"], 55)
+
+    def test_patch_with_empty_json_body_returns_400(self):
+        """Empty JSON dict {} is falsy – the route rejects it as invalid_body."""
+        resp = self.client.patch(
+            "/api/miniapp/settings?user_id=42",
+            json={},
+        )
+        self.assertEqual(resp.status_code, 400)
+        data = json.loads(resp.data)
+        self.assertEqual(data["error"]["code"], "invalid_body")
 
 
-def _make_db_row(name, title):
-    """Return a MagicMock that behaves like a sqlite3.Row for name/title access."""
-    row = MagicMock()
-    row.__getitem__ = lambda self, key: name if key == "name" else title
-    return row
+# ---------------------------------------------------------------------------
+# _get_user_packs / _update_pack_title / _delete_pack DB helpers
+# ---------------------------------------------------------------------------
 
+class TestDbHelpers(ApiTestBase):
 
-def _run_async(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
-
-
-class TestValidatePacksAsync(unittest.TestCase):
-    """_validate_packs_async – connection-reuse and validation logic."""
-
-    @classmethod
-    def setUpClass(cls):
-        _ensure_api_importable()
-        # Force api into sys.modules so later patches on "api.get_db" resolve
-        if "api" not in sys.modules:
-            import importlib
-            sys.modules["api"] = importlib.import_module("api")
-
-    def _make_bot(self, sticker_sets=None, raise_for=None):
-        """
-        Build an AsyncMock Bot.
-
-        sticker_sets  – dict mapping pack name → StickerSet stub (title attr)
-        raise_for     – set of pack names for which get_sticker_set raises
-        """
-        bot = MagicMock()
-        bot.close = AsyncMock()
-
-        async def _get_sticker_set(name):
-            if raise_for and name in raise_for:
-                raise Exception(f"Pack {name} not found")
-            ss = MagicMock()
-            ss.title = (sticker_sets or {}).get(name, name)
-            return ss
-
-        bot.get_sticker_set = _get_sticker_set
-        return bot
-
-    def _make_conn(self, rows):
-        """Return a mock connection/cursor pair with pre-loaded rows."""
-        conn = MagicMock()
-        cursor = MagicMock()
-        cursor.fetchall.return_value = rows
-        conn.cursor.return_value = cursor
-        return conn, cursor
-
-    # ── happy-path: empty pack list ───────────────────────────
-
-    def test_empty_packs_returns_empty_list(self):
-        conn, cursor = self._make_conn([])
-        bot = self._make_bot()
-
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
-            from api import _validate_packs_async
-            result = _run_async(_validate_packs_async("fake:token", 1))
-
+    def test_get_user_packs_returns_empty_for_new_user(self):
+        import api as api_mod
+        result = api_mod._get_user_packs(9999)
         self.assertEqual(result, [])
 
-    # ── happy-path: valid pack with matching title ─────────────
-
-    def test_valid_pack_returned_when_title_matches(self):
-        row = _make_db_row("mypack", "My Pack")
-        conn, cursor = self._make_conn([row])
-        bot = self._make_bot(sticker_sets={"mypack": "My Pack"})
-
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
-            from api import _validate_packs_async
-            result = _run_async(_validate_packs_async("fake:token", 1))
-
+    def test_get_user_packs_returns_dicts(self):
+        import infra.db as db_mod
+        db_mod.add_pack(1, "pack_x", "Pack X")
+        import api as api_mod
+        result = api_mod._get_user_packs(1)
         self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]["name"], "mypack")
-        self.assertEqual(result[0]["title"], "My Pack")
-
-    def test_valid_pack_link_format(self):
-        row = _make_db_row("coolpack", "Cool Pack")
-        conn, cursor = self._make_conn([row])
-        bot = self._make_bot(sticker_sets={"coolpack": "Cool Pack"})
-
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
-            from api import _validate_packs_async
-            result = _run_async(_validate_packs_async("fake:token", 1))
-
-        self.assertEqual(result[0]["link"], "https://t.me/addstickers/coolpack")
-
-    # ── title-sync: updated title propagated to DB and result ─
-
-    def test_title_update_when_telegram_title_differs(self):
-        row = _make_db_row("mypack", "Old Title")
-        conn, cursor = self._make_conn([row])
-        bot = self._make_bot(sticker_sets={"mypack": "New Title"})
-
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
-            from api import _validate_packs_async
-            result = _run_async(_validate_packs_async("fake:token", 1))
-
-        self.assertEqual(result[0]["title"], "New Title")
-
-    def test_title_update_executes_sql_update_on_same_cursor(self):
-        row = _make_db_row("mypack", "Old Title")
-        conn, cursor = self._make_conn([row])
-        bot = self._make_bot(sticker_sets={"mypack": "New Title"})
-
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
-            from api import _validate_packs_async
-            _run_async(_validate_packs_async("fake:token", 42))
-
-        # cursor.execute should have been called for SELECT + UPDATE
-        calls = cursor.execute.call_args_list
-        update_calls = [c for c in calls if "UPDATE" in str(c)]
-        self.assertEqual(len(update_calls), 1)
-        # The UPDATE must carry the new title and correct user_id / name
-        update_args = update_calls[0][0]
-        self.assertIn("UPDATE packs SET title", update_args[0])
-        self.assertEqual(update_args[1][0], "New Title")
-        self.assertEqual(update_args[1][1], 42)
-        self.assertEqual(update_args[1][2], "mypack")
-
-    def test_title_update_commits_on_existing_connection(self):
-        """conn.commit() must be called for a title change (not a new connection)."""
-        row = _make_db_row("mypack", "Old Title")
-        conn, cursor = self._make_conn([row])
-        bot = self._make_bot(sticker_sets={"mypack": "New Title"})
-
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
-            from api import _validate_packs_async
-            _run_async(_validate_packs_async("fake:token", 1))
-
-        conn.commit.assert_called()
-
-    # ── pack deletion when Telegram raises ────────────────────
-
-    def test_missing_pack_deleted_from_db(self):
-        row = _make_db_row("deadpack", "Dead Pack")
-        conn, cursor = self._make_conn([row])
-        bot = self._make_bot(raise_for={"deadpack"})
-
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
-            from api import _validate_packs_async
-            result = _run_async(_validate_packs_async("fake:token", 7))
-
-        self.assertEqual(result, [])
-
-    def test_missing_pack_executes_delete_on_same_cursor(self):
-        row = _make_db_row("deadpack", "Dead Pack")
-        conn, cursor = self._make_conn([row])
-        bot = self._make_bot(raise_for={"deadpack"})
-
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
-            from api import _validate_packs_async
-            _run_async(_validate_packs_async("fake:token", 7))
-
-        calls = cursor.execute.call_args_list
-        delete_calls = [c for c in calls if "DELETE" in str(c)]
-        self.assertEqual(len(delete_calls), 1)
-        delete_args = delete_calls[0][0]
-        self.assertIn("DELETE FROM packs", delete_args[0])
-        self.assertEqual(delete_args[1][0], 7)   # user_id
-        self.assertEqual(delete_args[1][1], "deadpack")
-
-    def test_missing_pack_commits_delete_on_existing_connection(self):
-        row = _make_db_row("deadpack", "Dead Pack")
-        conn, cursor = self._make_conn([row])
-        bot = self._make_bot(raise_for={"deadpack"})
-
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
-            from api import _validate_packs_async
-            _run_async(_validate_packs_async("fake:token", 1))
-
-        conn.commit.assert_called()
-
-    # ── single-connection guarantee (N+1 fix) ─────────────────
-
-    def test_get_db_called_exactly_once_for_multiple_packs(self):
-        """Only one DB connection opened regardless of the number of packs."""
-        rows = [
-            _make_db_row("pack1", "Pack One"),
-            _make_db_row("pack2", "Old Two"),   # title differs → UPDATE
-            _make_db_row("pack3", "Pack Three"),
-        ]
-        conn, cursor = self._make_conn(rows)
-        bot = self._make_bot(
-            sticker_sets={"pack1": "Pack One", "pack2": "New Two", "pack3": "Pack Three"}
-        )
-
-        with patch("api.get_db", return_value=conn) as mock_get_db, \
-             patch("telegram.Bot", return_value=bot):
-            from api import _validate_packs_async
-            _run_async(_validate_packs_async("fake:token", 1))
-
-        mock_get_db.assert_called_once()
-
-    def test_get_db_called_exactly_once_when_pack_deleted(self):
-        """Deleting a stale pack must not open a second connection."""
-        rows = [_make_db_row("deadpack", "Dead Pack")]
-        conn, cursor = self._make_conn(rows)
-        bot = self._make_bot(raise_for={"deadpack"})
-
-        with patch("api.get_db", return_value=conn) as mock_get_db, \
-             patch("telegram.Bot", return_value=bot):
-            from api import _validate_packs_async
-            _run_async(_validate_packs_async("fake:token", 1))
-
-        mock_get_db.assert_called_once()
-
-    def test_get_db_called_exactly_once_when_title_updated(self):
-        """Syncing a renamed title must not open a second connection."""
-        rows = [_make_db_row("renamed", "Old Name")]
-        conn, cursor = self._make_conn(rows)
-        bot = self._make_bot(sticker_sets={"renamed": "New Name"})
-
-        with patch("api.get_db", return_value=conn) as mock_get_db, \
-             patch("telegram.Bot", return_value=bot):
-            from api import _validate_packs_async
-            _run_async(_validate_packs_async("fake:token", 1))
-
-        mock_get_db.assert_called_once()
-
-    # ── connection lifecycle ───────────────────────────────────
-
-    def test_conn_close_called_after_loop(self):
-        rows = [_make_db_row("pack1", "Pack One")]
-        conn, cursor = self._make_conn(rows)
-        bot = self._make_bot(sticker_sets={"pack1": "Pack One"})
-
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
-            from api import _validate_packs_async
-            _run_async(_validate_packs_async("fake:token", 1))
-
-        conn.close.assert_called_once()
-
-    def test_conn_close_called_when_all_packs_fail(self):
-        """conn.close() is reached even if every pack raises on Telegram lookup."""
-        rows = [
-            _make_db_row("dead1", "Dead One"),
-            _make_db_row("dead2", "Dead Two"),
-        ]
-        conn, cursor = self._make_conn(rows)
-        bot = self._make_bot(raise_for={"dead1", "dead2"})
-
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
-            from api import _validate_packs_async
-            _run_async(_validate_packs_async("fake:token", 1))
-
-        conn.close.assert_called_once()
-
-    def test_bot_close_called_in_finally(self):
-        """bot.close() is always invoked regardless of outcome."""
-        rows = [_make_db_row("pack1", "Pack One")]
-        conn, cursor = self._make_conn(rows)
-        bot = self._make_bot(sticker_sets={"pack1": "Pack One"})
-
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
-            from api import _validate_packs_async
-            _run_async(_validate_packs_async("fake:token", 1))
-
-        bot.close.assert_awaited_once()
-
-    def test_bot_close_called_when_get_sticker_set_raises(self):
-        """bot.close() must be awaited even when pack validation fails."""
-        rows = [_make_db_row("deadpack", "Dead")]
-        conn, cursor = self._make_conn(rows)
-        bot = self._make_bot(raise_for={"deadpack"})
-
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
-            from api import _validate_packs_async
-            _run_async(_validate_packs_async("fake:token", 1))
-
-        bot.close.assert_awaited_once()
-
-    # ── mixed scenario ─────────────────────────────────────────
-
-    def test_mixed_valid_renamed_and_deleted_packs(self):
-        """All three branches (match / rename / delete) work in one call."""
-        rows = [
-            _make_db_row("good",    "Good Pack"),
-            _make_db_row("renamed", "Old Name"),
-            _make_db_row("dead",    "Dead Pack"),
-        ]
-        conn, cursor = self._make_conn(rows)
-        bot = self._make_bot(
-            sticker_sets={"good": "Good Pack", "renamed": "New Name"},
-            raise_for={"dead"},
-        )
-
-        with patch("api.get_db", return_value=conn) as mock_get_db, \
-             patch("telegram.Bot", return_value=bot):
-            from api import _validate_packs_async
-            result = _run_async(_validate_packs_async("fake:token", 99))
-
-        # Only one DB connection opened throughout
-        mock_get_db.assert_called_once()
-
-        # Two valid packs returned; deleted pack excluded
-        self.assertEqual(len(result), 2)
-        names = {r["name"] for r in result}
-        self.assertIn("good", names)
-        self.assertIn("renamed", names)
-        self.assertNotIn("dead", names)
-
-        # Renamed pack carries the updated title
-        renamed = next(r for r in result if r["name"] == "renamed")
-        self.assertEqual(renamed["title"], "New Name")
-
-        # bot.close() called exactly once
-        bot.close.assert_awaited_once()
-
-    # ── boundary / regression cases ────────────────────────────
-
-    def test_returns_all_packs_when_all_valid(self):
-        rows = [
-            _make_db_row(f"pack{i}", f"Pack {i}") for i in range(5)
-        ]
-        conn, cursor = self._make_conn(rows)
-        sticker_sets = {f"pack{i}": f"Pack {i}" for i in range(5)}
-        bot = self._make_bot(sticker_sets=sticker_sets)
-
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
-            from api import _validate_packs_async
-            result = _run_async(_validate_packs_async("fake:token", 1))
-
-        self.assertEqual(len(result), 5)
-
-    def test_result_contains_all_expected_keys(self):
-        row = _make_db_row("mypack", "My Pack")
-        conn, cursor = self._make_conn([row])
-        bot = self._make_bot(sticker_sets={"mypack": "My Pack"})
-
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
-            from api import _validate_packs_async
-            result = _run_async(_validate_packs_async("fake:token", 1))
-
         self.assertIn("name", result[0])
         self.assertIn("title", result[0])
-        self.assertIn("link", result[0])
 
-    def test_title_not_changed_when_titles_match(self):
-        """No UPDATE executed when Telegram title equals the stored title."""
-        row = _make_db_row("samepack", "Same Title")
-        conn, cursor = self._make_conn([row])
-        bot = self._make_bot(sticker_sets={"samepack": "Same Title"})
+    def test_update_pack_title(self):
+        import infra.db as db_mod
+        db_mod.add_pack(1, "pack_y", "Old Title")
+        import api as api_mod
+        api_mod._update_pack_title(1, "pack_y", "New Title")
+        packs = db_mod.get_user_packs(1)
+        self.assertEqual(packs[0][1], "New Title")
 
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
-            from api import _validate_packs_async
-            _run_async(_validate_packs_async("fake:token", 1))
+    def test_delete_pack_removes_row(self):
+        import infra.db as db_mod
+        db_mod.add_pack(1, "pack_z", "To Delete")
+        import api as api_mod
+        api_mod._delete_pack(1, "pack_z")
+        packs = db_mod.get_user_packs(1)
+        self.assertEqual(len(packs), 0)
 
-        calls = cursor.execute.call_args_list
-        update_calls = [c for c in calls if "UPDATE" in str(c)]
-        self.assertEqual(len(update_calls), 0)
+    def test_delete_pack_only_affects_named_pack(self):
+        import infra.db as db_mod
+        db_mod.add_pack(1, "keep_this", "Keep")
+        db_mod.add_pack(1, "remove_this", "Remove")
+        import api as api_mod
+        api_mod._delete_pack(1, "remove_this")
+        packs = db_mod.get_user_packs(1)
+        self.assertEqual(len(packs), 1)
+        self.assertEqual(packs[0][0], "keep_this")
 
 
 if __name__ == "__main__":

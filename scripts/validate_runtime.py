@@ -77,15 +77,6 @@ async def telegram_get_me(token: str) -> None:
 
 
 def main() -> None:
-    """
-    Validate runtime configuration and perform smoke tests driven by CLI flags.
-    
-    Parses CLI arguments --mode (ci|production) and --check-telegram, runs internal smoke tests, and then:
-    - In "production" mode, ensures required environment variables are present, reads the Telegram token from stixmagic settings, validates its format, and (when --check-telegram is set) performs a Telegram API smoke check.
-    - In "ci" mode, skips production secret checks.
-    
-    Exits with SystemExit if any required check or validation fails; prints "All checks passed." on success.
-    """
     parser = argparse.ArgumentParser(description="Validate Stix Magic runtime configuration.")
     parser.add_argument("--mode", choices=("ci", "production"), default="ci")
     parser.add_argument("--check-telegram", action="store_true")
@@ -94,12 +85,8 @@ def main() -> None:
     run_smoke_tests()
 
     if args.mode == "production":
-        require_env(("STIXMAGIC_API_KEY", "TELEGRAM_WEBHOOK_SECRET"))
-        from stixmagic.settings import get_settings
-        settings = get_settings()
-        token = settings.telegram_bot_token
-        if not token or not TOKEN_PATTERN.fullmatch(token):
-            raise SystemExit("telegram_bot_token is required and must be a valid Telegram bot token.")
+        require_env(("BOT_TOKEN_PROD", "STIXMAGIC_API_KEY", "SESSION_SECRET"))
+        token = validate_token("BOT_TOKEN_PROD")
         if args.check_telegram:
             asyncio.run(telegram_get_me(token))
     else:

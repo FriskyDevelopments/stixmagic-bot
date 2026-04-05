@@ -4,7 +4,8 @@ Tests for stixmagic/settings.py – environment-driven configuration resolution.
 Covers:
  - get_settings() with various env var combinations
  - AppSettings computed properties (miniapp_url, miniapp_api_base_url)
- - _infer_public_base_url: explicit var and fallback behavior
+ - _infer_public_base_url: explicit var, Replit domains, fallback
+ - _infer_bot_username: explicit var, missing raises ValueError (caught)
  - database_path defaults and overrides
  - bot_mode defaults and overrides
 """
@@ -18,6 +19,8 @@ class TestGetSettings(unittest.TestCase):
 
     def _get_settings_with_env(self, env: dict):
         """Helper: run get_settings() with a controlled environment."""
+        # Must import inside to avoid module-level caching issues
+        import importlib
         import stixmagic.settings as mod
         with patch.dict(os.environ, env, clear=True):
             return mod.get_settings()
@@ -38,25 +41,6 @@ class TestGetSettings(unittest.TestCase):
         self.assertEqual(s.database_path, "test.db")
         self.assertEqual(s.public_base_url, "https://example.com")
         self.assertEqual(s.bot_mode, "polling")
-
-    def test_token_falls_back_to_env_suffix(self):
-        env = {"APP_ENV": "development", "BOT_TOKEN_DEV": "123:abc"}
-        s = self._get_settings_with_env(env)
-        self.assertEqual(s.telegram_bot_token, "123:abc")
-
-    def test_api_key_falls_back_to_env_suffix(self):
-        env = {"APP_ENV": "production", "STIXMAGIC_API_KEY_PROD": "prod-key"}
-        s = self._get_settings_with_env(env)
-        self.assertEqual(s.stixmagic_api_key, "prod-key")
-
-    def test_unsuffixed_token_precedence_over_fallback(self):
-        env = {
-            "APP_ENV": "production",
-            "TELEGRAM_BOT_TOKEN": "111:direct",
-            "BOT_TOKEN_PROD": "222:fallback",
-        }
-        s = self._get_settings_with_env(env)
-        self.assertEqual(s.telegram_bot_token, "111:direct")
 
     def test_defaults_when_optional_vars_absent(self):
         env = {}
@@ -144,13 +128,16 @@ class TestGetSettings(unittest.TestCase):
         s = self._get_settings_with_env(env)
         self.assertEqual(s.public_base_url, "https://example.com")
 
-    def test_public_base_url_ignores_replit_domains(self):
+    def test_public_base_url_from_replit_domains(self):
         env = {"REPLIT_DOMAINS": "myapp.replit.app,secondary.replit.app"}
         s = self._get_settings_with_env(env)
-        self.assertEqual(s.public_base_url, "")
+        self.assertEqual(s.public_base_url, "https://myapp.replit.app")
 
-    def test_public_base_url_explicit_set(self):
-        env = {"STIXMAGIC_PUBLIC_BASE_URL": "https://custom.com"}
+    def test_public_base_url_explicit_overrides_replit(self):
+        env = {
+            "STIXMAGIC_PUBLIC_BASE_URL": "https://custom.com",
+            "REPLIT_DOMAINS": "other.replit.app",
+        }
         s = self._get_settings_with_env(env)
         self.assertEqual(s.public_base_url, "https://custom.com")
 

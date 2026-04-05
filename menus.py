@@ -1,11 +1,17 @@
+import os
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
-from stixmagic.settings import get_settings
+from config.runtime import get_settings
 
 DIVIDER = "◈ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ◈"
 
 def _resolve_miniapp_url():
-    return get_settings().miniapp_url
+    url = get_settings().miniapp_url
+    if not url:
+        domains = os.environ.get("REPLIT_DOMAINS", "")
+        if domains:
+            url = f"https://{domains.split(',')[0]}/miniapp"
+    return url
 
 MINIAPP_URL = _resolve_miniapp_url()
 
@@ -164,15 +170,6 @@ def build_keyboard(menu_id):
 
 
 def get_menu_text(menu_id):
-    """
-    Compose the display text for a menu identified by menu_id.
-    
-    Parameters:
-        menu_id (str): The key of the menu in MENU_STRUCTURE.
-    
-    Returns:
-        str: The assembled menu text (header followed by a divider and, if present, the body). Returns "Menu not found." if the menu_id is not present.
-    """
     menu = MENU_STRUCTURE.get(menu_id)
     if not menu:
         return "Menu not found."
