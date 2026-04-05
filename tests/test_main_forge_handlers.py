@@ -595,5 +595,56 @@ class TestCreateSticker(unittest.TestCase):
         self.assertIn("unrecognised", args[0])
 
 
+
+    @patch("main.LoaderController")
+    @patch("main.download_file_bytes")
+    @patch("main.telegram_adapter")
+    def test_download_failure_returns_waiting_sticker(self, mock_adapter, mock_download, mock_loader_cls):
+        # Mock media to bypass unsupported check
+        mock_media = MagicMock()
+        mock_media.media_type = "sticker"
+        mock_media.file_id = "file123"
+        mock_adapter.parse_message_media.return_value = mock_media
+
+        # Mock download to fail
+        mock_download.return_value = None
+        mock_download.side_effect = AsyncMock(return_value=None)
+
+        # Setup mock LoaderController
+        mock_ctrl = MagicMock()
+        mock_ctrl.start = AsyncMock()
+        mock_ctrl.stop = AsyncMock()
+        mock_loader_cls.return_value = mock_ctrl
+
+        update = _make_message_update("some text")
+        update.message.from_user = MagicMock(id=123)
+
+        # Setup mock progress message
+        mock_progress = MagicMock()
+        mock_progress.edit_text = AsyncMock()
+        update.message.reply_text = AsyncMock(return_value=mock_progress)
+
+        ctx = _make_context({"newpack_title": "My Pack"})
+        # Setup draft
+        from main import ForgeDraft, ForgeStep
+        draft = ForgeDraft(title="My Pack", step=ForgeStep.LOADING)
+        ctx.user_data["forge_draft"] = draft
+        ctx.bot = MagicMock(username="TestBot")
+
+        result = _run(create_sticker(update, ctx))
+
+        self.assertEqual(result, WAITING_STICKER)
+
+        # Verify LoaderController was stopped
+        mock_ctrl.stop.assert_awaited_once()
+
+        # Verify failure message
+        mock_progress.edit_text.assert_awaited_once_with("⚠ Download failed. Please try again.")
+
+        # Verify draft step was updated
+        updated_draft = ctx.user_data["forge_draft"]
+        self.assertEqual(updated_draft.step, ForgeStep.STICKER)
+
+
 if __name__ == "__main__":
     unittest.main()
