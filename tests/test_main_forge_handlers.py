@@ -595,5 +595,54 @@ class TestCreateSticker(unittest.TestCase):
         self.assertIn("unrecognised", args[0])
 
 
+
+
+# ---------------------------------------------------------------------------
+# start handler
+# ---------------------------------------------------------------------------
+
+class TestStartHandler(unittest.TestCase):
+    """start handler checks if a user is new and shows welcome, or shows home menu."""
+
+    @patch("main.is_new_user")
+    def test_start_new_user_shows_welcome(self, mock_is_new_user):
+        from main import start
+        mock_is_new_user.return_value = True
+
+        update = MagicMock()
+        update.effective_user = MagicMock()
+        update.effective_user.id = 123
+        update.effective_user.first_name = "Alice"
+        update.message = MagicMock()
+        update.message.reply_text = AsyncMock()
+
+        ctx = _make_context()
+
+        _run(start(update, ctx))
+
+        mock_is_new_user.assert_called_once_with(123)
+        update.message.reply_text.assert_awaited_once()
+        args, _ = update.message.reply_text.call_args
+        self.assertIn("The laboratory opens, Alice", args[0])
+
+    @patch("main.is_new_user")
+    @patch("main.send_menu", new_callable=AsyncMock)
+    def test_start_existing_user_shows_home(self, mock_send_menu, mock_is_new_user):
+        from main import start
+        mock_is_new_user.return_value = False
+
+        update = MagicMock()
+        update.effective_user = MagicMock()
+        update.effective_user.id = 456
+        update.message = MagicMock()
+
+        ctx = _make_context()
+
+        _run(start(update, ctx))
+
+        mock_is_new_user.assert_called_once_with(456)
+        mock_send_menu.assert_awaited_once_with(update, "home")
+
+
 if __name__ == "__main__":
     unittest.main()
