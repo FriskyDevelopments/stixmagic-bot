@@ -1,4 +1,4 @@
-import os
+
 import re
 import sqlite3
 import time
@@ -33,7 +33,7 @@ PAGE_SIZE = 20
 if SETTINGS.webhook_secret:
     app.secret_key = SETTINGS.webhook_secret
 else:
-    app.secret_key = os.urandom(32).hex()
+    app.secret_key = token_urlsafe(32)
 moderation_harness = create_default_harness()
 
 
@@ -945,4 +945,5 @@ def run_api():
     
     Runs the app with debug mode disabled and the reloader disabled; this call blocks the current thread until the server stops.
     """
+    import os
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8080")), debug=False, use_reloader=False)
