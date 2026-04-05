@@ -39,6 +39,8 @@ def _patch_heavy_imports():
         def __init__(self, *args, **kwargs):
             if args and isinstance(args[0], list):
                 self.inline_keyboard = args[0]
+            elif args and isinstance(args[0], str):
+                self.text = args[0]
             if "inline_keyboard" in kwargs:
                 self.inline_keyboard = kwargs["inline_keyboard"]
             if "callback_data" in kwargs:
@@ -126,6 +128,8 @@ from main import (
     create_sticker,
     create_title,
     create_title_confirm,
+    home_keyboard,
+    back_home_keyboard,
 )
 from src.bot.forge_wizard import ForgeDraft, ForgeStep
 from telegram import InlineKeyboardMarkup
@@ -595,5 +599,35 @@ class TestCreateSticker(unittest.TestCase):
         self.assertIn("unrecognised", args[0])
 
 
+
+
+# ---------------------------------------------------------------------------
+# Keyboard helpers
+# ---------------------------------------------------------------------------
+
+class TestMenuKeyboards(unittest.TestCase):
+    """Test the basic menu keyboard generation functions in main.py."""
+
+    def test_cancel_keyboard(self):
+        keyboard = cancel_keyboard()
+        self.assertIsInstance(keyboard, InlineKeyboardMarkup)
+        self.assertEqual(keyboard.inline_keyboard[0][0].text, "✕ Cancel")
+        self.assertEqual(keyboard.inline_keyboard[0][0].callback_data, "nav:home")
+
+    def test_home_keyboard(self):
+        keyboard = home_keyboard()
+        self.assertIsInstance(keyboard, InlineKeyboardMarkup)
+        self.assertEqual(keyboard.inline_keyboard[0][0].text, "✦ Home")
+        self.assertEqual(keyboard.inline_keyboard[0][0].callback_data, "nav:home")
+
+    def test_back_home_keyboard(self):
+        keyboard = back_home_keyboard("settings")
+        self.assertIsInstance(keyboard, InlineKeyboardMarkup)
+        self.assertEqual(keyboard.inline_keyboard[0][0].text, "◂ Back")
+        self.assertEqual(keyboard.inline_keyboard[0][0].callback_data, "nav:settings")
+        self.assertEqual(keyboard.inline_keyboard[0][1].text, "✦ Home")
+        self.assertEqual(keyboard.inline_keyboard[0][1].callback_data, "nav:home")
+
 if __name__ == "__main__":
+
     unittest.main()
