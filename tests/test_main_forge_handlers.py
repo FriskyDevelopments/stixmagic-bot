@@ -39,10 +39,15 @@ def _patch_heavy_imports():
         def __init__(self, *args, **kwargs):
             if args and isinstance(args[0], list):
                 self.inline_keyboard = args[0]
+            elif args and isinstance(args[0], str):
+                self.text = args[0]
+
             if "inline_keyboard" in kwargs:
                 self.inline_keyboard = kwargs["inline_keyboard"]
             if "callback_data" in kwargs:
                 self.callback_data = kwargs["callback_data"]
+            if "text" in kwargs:
+                self.text = kwargs["text"]
         DEFAULT_TYPE = MagicMock()
 
     # telegram module
@@ -122,6 +127,8 @@ from main import (
     WAITING_TITLE,
     WAITING_TITLE_CONFIRM,
     cancel_keyboard,
+    home_keyboard,
+    back_home_keyboard,
     create_start,
     create_sticker,
     create_title,
@@ -256,6 +263,42 @@ class TestCancelKeyboardDelegates(unittest.TestCase):
             forge_kb.inline_keyboard[0][0].callback_data,
         )
 
+
+
+class TestHomeKeyboard(unittest.TestCase):
+    """Tests for home_keyboard."""
+
+    def test_returns_inline_keyboard_markup(self):
+        kb = home_keyboard()
+        self.assertIsInstance(kb, InlineKeyboardMarkup)
+
+    def test_home_button_properties(self):
+        kb = home_keyboard()
+        self.assertEqual(len(kb.inline_keyboard), 1)
+        self.assertEqual(len(kb.inline_keyboard[0]), 1)
+        button = kb.inline_keyboard[0][0]
+        self.assertEqual(button.text, "✦ Home")
+        self.assertEqual(button.callback_data, "nav:home")
+
+class TestBackHomeKeyboard(unittest.TestCase):
+    """Tests for back_home_keyboard."""
+
+    def test_returns_inline_keyboard_markup(self):
+        kb = back_home_keyboard("test_back")
+        self.assertIsInstance(kb, InlineKeyboardMarkup)
+
+    def test_buttons_properties(self):
+        kb = back_home_keyboard("test_back")
+        self.assertEqual(len(kb.inline_keyboard), 1)
+        self.assertEqual(len(kb.inline_keyboard[0]), 2)
+
+        back_btn = kb.inline_keyboard[0][0]
+        self.assertEqual(back_btn.text, "◂ Back")
+        self.assertEqual(back_btn.callback_data, "nav:test_back")
+
+        home_btn = kb.inline_keyboard[0][1]
+        self.assertEqual(home_btn.text, "✦ Home")
+        self.assertEqual(home_btn.callback_data, "nav:home")
 
 # ---------------------------------------------------------------------------
 # create_start handler
