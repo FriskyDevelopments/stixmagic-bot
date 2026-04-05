@@ -35,7 +35,8 @@ if __name__ == "__main__":
     if args.mode != "ci":
         _require("telegram_bot_token", settings.telegram_bot_token)
         _require("stixmagic_api_key", settings.stixmagic_api_key)
-        _require("webhook_secret", settings.webhook_secret)
+        if settings.bot_mode == "webhook":
+            _require("webhook_secret", settings.webhook_secret)
 
     print(
         "Configuration OK:",
