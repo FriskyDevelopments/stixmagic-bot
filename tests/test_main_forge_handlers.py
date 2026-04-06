@@ -608,7 +608,6 @@ class TestCreateSticker(unittest.TestCase):
 
         # Mock download to fail
         mock_download.return_value = None
-        mock_download.side_effect = AsyncMock(return_value=None)
 
         # Setup mock LoaderController
         mock_ctrl = MagicMock()
