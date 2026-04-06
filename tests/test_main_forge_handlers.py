@@ -522,6 +522,13 @@ class TestCreateTitleConfirm(unittest.TestCase):
 
     # ── missing draft path ───────────────────────────────────
 
+    def test_missing_draft_handling_returns_end(self):
+        from telegram.ext import ConversationHandler
+        update = _make_callback_update("forge_confirm")
+        ctx = _make_context({})
+        result = _run(create_title_confirm(update, ctx))
+        self.assertEqual(result, ConversationHandler.END)
+
     def test_missing_draft_ends_conversation(self):
         from telegram.ext import ConversationHandler
         update = _make_callback_update("forge_confirm")
