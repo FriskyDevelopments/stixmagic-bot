@@ -1449,58 +1449,8 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ── MAIN ─────────────────────────────────────────────────────
 
-def main():
-    try:
-        settings = get_settings()
-    except ConfigError as exc:
-        logger.error("Configuration error: %s", exc)
-        return
-
-    token = settings.telegram_bot_token
-    runtime_mode = "DEVELOPMENT" if settings.is_development else "PRODUCTION"
-    logger.info(
-        "Runtime mode: %s (APP_ENV=%s). Telegram token source: %s. Pack namespace prefix: %s.",
-        runtime_mode,
-        settings.app_env,
-        settings.telegram_token_source,
-        _pack_namespace_prefix(),
-    )
-
-    from menus import MINIAPP_URL
-
-    async def post_init(app):
-        if MINIAPP_URL:
-            try:
-                await app.bot.set_chat_menu_button(
-                    menu_button=MenuButtonWebApp(text="✦ Mini App", web_app=WebAppInfo(url=MINIAPP_URL))
-                )
-                logger.info(f"Menu button set to Mini App: {MINIAPP_URL}")
-            except Exception as e:
-                logger.warning(f"Could not set menu button: {e}")
-
-        from telegram import BotCommand
-        try:
-            await app.bot.set_my_commands([
-                BotCommand("start",      "Open the main menu"),
-                BotCommand("create",     "Forge a new sticker pack"),
-                BotCommand("addsticker", "Add a sticker to an existing pack"),
-                BotCommand("magic",      "Cut out a subject with a B&W mask"),
-                BotCommand("sync",       "Import / summon an existing pack"),
-                BotCommand("catalog",    "Browse the community sticker catalog"),
-                BotCommand("search",     "Search the sticker catalog"),
-                BotCommand("feature",    "Publish your pack to the catalog"),
-                BotCommand("info",       "Get info & stats for any sticker pack"),
-                BotCommand("packs",      "View all your packs"),
-                BotCommand("manage",     "Manage / delete your packs"),
-                BotCommand("help",       "Show all commands and tips"),
-                BotCommand("cancel",     "Cancel the current operation"),
-            ])
-            logger.info("Bot commands registered")
-        except Exception as e:
-            logger.warning(f"Could not set bot commands: {e}")
-
-    application = Application.builder().token(token).post_init(post_init).build()
-
+def setup_handlers(application):
+    """Register all command, conversation, and callback handlers."""
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("packs", show_packs))
     application.add_handler(CommandHandler("manage", manage_stickers))
@@ -1586,6 +1536,61 @@ def main():
     application.add_handler(InlineQueryHandler(inline_query_handler))
     application.add_handler(CallbackQueryHandler(nav_callback, pattern="^nav:"))
     application.add_handler(CallbackQueryHandler(menu_callback))
+
+
+def main():
+    try:
+        settings = get_settings()
+    except ConfigError as exc:
+        logger.error("Configuration error: %s", exc)
+        return
+
+    token = settings.telegram_bot_token
+    runtime_mode = "DEVELOPMENT" if settings.is_development else "PRODUCTION"
+    logger.info(
+        "Runtime mode: %s (APP_ENV=%s). Telegram token source: %s. Pack namespace prefix: %s.",
+        runtime_mode,
+        settings.app_env,
+        settings.telegram_token_source,
+        _pack_namespace_prefix(),
+    )
+
+    from menus import MINIAPP_URL
+
+    async def post_init(app):
+        if MINIAPP_URL:
+            try:
+                await app.bot.set_chat_menu_button(
+                    menu_button=MenuButtonWebApp(text="✦ Mini App", web_app=WebAppInfo(url=MINIAPP_URL))
+                )
+                logger.info(f"Menu button set to Mini App: {MINIAPP_URL}")
+            except Exception as e:
+                logger.warning(f"Could not set menu button: {e}")
+
+        from telegram import BotCommand
+        try:
+            await app.bot.set_my_commands([
+                BotCommand("start",      "Open the main menu"),
+                BotCommand("create",     "Forge a new sticker pack"),
+                BotCommand("addsticker", "Add a sticker to an existing pack"),
+                BotCommand("magic",      "Cut out a subject with a B&W mask"),
+                BotCommand("sync",       "Import / summon an existing pack"),
+                BotCommand("catalog",    "Browse the community sticker catalog"),
+                BotCommand("search",     "Search the sticker catalog"),
+                BotCommand("feature",    "Publish your pack to the catalog"),
+                BotCommand("info",       "Get info & stats for any sticker pack"),
+                BotCommand("packs",      "View all your packs"),
+                BotCommand("manage",     "Manage / delete your packs"),
+                BotCommand("help",       "Show all commands and tips"),
+                BotCommand("cancel",     "Cancel the current operation"),
+            ])
+            logger.info("Bot commands registered")
+        except Exception as e:
+            logger.warning(f"Could not set bot commands: {e}")
+
+    application = Application.builder().token(token).post_init(post_init).build()
+
+    setup_handlers(application)
 
     from api import run_api
     web_thread = threading.Thread(target=run_api, daemon=True)
