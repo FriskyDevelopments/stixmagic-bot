@@ -2,7 +2,6 @@ import html
 import io
 import logging
 import random
-import re
 import string
 import threading
 
