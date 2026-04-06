@@ -219,6 +219,54 @@ async def create_title_confirm(update: Update, context: ContextTypes.DEFAULT_TYP
     return WAITING_STICKER
 
 
+
+async def _handle_create_success(pack_name: str, title: str, ctrl, progress, draft, context):
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✦ Inscribe More Stickers", callback_data=f"addto_{pack_name}")],
+        [InlineKeyboardButton("🔗 Open the Vessel", url=f"https://t.me/addstickers/{pack_name}")],
+        [
+            InlineKeyboardButton("📖 Grimoire", callback_data="menu_packs"),
+            InlineKeyboardButton("✦ Home", callback_data="nav:home"),
+        ],
+    ])
+
+    await ctrl.stop()
+    await progress.edit_text(
+        f"⚗️ <b>Pack forged!</b>\n"
+        f"{DIV}\n\n"
+        f"<b>{html.escape(title)}</b>\n"
+        f"<i>The first sticker is sealed within.</i>",
+        parse_mode="HTML",
+        reply_markup=keyboard
+    )
+    if isinstance(draft, ForgeDraft):
+        context.user_data["forge_draft"] = ForgeDraft(title=draft.title, step=ForgeStep.SUCCESS)
+
+
+async def _handle_create_error(e: Exception, ctrl, progress, draft, context):
+    logger.error(f"Error creating sticker set: {e}")
+    err = str(e)
+    friendly = "The ingredients were not accepted. Try a PNG or JPG image."
+    if "too big" in err.lower():
+        friendly = "The ingredient is too large — try a smaller image (under 512px)."
+    elif "invalid" in err.lower():
+        friendly = "The form was rejected by Telegram. Try a PNG or JPG."
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 Try Again", callback_data="menu_create")],
+        [InlineKeyboardButton("✦ Home", callback_data="nav:home")],
+    ])
+    await ctrl.stop()
+    await progress.edit_text(
+        f"⚠ <b>The transmutation failed</b>\n"
+        f"{DIV}\n\n"
+        f"{friendly}",
+        parse_mode="HTML",
+        reply_markup=keyboard
+    )
+    if isinstance(draft, ForgeDraft):
+        context.user_data["forge_draft"] = ForgeDraft(title=draft.title, step=ForgeStep.ERROR)
+
+
 async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     title = context.user_data.get('newpack_title', 'My Pack')
@@ -279,48 +327,9 @@ async def create_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         add_pack_to_db(user.id, pack_name, title)
 
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("✦ Inscribe More Stickers", callback_data=f"addto_{pack_name}")],
-            [InlineKeyboardButton("🔗 Open the Vessel", url=f"https://t.me/addstickers/{pack_name}")],
-            [
-                InlineKeyboardButton("📖 Grimoire", callback_data="menu_packs"),
-                InlineKeyboardButton("✦ Home", callback_data="nav:home"),
-            ],
-        ])
-
-        await ctrl.stop()
-        await progress.edit_text(
-            f"⚗️ <b>Pack forged!</b>\n"
-            f"{DIV}\n\n"
-            f"<b>{html.escape(title)}</b>\n"
-            f"<i>The first sticker is sealed within.</i>",
-            parse_mode="HTML",
-            reply_markup=keyboard
-        )
-        if isinstance(draft, ForgeDraft):
-            context.user_data["forge_draft"] = ForgeDraft(title=draft.title, step=ForgeStep.SUCCESS)
+        await _handle_create_success(pack_name, title, ctrl, progress, draft, context)
     except Exception as e:
-        logger.error(f"Error creating sticker set: {e}")
-        err = str(e)
-        friendly = "The ingredients were not accepted. Try a PNG or JPG image."
-        if "too big" in err.lower():
-            friendly = "The ingredient is too large — try a smaller image (under 512px)."
-        elif "invalid" in err.lower():
-            friendly = "The form was rejected by Telegram. Try a PNG or JPG."
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 Try Again", callback_data="menu_create")],
-            [InlineKeyboardButton("✦ Home", callback_data="nav:home")],
-        ])
-        await ctrl.stop()
-        await progress.edit_text(
-            f"⚠ <b>The transmutation failed</b>\n"
-            f"{DIV}\n\n"
-            f"{friendly}",
-            parse_mode="HTML",
-            reply_markup=keyboard
-        )
-        if isinstance(draft, ForgeDraft):
-            context.user_data["forge_draft"] = ForgeDraft(title=draft.title, step=ForgeStep.ERROR)
+        await _handle_create_error(e, ctrl, progress, draft, context)
 
     context.user_data.clear()
     return ConversationHandler.END
