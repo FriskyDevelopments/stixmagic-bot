@@ -165,13 +165,13 @@ def require_api_key(f):
         f (callable): The Flask view function to wrap.
     
     Returns:
-        callable: A wrapped view function that returns a 401 JSON error with code "unauthorized" when the `X-API-Key` header or `api_key` query parameter is missing or does not match the configured API key; otherwise calls the original view.
+        callable: A wrapped view function that returns a 401 JSON error with code "unauthorized" when the `X-API-Key` header is missing or does not match the configured API key; otherwise calls the original view.
     """
     @wraps(f)
     def decorated(*args, **kwargs):
-        key = request.headers.get("X-API-Key") or request.args.get("api_key")
+        key = request.headers.get("X-API-Key")
         if not API_KEY or key != API_KEY:
-            return err("Valid API key required. Pass it as X-API-Key header or api_key param.", 401, "unauthorized")
+            return err("Valid API key required. Pass it as X-API-Key header.", 401, "unauthorized")
         return f(*args, **kwargs)
     return decorated
 

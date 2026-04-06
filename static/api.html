@@ -314,15 +314,13 @@
             <p>All endpoints except <code>/api/health</code> require an API key.</p>
 
             <div class="info-box purple">
-                Pass your key via the <code>X-API-Key</code> request header or as an <code>api_key</code> query parameter.
+                Pass your key via the <code>X-API-Key</code> request header.
             </div>
 
             <h3>Header (recommended)</h3>
             <pre><code>curl https://stixmagic.com/api/stats \
   -H <span class="str">"X-API-Key: your_api_key_here"</span></code></pre>
 
-            <h3>Query param</h3>
-            <pre><code>curl <span class="str">"https://stixmagic.com/api/stats?api_key=your_api_key_here"</span></code></pre>
         </div>
 
         <!-- Responses -->

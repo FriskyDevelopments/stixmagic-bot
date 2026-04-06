@@ -32,6 +32,8 @@ jobs:
           STIXMAGIC_API_KEY_DEV: "smoke-test-only-key"
           SESSION_SECRET_DEV: "smoke-test-secret"
           MINIAPP_URL_DEV: "https://example.com/miniapp"
+          TELEGRAM_WEBHOOK_SECRET: "smoke-test-secret"
+          STIXMAGIC_PUBLIC_BASE_URL: "https://example.com"
         run: |
           python scripts/check_config.py --mode ci
           python scripts/smoke_test.py

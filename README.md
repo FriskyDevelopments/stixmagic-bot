@@ -60,7 +60,7 @@
   A Flask-based REST API runs alongside the bot.
 
   **Base URL:** `https://stixmagic.com/api`  
-  **Auth:** `X-API-Key: <your-key>` header (or `?api_key=` param)  
+  **Auth:** `X-API-Key: <your-key>` header
   **Docs:** `/api` — interactive dark-themed reference page
 
   ### Endpoints
