@@ -597,7 +597,7 @@ class TestCreateSticker(unittest.TestCase):
 
 
     @patch("main.LoaderController")
-    @patch("main.download_file_bytes")
+    @patch("main.download_file_bytes", new_callable=AsyncMock)
     @patch("main.telegram_adapter")
     def test_download_failure_returns_waiting_sticker(self, mock_adapter, mock_download, mock_loader_cls):
         # Mock media to bypass unsupported check
