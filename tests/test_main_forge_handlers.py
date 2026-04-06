@@ -123,6 +123,7 @@ from main import (
     WAITING_TITLE_CONFIRM,
     cancel_keyboard,
     create_start,
+    validate_and_sync_packs,
     create_sticker,
     create_title,
     create_title_confirm,
@@ -614,6 +615,39 @@ class TestCreateSticker(unittest.TestCase):
         update.message.reply_text.assert_awaited_once()
         args, _ = update.message.reply_text.call_args
         self.assertIn("unrecognised", args[0])
+
+
+
+# ---------------------------------------------------------------------------
+# validate_and_sync_packs handler
+# ---------------------------------------------------------------------------
+
+class TestValidateAndSyncPacks(unittest.TestCase):
+    @patch("main.get_user_packs")
+    @patch("main.delete_pack_from_db")
+    def test_exception_handling_deletes_pack(self, mock_delete, mock_get_packs):
+        mock_get_packs.return_value = [("pack_name", "Pack Title")]
+        bot = AsyncMock()
+        bot.get_sticker_set.side_effect = Exception("Not found")
+
+        valid = _run(validate_and_sync_packs(bot, 123))
+
+        mock_delete.assert_called_once_with(123, "pack_name")
+        self.assertEqual(valid, [])
+
+    @patch("main.get_user_packs")
+    @patch("main.update_pack_title_in_db")
+    def test_syncs_title_and_returns_valid(self, mock_update, mock_get_packs):
+        mock_get_packs.return_value = [("pack_name", "Old Title")]
+        bot = AsyncMock()
+        mock_sticker_set = MagicMock()
+        mock_sticker_set.title = "New Title"
+        bot.get_sticker_set.return_value = mock_sticker_set
+
+        valid = _run(validate_and_sync_packs(bot, 123))
+
+        mock_update.assert_called_once_with(123, "pack_name", "New Title")
+        self.assertEqual(valid, [("pack_name", "New Title")])
 
 
 if __name__ == "__main__":
