@@ -76,6 +76,12 @@ def init_db() -> None:
         )
         """
     )
+    # ⚡ Bolt Optimization: Add covering indices for common catalog_search modes
+    # Impact: Turns O(N log N) full table scans and temporary B-tree sorting into O(log N) lookups
+    c.execute("CREATE INDEX IF NOT EXISTS idx_catalog_packs_popular ON catalog_packs (public, likes DESC)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_catalog_packs_trending ON catalog_packs (public, view_count DESC, likes DESC)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_catalog_packs_new ON catalog_packs (public, added_at DESC)")
+
     conn.commit()
     conn.close()
 
