@@ -72,7 +72,7 @@ class TestGetSettings(unittest.TestCase):
         self.assertEqual(s.public_base_url, "")
 
     def test_database_path_default_is_bot_db(self):
-        env = {, "TELEGRAM_BOT_TOKEN": "dummy"}
+        env = {"TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.database_path, "bot.db")
 
