@@ -34,7 +34,7 @@ class TestGetSettings(unittest.TestCase):
             "STIXMAGIC_DB_PATH": "test.db",
             "STIXMAGIC_PUBLIC_BASE_URL": "https://example.com",
             "TELEGRAM_BOT_MODE": "polling",
-
+        }
         s = self._get_settings_with_env(env)
         self.assertEqual(s.telegram_bot_token, "123:abc")
         self.assertEqual(s.telegram_bot_username, "mybot")
@@ -44,7 +44,7 @@ class TestGetSettings(unittest.TestCase):
         self.assertEqual(s.bot_mode, "polling")
 
     def test_token_falls_back_to_env_suffix(self):
-        env = {"APP_ENV": "development", "BOT_TOKEN_DEV": "123:abc"
+        env = {"APP_ENV": "development", "BOT_TOKEN_DEV": "123:abc"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.telegram_bot_token, "123:abc")
 
@@ -58,12 +58,12 @@ class TestGetSettings(unittest.TestCase):
             "APP_ENV": "production",
             "TELEGRAM_BOT_TOKEN": "111:direct",
             "BOT_TOKEN_PROD": "222:fallback",
-
+        }
         s = self._get_settings_with_env(env)
         self.assertEqual(s.telegram_bot_token, "111:direct")
 
     def test_defaults_when_optional_vars_absent(self):
-        env = {, "TELEGRAM_BOT_TOKEN": "dummy"}
+        env = {"TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.telegram_bot_token, "dummy")
         self.assertEqual(s.stixmagic_api_key, "")
@@ -72,7 +72,7 @@ class TestGetSettings(unittest.TestCase):
         self.assertEqual(s.public_base_url, "")
 
     def test_database_path_default_is_bot_db(self):
-        env = {, "TELEGRAM_BOT_TOKEN": "dummy"}
+        env = {"TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.database_path, "bot.db")
 
