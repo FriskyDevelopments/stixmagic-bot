@@ -34,7 +34,7 @@ class TestGetSettings(unittest.TestCase):
             "STIXMAGIC_DB_PATH": "test.db",
             "STIXMAGIC_PUBLIC_BASE_URL": "https://example.com",
             "TELEGRAM_BOT_MODE": "polling",
-
+        }
         s = self._get_settings_with_env(env)
         self.assertEqual(s.telegram_bot_token, "123:abc")
         self.assertEqual(s.telegram_bot_username, "mybot")
@@ -44,7 +44,7 @@ class TestGetSettings(unittest.TestCase):
         self.assertEqual(s.bot_mode, "polling")
 
     def test_token_falls_back_to_env_suffix(self):
-        env = {"APP_ENV": "development", "BOT_TOKEN_DEV": "123:abc"
+        env = {"APP_ENV": "development", "BOT_TOKEN_DEV": "123:abc"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.telegram_bot_token, "123:abc")
 
