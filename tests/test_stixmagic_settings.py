@@ -58,12 +58,12 @@ class TestGetSettings(unittest.TestCase):
             "APP_ENV": "production",
             "TELEGRAM_BOT_TOKEN": "111:direct",
             "BOT_TOKEN_PROD": "222:fallback",
-
+        }
         s = self._get_settings_with_env(env)
         self.assertEqual(s.telegram_bot_token, "111:direct")
 
     def test_defaults_when_optional_vars_absent(self):
-        env = {, "TELEGRAM_BOT_TOKEN": "dummy"}
+        env = {"TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.telegram_bot_token, "dummy")
         self.assertEqual(s.stixmagic_api_key, "")
