@@ -87,7 +87,7 @@ class TestGetSettings(unittest.TestCase):
         self.assertEqual(s.database_path, "bot.db")
 
     def test_bot_mode_default_is_polling(self):
-        env = {, "TELEGRAM_BOT_TOKEN": "dummy"}
+        env = {"TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.bot_mode, "polling")
 
@@ -107,7 +107,7 @@ class TestGetSettings(unittest.TestCase):
         self.assertEqual(s.bot_mode, "polling")
 
     def test_miniapp_path_default(self):
-        env = {, "TELEGRAM_BOT_TOKEN": "dummy"}
+        env = {"TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.miniapp_path, "/miniapp")
 
@@ -117,7 +117,7 @@ class TestGetSettings(unittest.TestCase):
         self.assertEqual(s.miniapp_path, "/app")
 
     def test_webhook_url_and_secret_empty_by_default(self):
-        env = {, "TELEGRAM_BOT_TOKEN": "dummy"}
+        env = {"TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.webhook_url, "")
         self.assertEqual(s.webhook_secret, "")
@@ -139,7 +139,7 @@ class TestGetSettings(unittest.TestCase):
 
     def test_bot_username_missing_returns_empty(self):
         """Missing TELEGRAM_BOT_USERNAME should return empty string (fail-closed but non-crashing)."""
-        env = {, "TELEGRAM_BOT_TOKEN": "dummy"}
+        env = {"TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.telegram_bot_username, "")
 
@@ -164,12 +164,12 @@ class TestGetSettings(unittest.TestCase):
         self.assertEqual(s.api_base_url, "https://example.com/api")
 
     def test_api_base_url_fallback_when_no_public_base(self):
-        env = {, "TELEGRAM_BOT_TOKEN": "dummy"}
+        env = {"TELEGRAM_BOT_TOKEN": "dummy"}
         s = self._get_settings_with_env(env)
         self.assertEqual(s.api_base_url, "/api")
 
     def test_settings_is_frozen(self):
-        env = {"TELEGRAM_BOT_TOKEN": "123:abc"
+        env = {"TELEGRAM_BOT_TOKEN": "123:abc"}
         s = self._get_settings_with_env(env)
         with self.assertRaises((AttributeError, TypeError)):
             s.telegram_bot_token = "mutated"
