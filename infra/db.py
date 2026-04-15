@@ -82,6 +82,10 @@ def init_db() -> None:
     c.execute("CREATE INDEX IF NOT EXISTS idx_catalog_packs_trending ON catalog_packs (public, view_count DESC, likes DESC)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_catalog_packs_new ON catalog_packs (public, added_at DESC)")
 
+    # ⚡ Bolt Optimization: Add index on packs(user_id) for faster lookups
+    # Impact: Turns O(N) full table scans on the packs table (which can grow large) into O(log N) lookups for API/bot requests fetching packs for a specific user
+    c.execute("CREATE INDEX IF NOT EXISTS idx_packs_user_id ON packs (user_id)")
+
     conn.commit()
     conn.close()
 
