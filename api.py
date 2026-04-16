@@ -230,6 +230,26 @@ def require_miniapp_auth(f):
     return decorated
 
 
+def get_pagination_params():
+    """
+    Extracts and sanitizes `page` and `limit` URL query parameters.
+
+    Returns:
+        tuple: A pair (page, limit) where:
+            - page (int): Requested page number, coerced to at least 1 (defaults to 1 on invalid input).
+            - limit (int): Number of items per page, coerced to the range 1–100 (defaults to PAGE_SIZE on invalid input).
+    """
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    try:
+        limit = min(100, max(1, int(request.args.get("limit", PAGE_SIZE))))
+    except ValueError:
+        limit = PAGE_SIZE
+    return page, limit
+
+
 def paginate(query_result):
     """
     Builds a paginated view of query_result according to `page` and `limit` URL query parameters.
@@ -246,14 +266,7 @@ def paginate(query_result):
                 - total (int): Total number of items in `query_result`.
                 - pages (int): Total number of pages (at least 1).
     """
-    try:
-        page = max(1, int(request.args.get("page", 1)))
-    except ValueError:
-        page = 1
-    try:
-        limit = min(100, max(1, int(request.args.get("limit", PAGE_SIZE))))
-    except ValueError:
-        limit = PAGE_SIZE
+    page, limit = get_pagination_params()
 
     total = len(query_result)
     start = (page - 1) * limit
@@ -572,38 +585,59 @@ def search_packs():
     if len(q) < 2:
         return err("Query must be at least 2 characters", 400, "query_too_short")
 
+    page, limit = get_pagination_params()
+    offset = (page - 1) * limit
+
     conn = get_db()
     c = conn.cursor()
+
+    # ⚡ Bolt Optimization: Use SQL LIMIT/OFFSET instead of Python array slicing
+    # Impact: Reduces memory usage and response time from O(N) to O(limit) for large result sets
     c.execute(
-        "SELECT user_id, name, title FROM packs WHERE title LIKE ? OR name LIKE ? ORDER BY title",
+        "SELECT COUNT(*) FROM packs WHERE title LIKE ? OR name LIKE ?",
         (f"%{q}%", f"%{q}%")
+    )
+    total = c.fetchone()[0]
+
+    c.execute(
+        "SELECT user_id, name, title FROM packs WHERE title LIKE ? OR name LIKE ? ORDER BY title LIMIT ? OFFSET ?",
+        (f"%{q}%", f"%{q}%", limit, offset)
     )
     rows = c.fetchall()
     conn.close()
 
-    all_results = [
+    items = [
         {"user_id": r["user_id"], "name": r["name"], "title": r["title"],
          "link": f"https://t.me/addstickers/{r['name']}"}
         for r in rows
     ]
-    items, pagination = paginate(all_results)
+    pagination = {"page": page, "limit": limit, "total": total, "pages": max(1, -(-total // limit))}
     return ok(items, query=q, pagination=pagination)
 
 
 @app.route("/api/packs/<int:user_id>")
 @require_api_key
 def user_packs(user_id):
+    page, limit = get_pagination_params()
+    offset = (page - 1) * limit
+
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT name, title FROM packs WHERE user_id = ? ORDER BY id", (user_id,))
+
+    # ⚡ Bolt Optimization: Use SQL LIMIT/OFFSET instead of Python array slicing
+    # Impact: Reduces memory usage and response time from O(N) to O(limit) for large result sets
+    c.execute("SELECT COUNT(*) FROM packs WHERE user_id = ?", (user_id,))
+    total = c.fetchone()[0]
+
+    c.execute("SELECT name, title FROM packs WHERE user_id = ? ORDER BY id LIMIT ? OFFSET ?", (user_id, limit, offset))
     rows = c.fetchall()
     conn.close()
 
-    all_packs = [
+    items = [
         {"name": r["name"], "title": r["title"], "link": f"https://t.me/addstickers/{r['name']}"}
         for r in rows
     ]
-    items, pagination = paginate(all_packs)
+    pagination = {"page": page, "limit": limit, "total": total, "pages": max(1, -(-total // limit))}
     return ok(items, user_id=user_id, pagination=pagination)
 
 

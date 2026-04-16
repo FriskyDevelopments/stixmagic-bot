@@ -4,3 +4,6 @@
 ## 2024-04-15 - Missing index on packs table
 **Learning:** The `packs` table lacked an index on `user_id` despite frequent API endpoints and bot queries filtering by it (`SELECT ... FROM packs WHERE user_id = ?`). As users create more packs, this leads to O(N) full table scans which can become a bottleneck.
 **Action:** Always check the query patterns of core tables in `infra/db.py` to ensure covering indexes are present for heavily filtered columns.
+## 2024-04-16 - Memory Inefficiency of Python Array Slicing for Pagination
+**Learning:** Found that `api.py` was pulling the entire result set of user packs (`/api/packs/<user_id>`) and search results (`/api/search`) into a Python list and *then* applying pagination slicing using `paginate()`. This caused `O(N)` memory usage and query time for queries returning large sets (e.g. 100k rows took >0.3s).
+**Action:** Replace `SELECT * ...` coupled with Python array slicing with `SELECT COUNT(*)` followed by `SELECT * ... LIMIT ? OFFSET ?` to reduce complexity from `O(N)` to `O(limit)`. This yielded up to ~30x performance improvement.
