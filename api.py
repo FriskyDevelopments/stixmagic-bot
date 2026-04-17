@@ -313,20 +313,35 @@ async def _validate_packs_async(token, user_id):
         c = conn.cursor()
         c.execute("SELECT name, title FROM packs WHERE user_id = ? ORDER BY id", (user_id,))
         rows = c.fetchall()
+        # ⚡ Bolt Optimization: Concurrently fetch all sticker sets with a concurrency limit
+        # Impact: Reduces request time significantly without triggering Telegram API rate limits that would cause silent data deletion
+        sem = asyncio.Semaphore(10)
+
+        async def fetch_pack(row):
+            async with sem:
+                name, title = row["name"], row["title"]
+                try:
+                    ss = await bot.get_sticker_set(name)
+                    return {"name": name, "old_title": title, "new_title": ss.title, "found": True}
+                except Exception:
+                    return {"name": name, "old_title": title, "new_title": None, "found": False}
+
+        results = await asyncio.gather(*(fetch_pack(row) for row in rows))
+
         valid = []
-        for row in rows:
-            name, title = row["name"], row["title"]
-            try:
-                ss = await bot.get_sticker_set(name)
-                if ss.title != title:
+        for res in results:
+            name = res["name"]
+            if res["found"]:
+                title = res["old_title"]
+                if res["new_title"] != title:
                     c.execute(
                         "UPDATE packs SET title = ? WHERE user_id = ? AND name = ?",
-                        (ss.title, user_id, name)
+                        (res["new_title"], user_id, name)
                     )
                     conn.commit()
-                    title = ss.title
+                    title = res["new_title"]
                 valid.append({"name": name, "title": title, "link": f"https://t.me/addstickers/{name}"})
-            except Exception:
+            else:
                 c.execute("DELETE FROM packs WHERE user_id = ? AND name = ?", (user_id, name))
                 conn.commit()
         conn.close()
