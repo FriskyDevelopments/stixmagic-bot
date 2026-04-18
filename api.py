@@ -308,27 +308,41 @@ async def _validate_packs_async(token, user_id):
     """Validate all DB packs against Telegram; prune deleted, sync renamed titles."""
     from telegram import Bot as TelegramBot
     bot = TelegramBot(token=token)
+    # ⚡ Bolt Optimization: Concurrently validate packs with bounded concurrency (Semaphore=5)
+    # Impact: Reduces N sequential network calls to Telegram down to O(N/5) while preventing HTTP 429 rate limit drops that could lead to accidental pack deletion
+    sem = asyncio.Semaphore(5)
+
+    async def validate_pack(name, title):
+        async with sem:
+            try:
+                ss = await bot.get_sticker_set(name)
+                return {"name": name, "title": ss.title, "old_title": title, "status": "valid"}
+            except Exception:
+                return {"name": name, "title": title, "old_title": title, "status": "deleted"}
+
     try:
         conn = get_db()
         c = conn.cursor()
         c.execute("SELECT name, title FROM packs WHERE user_id = ? ORDER BY id", (user_id,))
         rows = c.fetchall()
+
+        # Gather network validations concurrently
+        tasks = [validate_pack(row["name"], row["title"]) for row in rows]
+        results = await asyncio.gather(*tasks)
+
         valid = []
-        for row in rows:
-            name, title = row["name"], row["title"]
-            try:
-                ss = await bot.get_sticker_set(name)
-                if ss.title != title:
+        for res in results:
+            name, title, old_title, status = res["name"], res["title"], res["old_title"], res["status"]
+            if status == "valid":
+                if title != old_title:
                     c.execute(
                         "UPDATE packs SET title = ? WHERE user_id = ? AND name = ?",
-                        (ss.title, user_id, name)
+                        (title, user_id, name)
                     )
-                    conn.commit()
-                    title = ss.title
                 valid.append({"name": name, "title": title, "link": f"https://t.me/addstickers/{name}"})
-            except Exception:
+            else:
                 c.execute("DELETE FROM packs WHERE user_id = ? AND name = ?", (user_id, name))
-                conn.commit()
+        conn.commit()
         conn.close()
         return valid
     finally:

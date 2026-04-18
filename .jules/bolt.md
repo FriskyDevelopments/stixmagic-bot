@@ -7,3 +7,6 @@
 ## 2024-04-16 - Memory Inefficiency of Python Array Slicing for Pagination
 **Learning:** Found that `api.py` was pulling the entire result set of user packs (`/api/packs/<user_id>`) and search results (`/api/search`) into a Python list and *then* applying pagination slicing using `paginate()`. This caused `O(N)` memory usage and query time for queries returning large sets (e.g. 100k rows took >0.3s).
 **Action:** Replace `SELECT * ...` coupled with Python array slicing with `SELECT COUNT(*)` followed by `SELECT * ... LIMIT ? OFFSET ?` to reduce complexity from `O(N)` to `O(limit)`. This yielded up to ~30x performance improvement.
+## 2024-04-17 - Bounded Concurrency for Telegram API Calls
+**Learning:** Found that using unbounded `asyncio.gather()` for concurrent Telegram API calls (like `bot.get_sticker_set()`) can hit HTTP 429 rate limits. This triggers a fallback `except Exception:` block which causes silent data deletion of the user's packs.
+**Action:** Always wrap concurrent Telegram API calls in an `asyncio.Semaphore()` (e.g. `asyncio.Semaphore(5)`) to prevent unbounded concurrency that triggers rate limits while still allowing performance improvements over sequential execution.
