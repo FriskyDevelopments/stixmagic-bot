@@ -10,3 +10,6 @@
 ## 2024-04-17 - Bounded Concurrency for Telegram API Calls
 **Learning:** Found that using unbounded `asyncio.gather()` for concurrent Telegram API calls (like `bot.get_sticker_set()`) can hit HTTP 429 rate limits. This triggers a fallback `except Exception:` block which causes silent data deletion of the user's packs.
 **Action:** Always wrap concurrent Telegram API calls in an `asyncio.Semaphore()` (e.g. `asyncio.Semaphore(5)`) to prevent unbounded concurrency that triggers rate limits while still allowing performance improvements over sequential execution.
+## 2026-04-19 - Bounded Concurrency for Telegram API Calls
+**Learning:** Found that using unbounded `asyncio.gather()` for concurrent Telegram API calls (like `bot.get_sticker_set()`) can hit HTTP 429 rate limits. This triggers a fallback `except Exception:` block which causes silent data deletion of the user's packs.
+**Action:** Always wrap concurrent Telegram API calls in an `asyncio.Semaphore()` (e.g. `asyncio.Semaphore(5)`) to prevent unbounded concurrency that triggers rate limits while still allowing performance improvements over sequential execution.
