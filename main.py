@@ -1,3 +1,4 @@
+import asyncio
 import html
 import io
 import logging
@@ -68,16 +69,33 @@ telegram_adapter = TelegramStixAdapter(core_engine)
 async def validate_and_sync_packs(bot, user_id):
     """Check each DB pack against Telegram. Prune deleted packs, sync renamed titles."""
     packs = get_user_packs(user_id)
+
+    # ⚡ Bolt Optimization: Concurrently validate packs with bounded concurrency (Semaphore=5)
+    # Impact: Reduces N sequential network calls to Telegram down to O(N/5) while preventing HTTP 429 rate limit drops that could lead to accidental pack deletion
+    sem = asyncio.Semaphore(5)
+
+    async def _validate_single_pack(name, title):
+        async with sem:
+            try:
+                ss = await bot.get_sticker_set(name)
+                return {"name": name, "title": ss.title, "old_title": title, "status": "valid"}
+            except Exception:
+                return {"name": name, "title": title, "old_title": title, "status": "deleted"}
+
+    tasks = [_validate_single_pack(name, title) for name, title in packs]
+    results = await asyncio.gather(*tasks)
+
     valid = []
-    for name, title in packs:
-        try:
-            ss = await bot.get_sticker_set(name)
-            if ss.title != title:
-                update_pack_title_in_db(user_id, name, ss.title)
-            valid.append((name, ss.title))
-        except Exception:
+    for res in results:
+        name, title, old_title, status = res["name"], res["title"], res["old_title"], res["status"]
+        if status == "valid":
+            if title != old_title:
+                update_pack_title_in_db(user_id, name, title)
+            valid.append((name, title))
+        else:
             delete_pack_from_db(user_id, name)
             logger.info(f"Pruned stale pack {name} for user {user_id}")
+
     return valid
 
 
