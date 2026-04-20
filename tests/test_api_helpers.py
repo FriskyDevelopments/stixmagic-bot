@@ -31,6 +31,7 @@ FAKE_USER = {"id": 42, "first_name": "Alice", "username": "alice"}
 
 
 class BadRequest(Exception):
+    """Minimal test-only stub that mimics python-telegram-bot's telegram.error.BadRequest."""
     pass
 
 
@@ -535,8 +536,14 @@ def _ensure_api_importable():
     if "telegram" not in sys.modules:
         telegram_stub = MagicMock()
         telegram_stub.__name__ = "telegram"
+        telegram_stub.__path__ = []
         telegram_stub.Bot = MagicMock()
         sys.modules["telegram"] = telegram_stub
+    if "telegram.error" not in sys.modules:
+        telegram_error_stub = MagicMock()
+        telegram_error_stub.BadRequest = BadRequest
+        sys.modules["telegram.error"] = telegram_error_stub
+    sys.modules["telegram"].error = sys.modules["telegram.error"]
 
     for mod in ("config", "config.runtime", "moderation"):
         if mod not in sys.modules:
@@ -718,7 +725,7 @@ class TestValidatePacksAsync(unittest.TestCase):
             _run_async(_validate_packs_async("fake:token", 7))
 
         calls = cursor.execute.call_args_list
-        delete_calls = [c for c in calls if "DELETE" in str(c)]
+        delete_calls = [c for c in calls if "DELETE" in c[0][0]]
         self.assertEqual(len(delete_calls), 1)
         delete_args = delete_calls[0][0]
         self.assertIn("DELETE FROM packs", delete_args[0])
@@ -749,7 +756,7 @@ class TestValidatePacksAsync(unittest.TestCase):
 
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["name"], "flaky")
-        delete_calls = [c for c in cursor.execute.call_args_list if "DELETE" in str(c)]
+        delete_calls = [c for c in cursor.execute.call_args_list if "DELETE" in c[0][0]]
         self.assertEqual(delete_calls, [])
 
     # ── single-connection guarantee (N+1 fix) ─────────────────
@@ -830,9 +837,9 @@ class TestValidatePacksAsync(unittest.TestCase):
         conn.close.assert_called_once()
 
     def test_conn_close_called_when_gather_raises(self):
-        bad_row = MagicMock()
-        bad_row.__getitem__.side_effect = KeyError("name")
-        rows = [bad_row]
+        failing_row = MagicMock()
+        failing_row.__getitem__.side_effect = KeyError("name")
+        rows = [failing_row]
         conn, cursor = self._make_conn(rows)
         bot = self._make_bot(sticker_sets={"pack1": "Pack One"})
 

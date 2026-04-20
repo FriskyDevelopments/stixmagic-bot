@@ -309,9 +309,14 @@ def _run_async(coro):
         loop.close()
 
 
-def _is_missing_sticker_set_error(exc: Exception) -> bool:
-    """Return True only for Telegram BadRequest errors that indicate a missing pack."""
-    if exc.__class__.__name__ != "BadRequest":
+def _is_missing_sticker_set_error(exc: Exception, bad_request_cls: type[Exception]) -> bool:
+    """Return True only for Telegram BadRequest errors that indicate a missing pack.
+
+    `bad_request_cls` is passed in by the caller so tests can provide a stub class.
+    All non-BadRequest exceptions return False and are treated as non-fatal validation failures.
+    Matching is case-insensitive against known missing-pack message markers.
+    """
+    if not isinstance(exc, bad_request_cls):
         return False
     message = str(exc).lower()
     return any(marker in message for marker in _MISSING_STICKER_SET_ERROR_MARKERS)
@@ -320,6 +325,7 @@ def _is_missing_sticker_set_error(exc: Exception) -> bool:
 async def _validate_packs_async(token, user_id):
     """Validate all DB packs against Telegram; prune deleted, sync renamed titles."""
     from telegram import Bot as TelegramBot
+    from telegram.error import BadRequest as TelegramBadRequest
     bot = TelegramBot(token=token)
     try:
         conn = get_db()
@@ -336,9 +342,9 @@ async def _validate_packs_async(token, user_id):
                         ss = await bot.get_sticker_set(name)
                         return {"name": name, "old_title": title, "new_title": ss.title, "status": "found"}
                     except Exception as exc:
-                        if _is_missing_sticker_set_error(exc):
+                        if _is_missing_sticker_set_error(exc, TelegramBadRequest):
                             return {"name": name, "old_title": title, "new_title": None, "status": "missing"}
-                        logger.warning("Temporary sticker-set validation failure for %s: %s", name, exc)
+                        logger.warning("Non-fatal sticker-set validation failure for %s: %s", name, exc)
                         return {"name": name, "old_title": title, "new_title": None, "status": "transient"}
 
             results = await asyncio.gather(*(fetch_pack(row) for row in rows))
