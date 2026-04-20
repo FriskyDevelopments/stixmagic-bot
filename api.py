@@ -31,7 +31,7 @@ SETTINGS = get_settings()
 API_KEY = SETTINGS.stixmagic_api_key
 PAGE_SIZE = 20
 PACK_VALIDATION_CONCURRENCY = 10
-_MISSING_STICKER_SET_ERROR_MARKERS = (
+_TELEGRAM_MISSING_PACK_MARKERS = (
     "sticker set not found",
     "sticker set name is invalid",
 )
@@ -319,7 +319,7 @@ def _is_missing_sticker_set_error(exc: Exception, bad_request_cls: type[Exceptio
     if not isinstance(exc, bad_request_cls):
         return False
     message = str(exc).lower()
-    return any(marker in message for marker in _MISSING_STICKER_SET_ERROR_MARKERS)
+    return any(marker in message for marker in _TELEGRAM_MISSING_PACK_MARKERS)
 
 
 async def _validate_packs_async(token, user_id):

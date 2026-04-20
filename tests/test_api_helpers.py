@@ -31,7 +31,7 @@ FAKE_USER = {"id": 42, "first_name": "Alice", "username": "alice"}
 
 
 class BadRequest(Exception):
-    """Minimal test-only stub that mimics python-telegram-bot's telegram.error.BadRequest."""
+    """Module-level test helper that mimics python-telegram-bot's telegram.error.BadRequest."""
     pass
 
 
@@ -570,6 +570,10 @@ def _run_async(coro):
     return asyncio.get_event_loop().run_until_complete(coro)
 
 
+def _sql_calls_containing(calls, sql_fragment):
+    return [c for c in calls if sql_fragment in c.args[0]]
+
+
 class TestValidatePacksAsync(unittest.TestCase):
     """_validate_packs_async – connection-reuse and validation logic."""
 
@@ -725,7 +729,7 @@ class TestValidatePacksAsync(unittest.TestCase):
             _run_async(_validate_packs_async("fake:token", 7))
 
         calls = cursor.execute.call_args_list
-        delete_calls = [c for c in calls if "DELETE" in c[0][0]]
+        delete_calls = _sql_calls_containing(calls, "DELETE")
         self.assertEqual(len(delete_calls), 1)
         delete_args = delete_calls[0][0]
         self.assertIn("DELETE FROM packs", delete_args[0])
@@ -756,7 +760,7 @@ class TestValidatePacksAsync(unittest.TestCase):
 
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["name"], "flaky")
-        delete_calls = [c for c in cursor.execute.call_args_list if "DELETE" in c[0][0]]
+        delete_calls = _sql_calls_containing(cursor.execute.call_args_list, "DELETE")
         self.assertEqual(delete_calls, [])
 
     # ── single-connection guarantee (N+1 fix) ─────────────────
