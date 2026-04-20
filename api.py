@@ -30,6 +30,11 @@ app = Flask(__name__, static_folder="static")
 SETTINGS = get_settings()
 API_KEY = SETTINGS.stixmagic_api_key
 PAGE_SIZE = 20
+PACK_VALIDATION_CONCURRENCY = 10
+_MISSING_STICKER_SET_ERROR_MARKERS = (
+    "sticker set not found",
+    "sticker set name is invalid",
+)
 if SETTINGS.webhook_secret:
     app.secret_key = SETTINGS.webhook_secret
 else:
@@ -304,48 +309,64 @@ def _run_async(coro):
         loop.close()
 
 
+def _is_missing_sticker_set_error(exc: Exception) -> bool:
+    """Return True only for Telegram BadRequest errors that indicate a missing pack."""
+    if exc.__class__.__name__ != "BadRequest":
+        return False
+    message = str(exc).lower()
+    return any(marker in message for marker in _MISSING_STICKER_SET_ERROR_MARKERS)
+
+
 async def _validate_packs_async(token, user_id):
     """Validate all DB packs against Telegram; prune deleted, sync renamed titles."""
     from telegram import Bot as TelegramBot
     bot = TelegramBot(token=token)
     try:
         conn = get_db()
-        c = conn.cursor()
-        c.execute("SELECT name, title FROM packs WHERE user_id = ? ORDER BY id", (user_id,))
-        rows = c.fetchall()
-        # ⚡ Bolt Optimization: Concurrently fetch all sticker sets with a concurrency limit
-        # Impact: Reduces request time significantly without triggering Telegram API rate limits that would cause silent data deletion
-        sem = asyncio.Semaphore(10)
+        try:
+            c = conn.cursor()
+            c.execute("SELECT name, title FROM packs WHERE user_id = ? ORDER BY id", (user_id,))
+            rows = c.fetchall()
+            sem = asyncio.Semaphore(PACK_VALIDATION_CONCURRENCY)
 
-        async def fetch_pack(row):
-            async with sem:
-                name, title = row["name"], row["title"]
-                try:
-                    ss = await bot.get_sticker_set(name)
-                    return {"name": name, "old_title": title, "new_title": ss.title, "found": True}
-                except Exception:
-                    return {"name": name, "old_title": title, "new_title": None, "found": False}
+            async def fetch_pack(row):
+                async with sem:
+                    name, title = row["name"], row["title"]
+                    try:
+                        ss = await bot.get_sticker_set(name)
+                        return {"name": name, "old_title": title, "new_title": ss.title, "status": "found"}
+                    except Exception as exc:
+                        if _is_missing_sticker_set_error(exc):
+                            return {"name": name, "old_title": title, "new_title": None, "status": "missing"}
+                        logger.warning("Temporary sticker-set validation failure for %s: %s", name, exc)
+                        return {"name": name, "old_title": title, "new_title": None, "status": "transient"}
 
-        results = await asyncio.gather(*(fetch_pack(row) for row in rows))
+            results = await asyncio.gather(*(fetch_pack(row) for row in rows))
 
-        valid = []
-        for res in results:
-            name = res["name"]
-            if res["found"]:
-                title = res["old_title"]
-                if res["new_title"] != title:
-                    c.execute(
-                        "UPDATE packs SET title = ? WHERE user_id = ? AND name = ?",
-                        (res["new_title"], user_id, name)
-                    )
+            valid = []
+            for res in results:
+                name = res["name"]
+                status = res["status"]
+                if status == "found":
+                    title = res["old_title"]
+                    if res["new_title"] != title:
+                        c.execute(
+                            "UPDATE packs SET title = ? WHERE user_id = ? AND name = ?",
+                            (res["new_title"], user_id, name)
+                        )
+                        conn.commit()
+                        title = res["new_title"]
+                    valid.append({"name": name, "title": title, "link": f"https://t.me/addstickers/{name}"})
+                elif status == "missing":
+                    c.execute("DELETE FROM packs WHERE user_id = ? AND name = ?", (user_id, name))
                     conn.commit()
-                    title = res["new_title"]
-                valid.append({"name": name, "title": title, "link": f"https://t.me/addstickers/{name}"})
-            else:
-                c.execute("DELETE FROM packs WHERE user_id = ? AND name = ?", (user_id, name))
-                conn.commit()
-        conn.close()
-        return valid
+                else:
+                    valid.append(
+                        {"name": name, "title": res["old_title"], "link": f"https://t.me/addstickers/{name}"}
+                    )
+            return valid
+        finally:
+            conn.close()
     finally:
         await bot.close()
 

@@ -9,7 +9,7 @@
 **Action:** Replace `SELECT * ...` coupled with Python array slicing with `SELECT COUNT(*)` followed by `SELECT * ... LIMIT ? OFFSET ?` to reduce complexity from `O(N)` to `O(limit)`. This yielded up to ~30x performance improvement.
 ## 2024-04-17 - Sequential I/O causing N+1 performance bottleneck
 **Learning:** Found that `_validate_packs_async` in `api.py` was awaiting `bot.get_sticker_set(name)` sequentially in a loop for each pack. For users with many packs, this blocking caused significant delays and poor overall API performance since each request blocked the next.
-**Action:** Always batch independent I/O tasks using `asyncio.gather()` inside async functions to execute network calls concurrently, reducing total time from `O(N)` to `O(1)` request time.
+**Action:** Always batch independent I/O tasks using `asyncio.gather()` inside async functions to execute network calls concurrently, reducing wall-clock time from fully sequential `O(N)` waits toward roughly `O(N / concurrency_limit)` for I/O-bound work, while total work remains `O(N)`.
 ## 2024-04-18 - Rate Limits and Unbounded Async Gather
 **Learning:** While `asyncio.gather()` provides significant performance boost for I/O bound tasks, an unbounded gather can trigger API rate limits (e.g., HTTP 429). In code with broad error handlers (like deleting data on `except Exception:`), this can result in catastrophic silent data deletion.
 **Action:** Always wrap concurrent network requests in an `asyncio.Semaphore` when using `asyncio.gather()` on an unbounded set of items to prevent rate limit exceptions from triggering unintended fallback logic.

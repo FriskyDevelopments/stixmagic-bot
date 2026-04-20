@@ -30,6 +30,10 @@ FAKE_BOT_TOKEN = "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef_gh"
 FAKE_USER = {"id": 42, "first_name": "Alice", "username": "alice"}
 
 
+class BadRequest(Exception):
+    pass
+
+
 def _build_init_data(bot_token: str, user: dict, auth_date: int | None = None) -> str:
     if auth_date is None:
         auth_date = int(time.time())
@@ -570,7 +574,7 @@ class TestValidatePacksAsync(unittest.TestCase):
             import importlib
             sys.modules["api"] = importlib.import_module("api")
 
-    def _make_bot(self, sticker_sets=None, raise_for=None):
+    def _make_bot(self, sticker_sets=None, raise_for_missing=None, raise_for_transient=None):
         """
         Build an AsyncMock Bot.
 
@@ -581,8 +585,10 @@ class TestValidatePacksAsync(unittest.TestCase):
         bot.close = AsyncMock()
 
         async def _get_sticker_set(name):
-            if raise_for and name in raise_for:
-                raise Exception(f"Pack {name} not found")
+            if raise_for_missing and name in raise_for_missing:
+                raise BadRequest("Sticker set not found")
+            if raise_for_transient and name in raise_for_transient:
+                raise RuntimeError(f"Temporary failure for {name}")
             ss = MagicMock()
             ss.title = (sticker_sets or {}).get(name, name)
             return ss
@@ -692,7 +698,7 @@ class TestValidatePacksAsync(unittest.TestCase):
     def test_missing_pack_deleted_from_db(self):
         row = _make_db_row("deadpack", "Dead Pack")
         conn, cursor = self._make_conn([row])
-        bot = self._make_bot(raise_for={"deadpack"})
+        bot = self._make_bot(raise_for_missing={"deadpack"})
 
         with patch("api.get_db", return_value=conn), \
              patch("telegram.Bot", return_value=bot):
@@ -704,7 +710,7 @@ class TestValidatePacksAsync(unittest.TestCase):
     def test_missing_pack_executes_delete_on_same_cursor(self):
         row = _make_db_row("deadpack", "Dead Pack")
         conn, cursor = self._make_conn([row])
-        bot = self._make_bot(raise_for={"deadpack"})
+        bot = self._make_bot(raise_for_missing={"deadpack"})
 
         with patch("api.get_db", return_value=conn), \
              patch("telegram.Bot", return_value=bot):
@@ -722,7 +728,7 @@ class TestValidatePacksAsync(unittest.TestCase):
     def test_missing_pack_commits_delete_on_existing_connection(self):
         row = _make_db_row("deadpack", "Dead Pack")
         conn, cursor = self._make_conn([row])
-        bot = self._make_bot(raise_for={"deadpack"})
+        bot = self._make_bot(raise_for_missing={"deadpack"})
 
         with patch("api.get_db", return_value=conn), \
              patch("telegram.Bot", return_value=bot):
@@ -730,6 +736,21 @@ class TestValidatePacksAsync(unittest.TestCase):
             _run_async(_validate_packs_async("fake:token", 1))
 
         conn.commit.assert_called()
+
+    def test_transient_error_keeps_pack_and_skips_delete(self):
+        row = _make_db_row("flaky", "Flaky Pack")
+        conn, cursor = self._make_conn([row])
+        bot = self._make_bot(raise_for_transient={"flaky"})
+
+        with patch("api.get_db", return_value=conn), \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            result = _run_async(_validate_packs_async("fake:token", 1))
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["name"], "flaky")
+        delete_calls = [c for c in cursor.execute.call_args_list if "DELETE" in str(c)]
+        self.assertEqual(delete_calls, [])
 
     # ── single-connection guarantee (N+1 fix) ─────────────────
 
@@ -756,7 +777,7 @@ class TestValidatePacksAsync(unittest.TestCase):
         """Deleting a stale pack must not open a second connection."""
         rows = [_make_db_row("deadpack", "Dead Pack")]
         conn, cursor = self._make_conn(rows)
-        bot = self._make_bot(raise_for={"deadpack"})
+        bot = self._make_bot(raise_for_missing={"deadpack"})
 
         with patch("api.get_db", return_value=conn) as mock_get_db, \
              patch("telegram.Bot", return_value=bot):
@@ -799,12 +820,27 @@ class TestValidatePacksAsync(unittest.TestCase):
             _make_db_row("dead2", "Dead Two"),
         ]
         conn, cursor = self._make_conn(rows)
-        bot = self._make_bot(raise_for={"dead1", "dead2"})
+        bot = self._make_bot(raise_for_missing={"dead1", "dead2"})
 
         with patch("api.get_db", return_value=conn), \
              patch("telegram.Bot", return_value=bot):
             from api import _validate_packs_async
             _run_async(_validate_packs_async("fake:token", 1))
+
+        conn.close.assert_called_once()
+
+    def test_conn_close_called_when_gather_raises(self):
+        bad_row = MagicMock()
+        bad_row.__getitem__.side_effect = KeyError("name")
+        rows = [bad_row]
+        conn, cursor = self._make_conn(rows)
+        bot = self._make_bot(sticker_sets={"pack1": "Pack One"})
+
+        with patch("api.get_db", return_value=conn), \
+             patch("telegram.Bot", return_value=bot):
+            from api import _validate_packs_async
+            with self.assertRaises(KeyError):
+                _run_async(_validate_packs_async("fake:token", 1))
 
         conn.close.assert_called_once()
 
@@ -825,7 +861,7 @@ class TestValidatePacksAsync(unittest.TestCase):
         """bot.close() must be awaited even when pack validation fails."""
         rows = [_make_db_row("deadpack", "Dead")]
         conn, cursor = self._make_conn(rows)
-        bot = self._make_bot(raise_for={"deadpack"})
+        bot = self._make_bot(raise_for_missing={"deadpack"})
 
         with patch("api.get_db", return_value=conn), \
              patch("telegram.Bot", return_value=bot):
@@ -846,7 +882,7 @@ class TestValidatePacksAsync(unittest.TestCase):
         conn, cursor = self._make_conn(rows)
         bot = self._make_bot(
             sticker_sets={"good": "Good Pack", "renamed": "New Name"},
-            raise_for={"dead"},
+            raise_for_missing={"dead"},
         )
 
         with patch("api.get_db", return_value=conn) as mock_get_db, \
