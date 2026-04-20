@@ -166,7 +166,6 @@ def miniapp_packs():
                 "(BOT_TOKEN present): %s. Falling back to DB-only response.",
                 uid, e,
             )
-            pass
 
     conn = get_db()
     c = conn.cursor()
