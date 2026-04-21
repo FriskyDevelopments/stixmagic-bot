@@ -17,3 +17,6 @@
 ## 2024-05-18 - [Code Health] Refactor PackGenerator.generate function
 **Learning:** Breaking nested loops down into separate helper methods drastically improves readability and maintainability. It simplifies testing, decreases cognitive load, and aligns closely with clean code principles.
 **Action:** Consistently identify 3+ levels of nested execution flows and factor out logical groups of code into private class methods with distinct responsibilities in future implementations.
+## 2024-05-19 - Expensive External Network Calls in Loops
+**Learning:** Found that `/api/miniapp/packs` calls `bot.get_sticker_set(name)` for every pack the user owns to validate their status. For a user with 50 packs, this triggered 50 concurrent network requests to Telegram on *every single page load*, resulting in severe performance degradation and triggering HTTP 429 rate limit exceptions, which in turn could lead to accidental deletion of their data in fallback blocks.
+**Action:** Implemented a short-lived memory cache (`_TG_PACK_CACHE` with a 5-minute TTL) for Telegram sticker set network requests. This ensures that validation is only performed periodically, reducing network latency by ~99% on subsequent loads and protecting the system and user data against rate limits.

@@ -304,6 +304,9 @@ def _run_async(coro):
         loop.close()
 
 
+_TG_PACK_CACHE = {}  # {name: (timestamp, title, status)}
+_TG_PACK_CACHE_TTL = 300  # 5 minutes
+
 async def _validate_packs_async(token, user_id):
     """Validate all DB packs against Telegram; prune deleted, sync renamed titles."""
     from telegram import Bot as TelegramBot
@@ -313,11 +316,25 @@ async def _validate_packs_async(token, user_id):
     sem = asyncio.Semaphore(5)
 
     async def validate_pack(name, title):
+        now = time.time()
+
+        # Prevent memory leaks by periodically clearing the cache if it gets too large
+        if len(_TG_PACK_CACHE) > 1000:
+            _TG_PACK_CACHE.clear()
+
+        # ⚡ Bolt Optimization: Cache expensive Telegram API calls per pack for 5 minutes
+        # Impact: Drastically reduces network latency and avoids 429 errors when reloading /api/miniapp/packs
+        if name in _TG_PACK_CACHE and now - _TG_PACK_CACHE[name][0] < _TG_PACK_CACHE_TTL:
+            _, cached_title, status = _TG_PACK_CACHE[name]
+            return {"name": name, "title": cached_title, "old_title": title, "status": status}
+
         async with sem:
             try:
                 ss = await bot.get_sticker_set(name)
+                _TG_PACK_CACHE[name] = (now, ss.title, "valid")
                 return {"name": name, "title": ss.title, "old_title": title, "status": "valid"}
             except Exception:
+                _TG_PACK_CACHE[name] = (now, title, "deleted")
                 return {"name": name, "title": title, "old_title": title, "status": "deleted"}
 
     try:
