@@ -614,6 +614,8 @@ class TestValidatePacksAsync(unittest.TestCase):
     # ── happy-path: valid pack with matching title ─────────────
 
     def test_valid_pack_returned_when_title_matches(self):
+        import api
+        api._TG_PACK_CACHE.clear()
         row = _make_db_row("mypack", "My Pack")
         conn, cursor = self._make_conn([row])
         bot = self._make_bot(sticker_sets={"mypack": "My Pack"})
@@ -642,6 +644,8 @@ class TestValidatePacksAsync(unittest.TestCase):
     # ── title-sync: updated title propagated to DB and result ─
 
     def test_title_update_when_telegram_title_differs(self):
+        import api
+        api._TG_PACK_CACHE.clear()
         row = _make_db_row("mypack", "Old Title")
         conn, cursor = self._make_conn([row])
         bot = self._make_bot(sticker_sets={"mypack": "New Title"})
@@ -654,6 +658,8 @@ class TestValidatePacksAsync(unittest.TestCase):
         self.assertEqual(result[0]["title"], "New Title")
 
     def test_title_update_executes_sql_update_on_same_cursor(self):
+        import api
+        api._TG_PACK_CACHE.clear()
         row = _make_db_row("mypack", "Old Title")
         conn, cursor = self._make_conn([row])
         bot = self._make_bot(sticker_sets={"mypack": "New Title"})
