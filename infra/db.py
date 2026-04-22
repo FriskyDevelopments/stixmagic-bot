@@ -210,12 +210,16 @@ def is_new_user(user_id: int) -> bool:
     """
     conn = sqlite3.connect(_db_file())
     c = conn.cursor()
-    c.execute("SELECT COUNT(*) FROM packs WHERE user_id = ?", (user_id,))
-    packs = c.fetchone()[0]
-    c.execute("SELECT COUNT(*) FROM user_settings WHERE user_id = ?", (user_id,))
-    settings = c.fetchone()[0]
+    # ⚡ Bolt Optimization: Replace COUNT(*) table scans with EXISTS query
+    # Impact: Improves performance from O(N) to O(1) by stopping at the first match instead of counting all rows
+    c.execute(
+        "SELECT 1 WHERE EXISTS (SELECT 1 FROM packs WHERE user_id = ?) "
+        "OR EXISTS (SELECT 1 FROM user_settings WHERE user_id = ?)",
+        (user_id, user_id)
+    )
+    result = c.fetchone()
     conn.close()
-    return packs == 0 and settings == 0
+    return result is None
 
 
 # ── Catalog CRUD ──────────────────────────────────────────────
