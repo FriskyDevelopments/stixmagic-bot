@@ -22,7 +22,7 @@ Covers:
 import sqlite3
 import time
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 
 # We patch stixmagic.settings.get_settings to return a settings object
@@ -32,13 +32,6 @@ from unittest.mock import MagicMock, patch
 
 import tempfile
 import os
-
-
-def _patched_get_settings(db_path: str):
-    """Return a mock settings object pointing at the given db_path."""
-    settings = MagicMock()
-    settings.database_path = db_path
-    return settings
 
 
 class InfraDbTestCase(unittest.TestCase):
