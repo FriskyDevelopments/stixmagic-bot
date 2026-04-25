@@ -16,6 +16,13 @@ from stixmagic.settings import get_settings
 logger = logging.getLogger(__name__)
 
 
+
+def _connect() -> sqlite3.Connection:
+    conn = sqlite3.connect(_db_file())
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
+    return conn
+
 def _db_file() -> str:
     """
     Get the configured SQLite database file path.
@@ -28,7 +35,7 @@ def _db_file() -> str:
 
 def init_db() -> None:
     """Create tables if they don't exist."""
-    conn = sqlite3.connect(_db_file())
+    conn = _connect()
     c = conn.cursor()
     c.execute(
         """
@@ -102,7 +109,7 @@ def get_mask_inverted(user_id: int) -> bool:
     Returns:
         `true` if the user's `mask_inverted` value is 1, `false` otherwise.
     """
-    conn = sqlite3.connect(_db_file())
+    conn = _connect()
     c = conn.cursor()
     c.execute("SELECT mask_inverted FROM user_settings WHERE user_id = ?", (user_id,))
     row = c.fetchone()
@@ -118,7 +125,7 @@ def set_mask_inverted(user_id: int, inverted: bool) -> None:
         user_id (int): ID of the user whose setting will be updated.
         inverted (bool): Whether the mask should be inverted (True sets inverted, False clears it).
     """
-    conn = sqlite3.connect(_db_file())
+    conn = _connect()
     c = conn.cursor()
     c.execute(
         "INSERT INTO user_settings (user_id, mask_inverted) VALUES (?, ?) "
@@ -140,7 +147,7 @@ def add_pack(user_id: int, name: str, title: str) -> None:
         name (str): Internal name or identifier for the pack.
         title (str): Human-readable title for the pack.
     """
-    conn = sqlite3.connect(_db_file())
+    conn = _connect()
     c = conn.cursor()
     c.execute(
         "INSERT INTO packs (user_id, name, title) VALUES (?, ?, ?)",
@@ -158,7 +165,7 @@ def delete_pack(user_id: int, name: str) -> None:
         user_id (int): ID of the user who owns the pack.
         name (str): Pack name to remove.
     """
-    conn = sqlite3.connect(_db_file())
+    conn = _connect()
     c = conn.cursor()
     c.execute("DELETE FROM packs WHERE user_id = ? AND name = ?", (user_id, name))
     conn.commit()
@@ -172,7 +179,7 @@ def get_user_packs(user_id: int) -> list[tuple[str, str]]:
     Returns:
         list[tuple[str, str]]: List of (name, title) tuples for the given user; empty list if the user has no packs.
     """
-    conn = sqlite3.connect(_db_file())
+    conn = _connect()
     c = conn.cursor()
     c.execute("SELECT name, title FROM packs WHERE user_id = ?", (user_id,))
     rows = c.fetchall()
@@ -189,7 +196,7 @@ def update_pack_title(user_id: int, name: str, title: str) -> None:
     	name (str): Unique name/identifier of the pack.
     	title (str): New title to set for the pack.
     """
-    conn = sqlite3.connect(_db_file())
+    conn = _connect()
     c = conn.cursor()
     c.execute(
         "UPDATE packs SET title = ? WHERE user_id = ? AND name = ?",
@@ -208,7 +215,7 @@ def is_new_user(user_id: int) -> bool:
     Returns:
         True if the user has not created any packs and has no entry in user_settings, False otherwise.
     """
-    conn = sqlite3.connect(_db_file())
+    conn = _connect()
     c = conn.cursor()
     # ⚡ Bolt Optimization: Replace COUNT(*) table scans with EXISTS query
     # Impact: Improves performance from O(N) to O(1) by stopping at the first match instead of counting all rows
@@ -244,7 +251,7 @@ def catalog_add_pack(
     Returns:
         bool: `True` if the pack was inserted, `False` if a pack with the same name already exists.
     """
-    conn = sqlite3.connect(_db_file())
+    conn = _connect()
     c = conn.cursor()
     c.execute("SELECT id FROM catalog_packs WHERE name = ?", (name,))
     if c.fetchone():
@@ -269,7 +276,7 @@ def catalog_get_pack(name: str) -> dict | None:
     Returns:
         dict: A mapping of the pack's columns (e.g., name, title, description, type, public, safe, likes, dislikes, view_count, added_at, added_by) if a public pack with the given name exists, `None` otherwise.
     """
-    conn = sqlite3.connect(_db_file())
+    conn = _connect()
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     c.execute("SELECT * FROM catalog_packs WHERE name = ? AND public = 1", (name,))
@@ -298,7 +305,7 @@ def catalog_search(
     Returns:
         list[dict]: A list of rows from `catalog_packs` converted to dictionaries (one dict per pack).
     """
-    conn = sqlite3.connect(_db_file())
+    conn = _connect()
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
 
@@ -345,7 +352,7 @@ def catalog_count(query: str = "", sort: str = "popular") -> int:
     Returns:
         int: Total number of matching catalog packs.
     """
-    conn = sqlite3.connect(_db_file())
+    conn = _connect()
     c = conn.cursor()
     if sort in ("popular", "trending", "new"):
         c.execute("SELECT COUNT(*) FROM catalog_packs WHERE public = 1")
@@ -368,7 +375,7 @@ def catalog_increment_views(name: str) -> None:
     Parameters:
         name (str): The unique catalog pack name whose `view_count` will be incremented in the database.
     """
-    conn = sqlite3.connect(_db_file())
+    conn = _connect()
     conn.execute(
         "UPDATE catalog_packs SET view_count = view_count + 1 WHERE name = ?", (name,)
     )
@@ -389,7 +396,7 @@ def catalog_react(user_id: int, pack_name: str, reaction: str) -> dict:
             "current": str | None — the user's current reaction ("like" or "dislike"), or None if no reaction
         }
     """
-    conn = sqlite3.connect(_db_file())
+    conn = _connect()
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
 
@@ -479,7 +486,7 @@ def catalog_get_user_reaction(user_id: int, pack_name: str) -> str | None:
     Returns:
         str | None: The reaction string (e.g., 'like' or 'dislike') if a reaction exists, `None` otherwise.
     """
-    conn = sqlite3.connect(_db_file())
+    conn = _connect()
     c = conn.cursor()
     c.execute(
         "SELECT reaction FROM catalog_reactions WHERE user_id = ? AND pack_name = ?",

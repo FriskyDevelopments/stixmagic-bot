@@ -23,3 +23,6 @@
 ## 2024-05-20 - is_new_user Table Scans
 **Learning:** Found that `is_new_user` in `infra/db.py` was issuing two `COUNT(*)` queries that executed full table scans on `packs` and `user_settings`. Because the tables can be very large, evaluating `COUNT(*)` performs poorly since it has to check every row.
 **Action:** Replaced the two `COUNT(*)` queries with a single `SELECT 1 WHERE EXISTS (SELECT 1 ...) OR EXISTS (SELECT 1 ...)` query. This changes the time complexity from `O(N)` to `O(1)` as `EXISTS` returns `True` upon finding the first match.
+## 2024-05-21 - SQLite Implicit Connection Pooling and Concurrency
+**Learning:** SQLite's default journal mode is 'delete', which locks the entire database for writes, causing concurrent reads to block and resulting in significant API latency spikes under load.
+**Action:** Always enable Write-Ahead Logging (WAL) mode by executing `PRAGMA journal_mode=WAL;` and `PRAGMA synchronous=NORMAL;` on connections to greatly improve concurrent read/write performance.

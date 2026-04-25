@@ -51,8 +51,8 @@ class InfraDbTestCase(unittest.TestCase):
 
         # Patch get_settings in infra.db's own namespace (it uses `from stixmagic.settings import get_settings`)
         self._patcher = patch(
-            "infra.db.get_settings",
-            return_value=_patched_get_settings(self.db_path),
+            "infra.db._db_file",
+            return_value=self.db_path,
         )
         self._patcher.start()
 
