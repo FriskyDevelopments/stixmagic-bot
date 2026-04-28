@@ -72,8 +72,7 @@ class PngSequenceExporter(BaseExporter):
             size_bytes = 0
             with os.scandir(seq_dir) as it:
                 for entry in it:
-                    if entry.is_file():
-                        size_bytes += entry.stat().st_size
+                    size_bytes += entry.stat().st_size
 
             return ExportResult(
                 format=self.format_id,
