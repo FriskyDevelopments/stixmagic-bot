@@ -5,6 +5,7 @@ import logging
 import random
 import string
 import threading
+import time
 
 from config.runtime import ConfigError, get_settings
 
@@ -66,6 +67,9 @@ init_db()
 core_engine = StixCoreEngine()
 telegram_adapter = TelegramStixAdapter(core_engine)
 
+_TG_PACK_CACHE = {}  # {name: (timestamp, title, status)}
+_TG_PACK_CACHE_TTL = 300  # 5 minutes
+
 async def validate_and_sync_packs(bot, user_id):
     """Check each DB pack against Telegram. Prune deleted packs, sync renamed titles."""
     packs = get_user_packs(user_id)
@@ -75,11 +79,25 @@ async def validate_and_sync_packs(bot, user_id):
     sem = asyncio.Semaphore(5)
 
     async def _validate_single_pack(name, title):
+        now = time.time()
+
+        # Prevent memory leaks
+        if len(_TG_PACK_CACHE) > 1000:
+            _TG_PACK_CACHE.clear()
+
+        # ⚡ Bolt Optimization: Cache expensive Telegram API calls per pack for 5 minutes
+        # Impact: Drastically reduces network latency and avoids 429 errors when reloading bot menus (e.g. Grimoire)
+        if name in _TG_PACK_CACHE and now - _TG_PACK_CACHE[name][0] < _TG_PACK_CACHE_TTL:
+            _, cached_title, status = _TG_PACK_CACHE[name]
+            return {"name": name, "title": cached_title, "old_title": title, "status": status}
+
         async with sem:
             try:
                 ss = await bot.get_sticker_set(name)
+                _TG_PACK_CACHE[name] = (now, ss.title, "valid")
                 return {"name": name, "title": ss.title, "old_title": title, "status": "valid"}
             except Exception:
+                _TG_PACK_CACHE[name] = (now, title, "deleted")
                 return {"name": name, "title": title, "old_title": title, "status": "deleted"}
 
     tasks = [_validate_single_pack(name, title) for name, title in packs]
