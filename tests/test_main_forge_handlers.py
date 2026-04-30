@@ -717,6 +717,33 @@ class TestValidateAndSyncPacks(unittest.TestCase):
         self.assertEqual(second_valid, [("pack_name", "Pack Title")])
         self.assertEqual(bot.get_sticker_set.await_count, 2)
 
+    @patch("main.time.time")
+    @patch("main.get_user_packs")
+    def test_cache_eviction_preserves_fresh_entries_for_same_batch(self, mock_get_packs, mock_time):
+        mock_time.return_value = 1000.0
+        mock_get_packs.return_value = [
+            ("uncached_pack", "Uncached Pack"),
+            ("cached_pack_b", "Cached Pack B"),
+            ("cached_pack_c", "Cached Pack C"),
+        ]
+        for i in range(1001):
+            _main_mod._TG_PACK_CACHE[f"expired_pack_{i}"] = (0.0, "Expired Pack", "valid")
+        _main_mod._TG_PACK_CACHE["cached_pack_b"] = (999.0, "Cached Pack B", "valid")
+        _main_mod._TG_PACK_CACHE["cached_pack_c"] = (999.0, "Cached Pack C", "valid")
+        bot = AsyncMock()
+        uncached_sticker_set = MagicMock()
+        uncached_sticker_set.title = "Uncached Pack"
+        bot.get_sticker_set.return_value = uncached_sticker_set
+
+        valid = _run(validate_and_sync_packs(bot, 123))
+
+        bot.get_sticker_set.assert_awaited_once_with("uncached_pack")
+        self.assertEqual(valid, [
+            ("uncached_pack", "Uncached Pack"),
+            ("cached_pack_b", "Cached Pack B"),
+            ("cached_pack_c", "Cached Pack C"),
+        ])
+
     @patch("main.get_user_packs")
     @patch("main.update_pack_title_in_db")
     def test_syncs_title_and_returns_valid(self, mock_update, mock_get_packs):

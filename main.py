@@ -74,16 +74,33 @@ async def validate_and_sync_packs(bot, user_id):
     """Check each DB pack against Telegram. Prune deleted packs, sync renamed titles."""
     packs = get_user_packs(user_id)
 
+    # Prevent memory leaks without dropping cached packs needed by this validation batch.
+    now = time.time()
+    pack_names = {name for name, _ in packs}
+    if len(_TG_PACK_CACHE) > 1000:
+        expired_names = [
+            name
+            for name, (cached_at, _, _) in _TG_PACK_CACHE.items()
+            if now - cached_at >= _TG_PACK_CACHE_TTL
+        ]
+        for name in expired_names:
+            _TG_PACK_CACHE.pop(name, None)
+
+    if len(_TG_PACK_CACHE) > 1000:
+        removable_entries = sorted(
+            (cached_at, name)
+            for name, (cached_at, _, _) in _TG_PACK_CACHE.items()
+            if name not in pack_names
+        )
+        for _, name in removable_entries[:len(_TG_PACK_CACHE) - 1000]:
+            _TG_PACK_CACHE.pop(name, None)
+
     # ⚡ Bolt Optimization: Concurrently validate packs with bounded concurrency (Semaphore=5)
     # Impact: Reduces N sequential network calls to Telegram down to O(N/5) while preventing HTTP 429 rate limit drops that could lead to accidental pack deletion
     sem = asyncio.Semaphore(5)
 
     async def _validate_single_pack(name, title):
         now = time.time()
-
-        # Prevent memory leaks
-        if len(_TG_PACK_CACHE) > 1000:
-            _TG_PACK_CACHE.clear()
 
         # ⚡ Bolt Optimization: Cache expensive Telegram API calls per pack for 5 minutes
         # Impact: Drastically reduces network latency and avoids 429 errors when reloading bot menus (e.g. Grimoire)
