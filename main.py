@@ -96,9 +96,12 @@ async def validate_and_sync_packs(bot, user_id):
                 ss = await bot.get_sticker_set(name)
                 _TG_PACK_CACHE[name] = (now, ss.title, "valid")
                 return {"name": name, "title": ss.title, "old_title": title, "status": "valid"}
-            except Exception:
+            except BadRequest:
                 _TG_PACK_CACHE[name] = (now, title, "deleted")
                 return {"name": name, "title": title, "old_title": title, "status": "deleted"}
+            except Exception as e:
+                logger.warning(f"Could not validate pack {name}: {e}")
+                return {"name": name, "title": title, "old_title": title, "status": "unknown"}
 
     tasks = [_validate_single_pack(name, title) for name, title in packs]
     results = await asyncio.gather(*tasks)
@@ -110,7 +113,7 @@ async def validate_and_sync_packs(bot, user_id):
             if title != old_title:
                 update_pack_title_in_db(user_id, name, title)
             valid.append((name, title))
-        else:
+        elif status == "deleted":
             delete_pack_from_db(user_id, name)
             logger.info(f"Pruned stale pack {name} for user {user_id}")
 
