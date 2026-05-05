@@ -30,3 +30,6 @@
 ## 2024-05-22 - Optimizing Directory Traversal with os.scandir()
 **Learning:** In `pipeline/exporters/png_sequence_exporter.py`, aggregating the file sizes of exported PNG sequences used `os.listdir()` paired with repeated `os.path.getsize()` calls inside a list comprehension. This approach triggered multiple system calls for file metadata.
 **Action:** Replaced `os.listdir()` and `os.path.getsize()` with `os.scandir()`, which yields file attributes (like size) during the initial directory traversal. This minimizes redundant system calls and provides a measurable performance improvement (up to ~23% speedup) when processing directories containing numerous files.
+## 2024-05-23 - Batching SQLite Operations
+**Learning:** Found that modifying the database sequentially inside a loop (e.g. `c.execute("UPDATE ...")` inside a `for` loop) causes O(N) database round-trips, significantly degrading performance.
+**Action:** Accumulate database arguments inside the loop and use a single `c.executemany("UPDATE ...", data)` call afterwards. This reduces the database round-trips to O(1) and leverages SQLite's prepared statement reuse for much better performance.
