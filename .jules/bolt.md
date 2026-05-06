@@ -30,3 +30,6 @@
 ## 2024-05-22 - Optimizing Directory Traversal with os.scandir()
 **Learning:** In `pipeline/exporters/png_sequence_exporter.py`, aggregating the file sizes of exported PNG sequences used `os.listdir()` paired with repeated `os.path.getsize()` calls inside a list comprehension. This approach triggered multiple system calls for file metadata.
 **Action:** Replaced `os.listdir()` and `os.path.getsize()` with `os.scandir()`, which yields file attributes (like size) during the initial directory traversal. This minimizes redundant system calls and provides a measurable performance improvement (up to ~23% speedup) when processing directories containing numerous files.
+## 2024-05-23 - Batching database updates with executemany()
+**Learning:** Found that `api._validate_packs_async` was executing separate `UPDATE` and `DELETE` queries within a loop, one per pack. This can lead to N round-trips to the database when a user has multiple updated or invalid packs.
+**Action:** Replaced the individual `c.execute()` calls within the loop with two `c.executemany()` calls outside the loop by batching arguments into `updates` and `deletes` lists. This changes the O(N) database executions to O(1) batched operations.

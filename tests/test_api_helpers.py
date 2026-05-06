@@ -669,16 +669,16 @@ class TestValidatePacksAsync(unittest.TestCase):
             from api import _validate_packs_async
             _run_async(_validate_packs_async("fake:token", 42))
 
-        # cursor.execute should have been called for SELECT + UPDATE
-        calls = cursor.execute.call_args_list
+        # cursor.executemany should have been called for UPDATE
+        calls = cursor.executemany.call_args_list
         update_calls = [c for c in calls if "UPDATE" in str(c)]
         self.assertEqual(len(update_calls), 1)
         # The UPDATE must carry the new title and correct user_id / name
         update_args = update_calls[0][0]
         self.assertIn("UPDATE packs SET title", update_args[0])
-        self.assertEqual(update_args[1][0], "New Title")
-        self.assertEqual(update_args[1][1], 42)
-        self.assertEqual(update_args[1][2], "mypack")
+        self.assertEqual(update_args[1][0][0], "New Title")
+        self.assertEqual(update_args[1][0][1], 42)
+        self.assertEqual(update_args[1][0][2], "mypack")
 
     def test_title_update_commits_on_existing_connection(self):
         """conn.commit() must be called for a title change (not a new connection)."""
@@ -717,13 +717,13 @@ class TestValidatePacksAsync(unittest.TestCase):
             from api import _validate_packs_async
             _run_async(_validate_packs_async("fake:token", 7))
 
-        calls = cursor.execute.call_args_list
+        calls = cursor.executemany.call_args_list
         delete_calls = [c for c in calls if "DELETE" in str(c)]
         self.assertEqual(len(delete_calls), 1)
         delete_args = delete_calls[0][0]
         self.assertIn("DELETE FROM packs", delete_args[0])
-        self.assertEqual(delete_args[1][0], 7)   # user_id
-        self.assertEqual(delete_args[1][1], "deadpack")
+        self.assertEqual(delete_args[1][0][0], 7)   # user_id
+        self.assertEqual(delete_args[1][0][1], "deadpack")
 
     def test_missing_pack_commits_delete_on_existing_connection(self):
         row = _make_db_row("deadpack", "Dead Pack")

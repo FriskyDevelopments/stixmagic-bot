@@ -350,17 +350,24 @@ async def _validate_packs_async(token, user_id):
         results = await asyncio.gather(*tasks)
 
         valid = []
+        updates = []
+        deletes = []
         for res in results:
             name, title, old_title, status = res["name"], res["title"], res["old_title"], res["status"]
             if status == "valid":
                 if title != old_title:
-                    c.execute(
-                        "UPDATE packs SET title = ? WHERE user_id = ? AND name = ?",
-                        (title, user_id, name)
-                    )
+                    updates.append((title, user_id, name))
                 valid.append({"name": name, "title": title, "link": f"https://t.me/addstickers/{name}"})
             else:
-                c.execute("DELETE FROM packs WHERE user_id = ? AND name = ?", (user_id, name))
+                deletes.append((user_id, name))
+
+        # ⚡ Bolt Optimization: Batch database operations to minimize SQLite round-trips
+        # Impact: Improves performance from O(N) database calls to O(1) batched executemany calls for users with many packs needing updates
+        if updates:
+            c.executemany("UPDATE packs SET title = ? WHERE user_id = ? AND name = ?", updates)
+        if deletes:
+            c.executemany("DELETE FROM packs WHERE user_id = ? AND name = ?", deletes)
+
         conn.commit()
         conn.close()
         return valid
