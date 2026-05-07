@@ -30,3 +30,9 @@
 ## 2024-05-22 - Optimizing Directory Traversal with os.scandir()
 **Learning:** In `pipeline/exporters/png_sequence_exporter.py`, aggregating the file sizes of exported PNG sequences used `os.listdir()` paired with repeated `os.path.getsize()` calls inside a list comprehension. This approach triggered multiple system calls for file metadata.
 **Action:** Replaced `os.listdir()` and `os.path.getsize()` with `os.scandir()`, which yields file attributes (like size) during the initial directory traversal. This minimizes redundant system calls and provides a measurable performance improvement (up to ~23% speedup) when processing directories containing numerous files.
+## 2026-05-07 - Batched Database Operations using executemany
+**Learning:** Executing single SQL queries (like UPDATE or DELETE) repeatedly inside a Python loop (e.g., when syncing lists of validated Telegram packs) causes a separate database round-trip for each record, degrading performance to O(N).
+**Action:** Batch database modifications by accumulating parameter tuples into lists (, ) and invoking  after the loop. This minimizes execution overhead and turns O(N) database round-trips into a single O(1) batched operation per statement type.
+## 2026-05-07 - Batched Database Operations using executemany
+**Learning:** Executing single SQL queries (like UPDATE or DELETE) repeatedly inside a Python loop causes a separate database round-trip for each record, degrading performance to O(N).
+**Action:** Batch database modifications by accumulating parameter tuples into lists and invoking cursor.executemany() after the loop. This minimizes execution overhead and turns O(N) database round-trips into a single O(1) batched operation per statement type.
