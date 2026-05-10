@@ -115,8 +115,11 @@ def generate_pipeline_manifest(
     # Discover pack definitions
     pack_json_files: list[str] = []
     if os.path.isdir(packs_dir):
-        for entry in sorted(os.listdir(packs_dir)):
-            candidate = os.path.join(packs_dir, entry, "pack.json")
+        # ⚡ Bolt Optimization: Use os.scandir() instead of os.listdir()
+        # Impact: Improves directory iteration performance, especially on large directories, and avoids redundant stat() calls.
+        entries = sorted((e.name for e in os.scandir(packs_dir) if e.is_dir()))
+        for entry_name in entries:
+            candidate = os.path.join(packs_dir, entry_name, "pack.json")
             if os.path.isfile(candidate):
                 pack_json_files.append(candidate)
 

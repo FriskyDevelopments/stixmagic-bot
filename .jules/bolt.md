@@ -34,3 +34,7 @@
 ## 2026-05-09 - SQLite Batch Operations with executemany()
 **Learning:** Found that `_validate_packs_async` was performing individual `c.execute()` calls for `UPDATE` and `DELETE` statements inside a loop when validating multiple packs. This caused O(N) database round-trips which creates significant overhead, especially as the number of packs grows.
 **Action:** Replaced the loop with lists to accumulate update/delete arguments and executed them using `c.executemany()`. This batches operations and reduces database round-trips from O(N) to O(1), yielding measurable performance improvements.
+
+## 2026-05-10 - Optimize Directory Iteration with os.scandir
+**Learning:** In Python, iterating over a directory's contents using `os.listdir()` followed by checking if an item is a directory or file using `os.path.isdir()` and `os.path.isfile()` results in redundant system stat calls, which scales poorly for large directories.
+**Action:** Replace `os.listdir()` coupled with `os.path.*` checks with `os.scandir()` wherever directory iteration is performed, as it yields `DirEntry` objects that cache file metadata. This is especially useful for pipeline directory scanning.
