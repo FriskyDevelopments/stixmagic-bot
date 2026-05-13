@@ -276,27 +276,41 @@ def build_pack(
         "mov": "mov", "thumbnail": "png",
     }
 
+    # ⚡ Bolt Optimization: Pre-compute formats and loop invariants
+    # Impact: Reduces O(Assets * Presets * Formats) dictionary lookups and path building
+    has_thumb = "thumbnail" in pack.export_formats
+    has_seq = "png_sequence" in pack.export_formats
+    thumb_dir = _dir_map.get("thumbnail")
+    seq_dir = _dir_map.get("png_sequence")
+
+    other_formats = [
+        (fmt, _ext_map.get(fmt, fmt), _dir_map[fmt])
+        for fmt in pack.export_formats
+        if fmt not in ("thumbnail", "png_sequence") and fmt in _dir_map
+    ]
+
     for asset in assets:
+        asset_id = asset.id
+        # Thumbnail only depends on the asset, not the preset
+        thumb_path = os.path.join(thumb_dir, f"{asset_id}_thumb.png") if has_thumb else None
+
         for preset in presets:
+            preset_id = preset.id
             outputs: dict[str, str] = {}
-            for fmt in pack.export_formats:
-                if fmt == "thumbnail":
-                    outputs["thumbnail"] = os.path.join(
-                        _dir_map["thumbnail"], f"{asset.id}_thumb.png"
-                    )
-                elif fmt == "png_sequence":
-                    outputs["png_sequence"] = os.path.join(
-                        _dir_map["png_sequence"], f"{asset.id}_{preset.id}_frames"
-                    )
-                elif fmt in _dir_map:
-                    ext = _ext_map.get(fmt, fmt)
-                    outputs[fmt] = os.path.join(
-                        _dir_map[fmt], f"{asset.id}_{preset.id}.{ext}"
-                    )
+
+            if has_thumb and thumb_path:
+                outputs["thumbnail"] = thumb_path
+
+            if has_seq and seq_dir:
+                outputs["png_sequence"] = os.path.join(seq_dir, f"{asset_id}_{preset_id}_frames")
+
+            for fmt, ext, fdir in other_formats:
+                outputs[fmt] = os.path.join(fdir, f"{asset_id}_{preset_id}.{ext}")
+
             manifest.entries.append(
                 PackManifestEntry(
-                    asset_id=asset.id,
-                    preset_id=preset.id,
+                    asset_id=asset_id,
+                    preset_id=preset_id,
                     expected_outputs=outputs,
                 )
             )
