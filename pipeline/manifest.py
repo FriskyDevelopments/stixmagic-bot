@@ -62,13 +62,88 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pipeline.metadata import AssetCatalog
+    from pipeline.packager import PackDefinition
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_MANIFEST_PATH = "pipeline_manifest.json"
 DEFAULT_PACKS_DIR = "packs"
 DEFAULT_RENDERS_ROOT = "renders"
+
+
+def build_pipeline_manifest(
+    packs: list["PackDefinition"],
+    catalog: "AssetCatalog",
+    renders_root: str = DEFAULT_RENDERS_ROOT,
+) -> dict[str, Any]:
+    """
+    Build the pipeline manifest JSON structure from a list of packs.
+
+    Parameters
+    ----------
+    packs:
+        List of loaded PackDefinition objects.
+    catalog:
+        AssetCatalog for looking up asset metadata.
+    renders_root:
+        Root directory of the export outputs tree (for output path resolution).
+
+    Returns
+    -------
+    dict
+        The pipeline manifest as a Python dict.
+    """
+    from pipeline.packager import build_pack
+
+    manifest_packs: list[dict[str, Any]] = []
+    total_assets_seen: set[str] = set()
+
+    for pack in packs:
+        try:
+            pack_manifest = build_pack(
+                pack, catalog, renders_root=renders_root, strict_validation=False
+            )
+        except Exception as exc:
+            logger.error("Skipping pack %r – build_pack failed: %s", pack.pack_id, exc)
+            continue
+
+        entries: list[dict[str, Any]] = []
+        for entry in pack_manifest.entries:
+            total_assets_seen.add(entry.asset_id)
+            asset = catalog.get(entry.asset_id)
+            entries.append({
+                "asset_id":       entry.asset_id,
+                "asset_name":     asset.name if asset else entry.asset_id,
+                "asset_category": asset.category.value if asset else "",
+                "preset_id":      entry.preset_id,
+                "thumbnail":      entry.expected_outputs.get("thumbnail"),
+                "outputs": {
+                    fmt: path
+                    for fmt, path in entry.expected_outputs.items()
+                    if fmt != "thumbnail"
+                },
+            })
+
+        manifest_packs.append({
+            "pack_id":         pack.pack_id,
+            "title":           pack.title,
+            "theme":           pack.theme,
+            "target_platforms": pack.target_platforms,
+            "export_formats":  pack.export_formats,
+            "entries":         entries,
+        })
+        logger.info("build_pipeline_manifest: added pack %r (%d entries)", pack.pack_id, len(entries))
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "total_packs":  len(manifest_packs),
+        "total_assets": len(total_assets_seen),
+        "packs":        manifest_packs,
+    }
 
 
 def generate_pipeline_manifest(
@@ -104,7 +179,7 @@ def generate_pipeline_manifest(
         The full manifest as a Python dict (also written to *output_path*).
     """
     from pipeline.metadata import AssetCatalog
-    from pipeline.packager import PackDefinition, build_pack
+    from pipeline.packager import PackDefinition
 
     # Load asset catalog
     catalog_kwargs: dict[str, Any] = {"auto_load": True}
@@ -125,64 +200,23 @@ def generate_pipeline_manifest(
             "generate_pipeline_manifest: no pack.json files found under %r", packs_dir
         )
 
-    manifest_packs: list[dict[str, Any]] = []
-    total_assets_seen: set[str] = set()
-
+    packs: list[PackDefinition] = []
     for pack_file in pack_json_files:
         try:
             pack = PackDefinition.from_file(pack_file)
+            packs.append(pack)
         except Exception as exc:
             logger.error("Skipping %s – failed to load: %s", pack_file, exc)
             continue
 
-        try:
-            pack_manifest = build_pack(
-                pack, catalog, renders_root=renders_root, strict_validation=False
-            )
-        except Exception as exc:
-            logger.error("Skipping pack %r – build_pack failed: %s", pack.pack_id, exc)
-            continue
-
-        entries: list[dict[str, Any]] = []
-        for entry in pack_manifest.entries:
-            total_assets_seen.add(entry.asset_id)
-            asset = catalog.get(entry.asset_id)
-            entries.append({
-                "asset_id":       entry.asset_id,
-                "asset_name":     asset.name if asset else entry.asset_id,
-                "asset_category": asset.category.value if asset else "",
-                "preset_id":      entry.preset_id,
-                "thumbnail":      entry.expected_outputs.get("thumbnail"),
-                "outputs": {
-                    fmt: path
-                    for fmt, path in entry.expected_outputs.items()
-                    if fmt != "thumbnail"
-                },
-            })
-
-        manifest_packs.append({
-            "pack_id":         pack.pack_id,
-            "title":           pack.title,
-            "theme":           pack.theme,
-            "target_platforms": pack.target_platforms,
-            "export_formats":  pack.export_formats,
-            "entries":         entries,
-        })
-        logger.info("generate_pipeline_manifest: added pack %r (%d entries)", pack.pack_id, len(entries))
-
-    manifest: dict[str, Any] = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "total_packs":  len(manifest_packs),
-        "total_assets": len(total_assets_seen),
-        "packs":        manifest_packs,
-    }
+    manifest = build_pipeline_manifest(packs, catalog, renders_root=renders_root)
 
     try:
         with open(output_path, "w", encoding="utf-8") as fh:
             json.dump(manifest, fh, indent=2)
         logger.info(
             "generate_pipeline_manifest: wrote %d packs / %d unique assets to %s",
-            len(manifest_packs), len(total_assets_seen), output_path,
+            manifest["total_packs"], manifest["total_assets"], output_path,
         )
     except Exception as exc:
         logger.error("Failed to write manifest to %s: %s", output_path, exc)
