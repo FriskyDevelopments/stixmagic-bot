@@ -383,7 +383,7 @@ def export_all(
         else:
             if fmt == "png_sequence":
                 result.png_sequence_dir = path
-            elif hasattr(result, fmt):
+            else:
                 setattr(result, fmt, path)
 
     return result
