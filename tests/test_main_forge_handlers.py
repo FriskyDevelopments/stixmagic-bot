@@ -759,5 +759,68 @@ class TestValidateAndSyncPacks(unittest.TestCase):
         self.assertEqual(valid, [("pack_name", "New Title")])
 
 
+
+    @patch("main.get_user_packs")
+    @patch("main.logger.warning")
+    def test_generic_exception_status_unknown(self, mock_warning, mock_get_packs):
+        mock_get_packs.return_value = [("pack_name", "Pack Title")]
+        bot = AsyncMock()
+
+        class CustomError(Exception):
+            pass
+
+        bot.get_sticker_set.side_effect = CustomError("Something weird happened")
+
+        valid = _run(validate_and_sync_packs(bot, 123))
+
+        self.assertEqual(valid, [])
+        mock_warning.assert_called_once()
+        self.assertIn("Could not validate pack pack_name: Something weird happened", mock_warning.call_args[0][0])
+        self.assertNotIn("pack_name", _main_mod._TG_PACK_CACHE)
+
+    @patch("main.time.time")
+    @patch("main.get_user_packs")
+    def test_cache_eviction_removes_unrelated_fresh_entries(self, mock_get_packs, mock_time):
+        mock_time.return_value = 1000.0
+        mock_get_packs.return_value = [] # no packs for user
+
+        # Add 1500 unrelated but fresh entries to cache (1000.0 - 800.0 = 200.0 < 300)
+        # So they don't get removed in the first block, but they do in the second block
+        for i in range(1500):
+            _main_mod._TG_PACK_CACHE[f"unrelated_pack_{i}"] = (800.0, "Unrelated Pack", "valid")
+
+        bot = AsyncMock()
+
+        valid = _run(validate_and_sync_packs(bot, 123))
+
+        self.assertEqual(len(_main_mod._TG_PACK_CACHE), 1000)
+        self.assertEqual(valid, [])
+
+    @patch("main.time.time")
+    @patch("main.get_user_packs")
+    def test_cache_eviction_removes_stale_entries(self, mock_get_packs, mock_time):
+        mock_time.return_value = 1000.0
+        mock_get_packs.return_value = [
+            ("active_pack", "Active Pack"),
+        ]
+
+        # Add 1500 expired entries (1000.0 - 500.0 = 500.0 > 300)
+        for i in range(1500):
+            _main_mod._TG_PACK_CACHE[f"expired_pack_{i}"] = (500.0 + (i / 10000.0), "Expired Pack", "valid")
+
+        bot = AsyncMock()
+        active_set = MagicMock()
+        active_set.title = "Active Pack"
+        bot.get_sticker_set.return_value = active_set
+
+        valid = _run(validate_and_sync_packs(bot, 123))
+
+        # Because all 1500 are expired, the FIRST block removes them all.
+        # Then we add 1 for active_pack
+        self.assertEqual(len(_main_mod._TG_PACK_CACHE), 1)
+        self.assertIn("active_pack", _main_mod._TG_PACK_CACHE)
+        self.assertEqual(valid, [("active_pack", "Active Pack")])
+
+
 if __name__ == "__main__":
     unittest.main()
