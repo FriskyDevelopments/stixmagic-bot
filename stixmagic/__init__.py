@@ -15,4 +15,4 @@ from .contracts import (  # noqa: F401
     START_PAYLOAD_MANAGE,
 )
 from .settings import AppSettings, get_settings  # noqa: F401
-from .telegram_auth import TelegramInitDataError, validate_init_data  # noqa: F401
+from .telegram_auth import TelegramInitDataError  # noqa: F401
