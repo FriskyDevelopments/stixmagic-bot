@@ -1,14 +1,5 @@
 import unittest
 import importlib
-
-# We need to bypass the shadowing of `list_presets` by the `try...except ImportError` block at the end
-# of `pipeline/motion_presets/__init__.py`.
-# We can do this by patching sys.modules or just reading the function. Actually, `pipeline.motion_presets.__init__` is a module,
-# wait, we can just patch `sys.modules['pipeline.motion_presets.catalog']` to raise ImportError?
-# No, let's just write the tests for what the user requested. If the function is shadowed, that's a bug in their code,
-# or maybe we can import it directly by parsing, or we can just mock `import pipeline.motion_presets.catalog`.
-# Let's see if we can reload the module with catalog missing.
-
 import sys
 from unittest.mock import patch
 
