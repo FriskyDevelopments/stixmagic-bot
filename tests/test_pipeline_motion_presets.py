@@ -86,10 +86,12 @@ class TestPipelineMotionPresets(unittest.TestCase):
             catalog_get_preset("non_existent_preset_123")
 
     def test_catalog_list_presets(self):
-        from pipeline.motion_presets import list_presets, PRESET_REGISTRY
+        from pipeline.motion_presets import list_presets
+        from pipeline.motion_presets.catalog import PRESETS
 
         all_presets = list_presets()
-        self.assertEqual(len(all_presets), len(PRESET_REGISTRY))
+        self.assertEqual(len(all_presets), len(PRESETS))
+        self.assertEqual({preset.id for preset in all_presets}, set(PRESETS))
 
     def test_fallback_list_presets(self):
         # We need to test the fallback version of `list_presets` in `__init__.py`
