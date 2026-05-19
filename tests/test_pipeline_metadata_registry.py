@@ -14,7 +14,7 @@ class TestAssetRegistry(unittest.TestCase):
     def setUp(self):
         # Create a temporary directory to act as the source directory
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.source_path = Path(self.temp_dir.name)
+        self.source_path = Path(self.temp_dir.name).resolve()
 
         # Valid asset data
         self.asset1_data = {
