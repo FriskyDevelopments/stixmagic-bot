@@ -42,16 +42,22 @@ class InfraDbTestCase(unittest.TestCase):
         fd, self.db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
 
+        # Now safe to import and call init_db
+        import sys
+        # stub dotenv before infra.db imports it
+        class DotenvStub:
+            def load_dotenv(self, *args, **kwargs): pass
+        sys.modules['dotenv'] = DotenvStub()
+
+        import infra.db as db_mod
+        self.db = db_mod
+
         # Patch get_settings in infra.db's own namespace (it uses `from stixmagic.settings import get_settings`)
         self._patcher = patch(
             "infra.db._db_file",
             return_value=self.db_path,
         )
         self._patcher.start()
-
-        # Now safe to import and call init_db
-        import infra.db as db_mod
-        self.db = db_mod
         db_mod.init_db()
 
     def tearDown(self):
@@ -442,3 +448,15 @@ class TestCatalogGetUserReaction(InfraDbTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+class TestDbFile(unittest.TestCase):
+
+    def test_db_file_returns_settings_path(self):
+        import sys
+        class DotenvStub:
+            def load_dotenv(self, *args, **kwargs): pass
+        sys.modules['dotenv'] = DotenvStub()
+
+        import infra.db as db_mod
+        with patch('infra.db.get_settings') as mock_get_settings:
+            mock_get_settings.return_value.database_path = '/tmp/my_test_db.sqlite'
+            self.assertEqual(db_mod._db_file(), '/tmp/my_test_db.sqlite')
