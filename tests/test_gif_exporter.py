@@ -38,7 +38,7 @@ class TestGifExporter(unittest.TestCase):
         self.assertEqual(result.format, "gif")
         self.assertIsNotNone(result.path)
         self.assertTrue(os.path.exists(result.path))
-        self.assertTrue(result.path.startswith(self.temp_dir))
+        self.assertTrue(result.path.startswith(os.path.realpath(self.temp_dir)))
         self.assertTrue(result.path.endswith("test_asset_test_preset.gif"))
 
         with open(result.path, "rb") as f:
