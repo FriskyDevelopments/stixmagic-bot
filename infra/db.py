@@ -12,9 +12,7 @@ import time
 
 from stixmagic.settings import get_settings
 
-
 logger = logging.getLogger(__name__)
-
 
 
 def _connect() -> sqlite3.Connection:
@@ -23,10 +21,11 @@ def _connect() -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous=NORMAL;")
     return conn
 
+
 def _db_file() -> str:
     """
     Get the configured SQLite database file path.
-    
+
     Returns:
         str: Filesystem path to the SQLite database as specified by application settings.
     """
@@ -37,26 +36,21 @@ def init_db() -> None:
     """Create tables if they don't exist."""
     conn = _connect()
     c = conn.cursor()
-    c.execute(
-        """
+    c.execute("""
         CREATE TABLE IF NOT EXISTS packs (
             id      INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             name    TEXT    NOT NULL,
             title   TEXT    NOT NULL
         )
-        """
-    )
-    c.execute(
-        """
+        """)
+    c.execute("""
         CREATE TABLE IF NOT EXISTS user_settings (
             user_id       INTEGER PRIMARY KEY,
             mask_inverted INTEGER DEFAULT 0
         )
-        """
-    )
-    c.execute(
-        """
+        """)
+    c.execute("""
         CREATE TABLE IF NOT EXISTS catalog_packs (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             name        TEXT    UNIQUE NOT NULL,
@@ -71,23 +65,26 @@ def init_db() -> None:
             added_at    INTEGER NOT NULL,
             added_by    INTEGER
         )
-        """
-    )
-    c.execute(
-        """
+        """)
+    c.execute("""
         CREATE TABLE IF NOT EXISTS catalog_reactions (
             user_id   INTEGER NOT NULL,
             pack_name TEXT    NOT NULL,
             reaction  TEXT    NOT NULL,
             PRIMARY KEY (user_id, pack_name)
         )
-        """
-    )
+        """)
     # ⚡ Bolt Optimization: Add covering indices for common catalog_search modes
     # Impact: Turns O(N log N) full table scans and temporary B-tree sorting into O(log N) lookups
-    c.execute("CREATE INDEX IF NOT EXISTS idx_catalog_packs_popular ON catalog_packs (public, likes DESC)")
-    c.execute("CREATE INDEX IF NOT EXISTS idx_catalog_packs_trending ON catalog_packs (public, view_count DESC, likes DESC)")
-    c.execute("CREATE INDEX IF NOT EXISTS idx_catalog_packs_new ON catalog_packs (public, added_at DESC)")
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_catalog_packs_popular ON catalog_packs (public, likes DESC)"
+    )
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_catalog_packs_trending ON catalog_packs (public, view_count DESC, likes DESC)"
+    )
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_catalog_packs_new ON catalog_packs (public, added_at DESC)"
+    )
 
     # ⚡ Bolt Optimization: Add index on packs(user_id) for faster lookups
     # Impact: Turns O(N) full table scans on the packs table (which can grow large) into O(log N) lookups for API/bot requests fetching packs for a specific user
@@ -99,13 +96,14 @@ def init_db() -> None:
 
 # ── User Settings ─────────────────────────────────────────────
 
+
 def get_mask_inverted(user_id: int) -> bool:
     """
     Determine whether the user's mask display is inverted.
-    
+
     Parameters:
         user_id (int): The user's numeric identifier.
-    
+
     Returns:
         `true` if the user's `mask_inverted` value is 1, `false` otherwise.
     """
@@ -120,7 +118,7 @@ def get_mask_inverted(user_id: int) -> bool:
 def set_mask_inverted(user_id: int, inverted: bool) -> None:
     """
     Set the user's mask inversion setting.
-    
+
     Parameters:
         user_id (int): ID of the user whose setting will be updated.
         inverted (bool): Whether the mask should be inverted (True sets inverted, False clears it).
@@ -138,10 +136,11 @@ def set_mask_inverted(user_id: int, inverted: bool) -> None:
 
 # ── Pack CRUD ─────────────────────────────────────────────────
 
+
 def add_pack(user_id: int, name: str, title: str) -> None:
     """
     Create a new pack record for the specified user in the database.
-    
+
     Parameters:
         user_id (int): ID of the user who owns the pack.
         name (str): Internal name or identifier for the pack.
@@ -160,7 +159,7 @@ def add_pack(user_id: int, name: str, title: str) -> None:
 def delete_pack(user_id: int, name: str) -> None:
     """
     Delete a user's pack identified by its name from the database.
-    
+
     Parameters:
         user_id (int): ID of the user who owns the pack.
         name (str): Pack name to remove.
@@ -175,7 +174,7 @@ def delete_pack(user_id: int, name: str) -> None:
 def get_user_packs(user_id: int) -> list[tuple[str, str]]:
     """
     Retrieve the user's packs as a list of (name, title) tuples.
-    
+
     Returns:
         list[tuple[str, str]]: List of (name, title) tuples for the given user; empty list if the user has no packs.
     """
@@ -190,11 +189,11 @@ def get_user_packs(user_id: int) -> list[tuple[str, str]]:
 def update_pack_title(user_id: int, name: str, title: str) -> None:
     """
     Update the title of a pack belonging to a specific user.
-    
+
     Parameters:
-    	user_id (int): ID of the owner of the pack to update.
-    	name (str): Unique name/identifier of the pack.
-    	title (str): New title to set for the pack.
+        user_id (int): ID of the owner of the pack to update.
+        name (str): Unique name/identifier of the pack.
+        title (str): New title to set for the pack.
     """
     conn = _connect()
     c = conn.cursor()
@@ -208,10 +207,11 @@ def update_pack_title(user_id: int, name: str, title: str) -> None:
 
 # ── User state helpers ────────────────────────────────────────
 
+
 def is_new_user(user_id: int) -> bool:
     """
     Check whether a user is new (has no packs and no stored user settings).
-    
+
     Returns:
         True if the user has not created any packs and has no entry in user_settings, False otherwise.
     """
@@ -222,7 +222,7 @@ def is_new_user(user_id: int) -> bool:
     c.execute(
         "SELECT 1 WHERE EXISTS (SELECT 1 FROM packs WHERE user_id = ?) "
         "OR EXISTS (SELECT 1 FROM user_settings WHERE user_id = ?)",
-        (user_id, user_id)
+        (user_id, user_id),
     )
     result = c.fetchone()
     conn.close()
@@ -230,6 +230,7 @@ def is_new_user(user_id: int) -> bool:
 
 
 # ── Catalog CRUD ──────────────────────────────────────────────
+
 
 def catalog_add_pack(
     name: str,
@@ -240,14 +241,14 @@ def catalog_add_pack(
 ) -> bool:
     """
     Add a new pack to the public catalog.
-    
+
     Parameters:
         name (str): Unique identifier for the pack.
         title (str): Human-readable title for the pack.
         added_by (int): User ID of the account adding the pack.
         description (str): Optional descriptive text for the pack (default: "").
         pack_type (str): Pack category/type (default: "image").
-    
+
     Returns:
         bool: `True` if the pack was inserted, `False` if a pack with the same name already exists.
     """
@@ -272,7 +273,7 @@ def catalog_add_pack(
 def catalog_get_pack(name: str) -> dict | None:
     """
     Retrieve a public catalog pack by its name.
-    
+
     Returns:
         dict: A mapping of the pack's columns (e.g., name, title, description, type, public, safe, likes, dislikes, view_count, added_at, added_by) if a public pack with the given name exists, `None` otherwise.
     """
@@ -293,15 +294,15 @@ def catalog_search(
 ) -> list[dict]:
     """
     Search public catalog packs with optional text filtering, sorting, and pagination.
-    
+
     When sort is "popular", "trending", or "new" results are ordered by likes, view_count then likes, or added_at respectively; for any other sort value the query string is matched against title, name, and description using SQL LIKE. Results include only packs marked public and are limited/offset by the provided pagination parameters.
-    
+
     Parameters:
         query (str): Text to match against title, name, and description when performing a search; ignored for the predefined sort modes.
         sort (str): One of "popular", "trending", "new", or any other value to perform a text search.
         limit (int): Maximum number of results to return.
         offset (int): Number of results to skip before returning.
-    
+
     Returns:
         list[dict]: A list of rows from `catalog_packs` converted to dictionaries (one dict per pack).
     """
@@ -344,11 +345,11 @@ def catalog_search(
 def catalog_count(query: str = "", sort: str = "popular") -> int:
     """
     Count catalog packs that match the given search and visibility criteria.
-    
+
     Parameters:
         query (str): Substring to match against title, name, or description when used (ignored for certain sorts).
         sort (str): If "popular", "trending", or "new", the function counts all public packs and ignores `query`; otherwise it counts public packs whose title, name, or description contain `query`.
-    
+
     Returns:
         int: Total number of matching catalog packs.
     """
@@ -371,7 +372,7 @@ def catalog_count(query: str = "", sort: str = "popular") -> int:
 def catalog_increment_views(name: str) -> None:
     """
     Increment the view count for the catalog pack identified by `name`.
-    
+
     Parameters:
         name (str): The unique catalog pack name whose `view_count` will be incremented in the database.
     """
@@ -386,9 +387,9 @@ def catalog_increment_views(name: str) -> None:
 def catalog_react(user_id: int, pack_name: str, reaction: str) -> dict:
     """
     Toggle a user's like or dislike reaction for a catalog pack.
-    
+
     Adds, removes, or switches the user's reaction and updates the pack's like/dislike counters accordingly.
-    
+
     Returns:
         result (dict): {
             "likes": int — current total likes for the pack,
@@ -463,9 +464,7 @@ def catalog_react(user_id: int, pack_name: str, reaction: str) -> dict:
         current = reaction
 
     conn.commit()
-    c.execute(
-        "SELECT likes, dislikes FROM catalog_packs WHERE name = ?", (pack_name,)
-    )
+    c.execute("SELECT likes, dislikes FROM catalog_packs WHERE name = ?", (pack_name,))
     row = c.fetchone()
     conn.close()
     return {
@@ -478,11 +477,11 @@ def catalog_react(user_id: int, pack_name: str, reaction: str) -> dict:
 def catalog_get_user_reaction(user_id: int, pack_name: str) -> str | None:
     """
     Retrieve the reaction a user has recorded for a catalog pack.
-    
+
     Parameters:
         user_id (int): ID of the user.
         pack_name (str): Name of the catalog pack.
-    
+
     Returns:
         str | None: The reaction string (e.g., 'like' or 'dislike') if a reaction exists, `None` otherwise.
     """
