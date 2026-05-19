@@ -517,8 +517,13 @@ class TestDbFile(InfraDbTestCase):
             from stixmagic.settings import get_settings
 
             # This should equal the path from the settings
-            expected_path = get_settings().database_path
-            self.assertEqual(infra.db._db_file(), expected_path)
+            with patch.dict(
+                os.environ,
+                {"TELEGRAM_BOT_TOKEN": "dummy", "STIXMAGIC_DB_PATH": self.db_path},
+                clear=True,
+            ):
+                expected_path = get_settings().database_path
+                self.assertEqual(infra.db._db_file(), expected_path)
         finally:
             self._patcher.start()
 
