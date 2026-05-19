@@ -1,7 +1,12 @@
-Title: 🧪 Test validate_pack_title failure in create_title
+🎯 **What:**
+Added a missing test file for the `pipeline.asset_model.asset.Asset` dataclass. The core asset model contained logic for animation compatibility (`is_animation_compatible`), export support (`supports_export`), and JSON serialization/deserialization (`to_dict`, `from_dict`) that was previously untested.
 
-🎯 **What:** The `create_title` handler in `main.py` lacked a unit test verifying its behaviour when a pack title validation failed.
+📊 **Coverage:**
+- `Asset` default instantiation and defaults for optional fields.
+- `__repr__` output format.
+- `is_animation_compatible` logic (handles empty vs populated lists).
+- `supports_export` logic (handles empty vs populated lists).
+- `to_dict` and `from_dict` ensuring accurate mapping of all properties.
 
-📊 **Coverage:** A new test case `test_mocked_validate_pack_title_false` was added to `tests/test_main_forge_handlers.py`. It uses a mock to ensure that a title validation returning `False` correctly causes the handler to prompt the user again by returning the `WAITING_TITLE` state and sending the appropriate error message via Telegram.
-
-✨ **Result:** Enhanced test coverage for edge cases involving pack title validation during the pack creation flow.
+✨ **Result:**
+Increased the test coverage of `asset.py`. The serialization, initialization, and configuration logic in the core dataclass is now protected against regressions.
