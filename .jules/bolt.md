@@ -38,3 +38,6 @@
 ## 2026-05-13 - Loop Invariant Code Motion and Lookup Optimization
 **Learning:** Found that `pipeline/packager/__init__.py::build_pack` had an O(Assets * Presets * Formats) nested loop that repeatedly performed identical dictionary lookups and conditional checks (like checking if the format was 'thumbnail') which were invariant for a given asset or the entire execution. This resulted in redundant work and slower execution.
 **Action:** Extracted loop invariants and pre-computed static values (e.g. format tuples, constant thumbnail paths) outside the inner loops. This minimizes repeated dictionary accesses and condition evaluations, yielding an ~23% performance improvement in manifest generation.
+## 2024-05-19 - Added tests for pipeline.motion_presets
+**Learning:** Found that the implementation for motion presets was spread between `pipeline/motion_presets/__init__.py`, `pipeline/motion_presets/preset.py`, and `pipeline/motion_presets/catalog.py`. Discovered that `MotionPreset` has `duration_ms` instead of `duration` through test failures.
+**Action:** Always check the exact attributes of dataclasses by reading their definition file directly rather than relying on `__init__.py` docstrings which might be slightly out of sync. Use grep and read_file aggressively.
