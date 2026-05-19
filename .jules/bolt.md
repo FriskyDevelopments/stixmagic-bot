@@ -38,3 +38,7 @@
 ## 2026-05-13 - Loop Invariant Code Motion and Lookup Optimization
 **Learning:** Found that `pipeline/packager/__init__.py::build_pack` had an O(Assets * Presets * Formats) nested loop that repeatedly performed identical dictionary lookups and conditional checks (like checking if the format was 'thumbnail') which were invariant for a given asset or the entire execution. This resulted in redundant work and slower execution.
 **Action:** Extracted loop invariants and pre-computed static values (e.g. format tuples, constant thumbnail paths) outside the inner loops. This minimizes repeated dictionary accesses and condition evaluations, yielding an ~23% performance improvement in manifest generation.
+
+## 2026-05-19 - Testing Pure Logic Modules
+**Learning:** Found that `pipeline/motion_presets/catalog.py` lacked test coverage despite being a pure logic module. Testing pure logic is straightforward and crucial for ensuring the integrity of the data structures and accessor methods.
+**Action:** Always add corresponding test files (e.g., `test_motion_presets_catalog.py`) for modules containing dictionaries and simple getter/listing functions. Ensure that the test suite covers the contents of the structures as well as the behavior of the accessor functions, including edge cases like `KeyError` handling.
