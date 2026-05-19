@@ -38,3 +38,9 @@
 ## 2026-05-13 - Loop Invariant Code Motion and Lookup Optimization
 **Learning:** Found that `pipeline/packager/__init__.py::build_pack` had an O(Assets * Presets * Formats) nested loop that repeatedly performed identical dictionary lookups and conditional checks (like checking if the format was 'thumbnail') which were invariant for a given asset or the entire execution. This resulted in redundant work and slower execution.
 **Action:** Extracted loop invariants and pre-computed static values (e.g. format tuples, constant thumbnail paths) outside the inner loops. This minimizes repeated dictionary accesses and condition evaluations, yielding an ~23% performance improvement in manifest generation.
+## 2026-05-19 - Remove unused imports from stixmagic/__init__.py
+**Learning:** Found unused imports that can be safely removed to improve maintainability.
+**Action:** Always check  files for unused exports that could reduce internal dependencies when refactoring.
+## 2026-05-19 - Remove unused imports from stixmagic/__init__.py
+**Learning:** Found unused imports that can be safely removed to improve maintainability.
+**Action:** Always check `__init__.py` files for unused exports that could reduce internal dependencies when refactoring.
