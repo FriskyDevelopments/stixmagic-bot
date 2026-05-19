@@ -1,4 +1,0 @@
-🎯 **What:** Removed unused `from __future__ import annotations` import from `pipeline/manifest.py`.
-💡 **Why:** Python 3.12 syntax natively supports type hints without this import when it's not strictly required for forward references in this file, reducing dead code and making it cleaner.
-✅ **Verification:** Verified by executing the file via `python pipeline/manifest.py` to ensure it works correctly and running the full unit test suite, confirming no breakage.
-✨ **Result:** Improved codebase cleanliness with one less unnecessary import and marginally cleaner file header.
