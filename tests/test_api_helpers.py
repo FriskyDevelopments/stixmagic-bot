@@ -17,12 +17,11 @@ import hmac
 import json
 import os
 import sys
-import time
 import tempfile
+import time
 import unittest
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import urlencode
-
 
 # ── Helpers to build valid Telegram initData ──────────────────
 
@@ -39,11 +38,14 @@ def _build_init_data(bot_token: str, user: dict, auth_date: int | None = None) -
     }
     data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(pairs.items()))
     secret = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
-    pairs["hash"] = hmac.new(secret, data_check_string.encode(), hashlib.sha256).hexdigest()
+    pairs["hash"] = hmac.new(
+        secret, data_check_string.encode(), hashlib.sha256
+    ).hexdigest()
     return urlencode(pairs)
 
 
 # ── _normalize_origin (pure function, importable separately) ──
+
 
 class TestNormalizeOrigin(unittest.TestCase):
     """Tests for the api._normalize_origin helper."""
@@ -51,6 +53,7 @@ class TestNormalizeOrigin(unittest.TestCase):
     def _get_fn(self):
         # Import lazily so we can patch SETTINGS before module load
         from api import _normalize_origin
+
         return _normalize_origin
 
     def test_empty_string_returns_empty(self):
@@ -68,7 +71,9 @@ class TestNormalizeOrigin(unittest.TestCase):
 
     def test_url_with_port(self):
         fn = self._get_fn()
-        self.assertEqual(fn("http://localhost:5000/api/miniapp"), "http://localhost:5000")
+        self.assertEqual(
+            fn("http://localhost:5000/api/miniapp"), "http://localhost:5000"
+        )
 
     def test_url_without_path(self):
         fn = self._get_fn()
@@ -96,10 +101,13 @@ class TestNormalizeOrigin(unittest.TestCase):
 
     def test_subdomain_preserved(self):
         fn = self._get_fn()
-        self.assertEqual(fn("https://api.example.com/v1/data"), "https://api.example.com")
+        self.assertEqual(
+            fn("https://api.example.com/v1/data"), "https://api.example.com"
+        )
 
 
 # ── Flask application tests ───────────────────────────────────
+
 
 def _make_mock_settings(db_path: str = ":memory:", **kwargs):
     s = MagicMock()
@@ -125,24 +133,29 @@ class ApiTestBase(unittest.TestCase):
         self.mock_settings = _make_mock_settings(db_path=self.db_path)
 
         # Patch get_settings in all relevant modules before importing api
-        self._patch_settings = patch("stixmagic.settings.get_settings", return_value=self.mock_settings)
+        self._patch_settings = patch(
+            "stixmagic.settings.get_settings", return_value=self.mock_settings
+        )
         self._patch_settings.start()
 
         # Force re-import of api module with patched settings if already loaded
         if "api" in sys.modules:
             # Update SETTINGS directly in the already-loaded module
             import api as api_mod
+
             api_mod.SETTINGS = self.mock_settings
             api_mod.API_KEY = self.mock_settings.stixmagic_api_key
             self.app = api_mod.app
         else:
             import api as api_mod
+
             api_mod.SETTINGS = self.mock_settings
             api_mod.API_KEY = self.mock_settings.stixmagic_api_key
             self.app = api_mod.app
 
         # Initialize DB tables in the temp file so API routes can use them
         import infra.db as db_mod
+
         with patch("infra.db.get_settings", return_value=self.mock_settings):
             db_mod.init_db()
 
@@ -197,12 +210,16 @@ class TestCORSHeaders(ApiTestBase):
     def test_miniapp_route_with_trusted_origin_gets_cors(self):
         """A request from a trusted origin should get the CORS header set."""
         import api as api_mod
+
         # Add the origin to the allowlist
         api_mod._MINIAPP_CORS_ORIGINS = frozenset(["https://example.com"])
 
         valid_init_data = _build_init_data(FAKE_BOT_TOKEN, FAKE_USER)
 
-        with patch("api.validate_init_data", return_value={"user": FAKE_USER, "start_param": None}):
+        with patch(
+            "api.validate_init_data",
+            return_value={"user": FAKE_USER, "start_param": None},
+        ):
             resp = self.client.get(
                 "/api/miniapp/settings",
                 headers={
@@ -217,9 +234,13 @@ class TestCORSHeaders(ApiTestBase):
     def test_miniapp_route_with_untrusted_origin_no_cors(self):
         """A request from an untrusted origin should not get a CORS header."""
         import api as api_mod
+
         api_mod._MINIAPP_CORS_ORIGINS = frozenset(["https://example.com"])
 
-        with patch("api.validate_init_data", return_value={"user": FAKE_USER, "start_param": None}):
+        with patch(
+            "api.validate_init_data",
+            return_value={"user": FAKE_USER, "start_param": None},
+        ):
             resp = self.client.get(
                 "/api/miniapp/settings",
                 headers={
@@ -247,7 +268,10 @@ class TestRequireMiniappAuth(ApiTestBase):
     def test_missing_init_data_returns_401(self):
         """Missing initData should return 401 with miniapp_unauthorized code."""
         from stixmagic.telegram_auth import TelegramInitDataError
-        with patch("api.validate_init_data", side_effect=TelegramInitDataError("Missing")):
+
+        with patch(
+            "api.validate_init_data", side_effect=TelegramInitDataError("Missing")
+        ):
             resp = self.client.get("/api/miniapp/settings")
         self.assertEqual(resp.status_code, 401)
         data = json.loads(resp.data)
@@ -256,7 +280,11 @@ class TestRequireMiniappAuth(ApiTestBase):
 
     def test_invalid_init_data_returns_401(self):
         from stixmagic.telegram_auth import TelegramInitDataError
-        with patch("api.validate_init_data", side_effect=TelegramInitDataError("Invalid signature")):
+
+        with patch(
+            "api.validate_init_data",
+            side_effect=TelegramInitDataError("Invalid signature"),
+        ):
             resp = self.client.get(
                 "/api/miniapp/settings",
                 headers={"X-Telegram-Init-Data": "bad-data"},
@@ -272,7 +300,9 @@ class TestTelegramInitDataFromRequest(ApiTestBase):
 
         def _capture(init_data, token, **kwargs):
             captured["init_data"] = init_data
-            raise __import__("stixmagic.telegram_auth", fromlist=["TelegramInitDataError"]).TelegramInitDataError("test")
+            raise __import__(
+                "stixmagic.telegram_auth", fromlist=["TelegramInitDataError"]
+            ).TelegramInitDataError("test")
 
         with patch("api.validate_init_data", side_effect=_capture):
             self.client.get(
@@ -287,7 +317,9 @@ class TestTelegramInitDataFromRequest(ApiTestBase):
 
         def _capture(init_data, token, **kwargs):
             captured["init_data"] = init_data
-            raise __import__("stixmagic.telegram_auth", fromlist=["TelegramInitDataError"]).TelegramInitDataError("test")
+            raise __import__(
+                "stixmagic.telegram_auth", fromlist=["TelegramInitDataError"]
+            ).TelegramInitDataError("test")
 
         with patch("api.validate_init_data", side_effect=_capture):
             self.client.get(
@@ -365,6 +397,7 @@ class TestMiniappBootstrap(ApiTestBase):
     def test_bootstrap_without_bot_username_no_links(self):
         """When bot_username is empty, links should not be present."""
         import api as api_mod
+
         original = api_mod.SETTINGS.telegram_bot_username
         api_mod.SETTINGS = _make_mock_settings(
             db_path=self.db_path, telegram_bot_username=""
@@ -383,7 +416,10 @@ class TestMiniappBootstrap(ApiTestBase):
 
     def test_bootstrap_requires_auth(self):
         from stixmagic.telegram_auth import TelegramInitDataError
-        with patch("api.validate_init_data", side_effect=TelegramInitDataError("No auth")):
+
+        with patch(
+            "api.validate_init_data", side_effect=TelegramInitDataError("No auth")
+        ):
             resp = self.client.get("/api/miniapp/bootstrap")
         self.assertEqual(resp.status_code, 401)
 
@@ -487,7 +523,13 @@ class TestMiniappIntentRoute(ApiTestBase):
         self.assertEqual(resp.status_code, 400)
 
     def test_intent_all_valid_actions(self):
-        valid_actions = ["create_pack", "add_sticker", "manage_packs", "magic_cut", "feature_pack"]
+        valid_actions = [
+            "create_pack",
+            "add_sticker",
+            "manage_packs",
+            "magic_cut",
+            "feature_pack",
+        ]
         for action in valid_actions:
             with self.subTest(action=action):
                 with patch("api.validate_init_data", return_value=self._session()):
@@ -496,11 +538,16 @@ class TestMiniappIntentRoute(ApiTestBase):
                         json={"action": action},
                         headers={"X-Telegram-Init-Data": "valid"},
                     )
-                self.assertEqual(resp.status_code, 200, f"Action {action!r} should be valid")
+                self.assertEqual(
+                    resp.status_code, 200, f"Action {action!r} should be valid"
+                )
 
     def test_intent_requires_auth(self):
         from stixmagic.telegram_auth import TelegramInitDataError
-        with patch("api.validate_init_data", side_effect=TelegramInitDataError("No auth")):
+
+        with patch(
+            "api.validate_init_data", side_effect=TelegramInitDataError("No auth")
+        ):
             resp = self.client.post(
                 "/api/miniapp/intent",
                 json={"action": "create_pack"},
@@ -545,7 +592,9 @@ def _ensure_api_importable():
             session_secret="secret",
         )
     )
-    sys.modules["moderation"].create_default_harness = MagicMock(return_value=MagicMock())
+    sys.modules["moderation"].create_default_harness = MagicMock(
+        return_value=MagicMock()
+    )
 
 
 def _make_db_row(name, title):
@@ -568,6 +617,7 @@ class TestValidatePacksAsync(unittest.TestCase):
         # Force api into sys.modules so later patches on "api.get_db" resolve
         if "api" not in sys.modules:
             import importlib
+
             sys.modules["api"] = importlib.import_module("api")
 
     def _make_bot(self, sticker_sets=None, raise_for=None):
@@ -604,9 +654,11 @@ class TestValidatePacksAsync(unittest.TestCase):
         conn, cursor = self._make_conn([])
         bot = self._make_bot()
 
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
+        with patch("api.get_db", return_value=conn), patch(
+            "telegram.Bot", return_value=bot
+        ):
             from api import _validate_packs_async
+
             result = _run_async(_validate_packs_async("fake:token", 1))
 
         self.assertEqual(result, [])
@@ -615,14 +667,17 @@ class TestValidatePacksAsync(unittest.TestCase):
 
     def test_valid_pack_returned_when_title_matches(self):
         import api
+
         api._TG_PACK_CACHE.clear()
         row = _make_db_row("mypack", "My Pack")
         conn, cursor = self._make_conn([row])
         bot = self._make_bot(sticker_sets={"mypack": "My Pack"})
 
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
+        with patch("api.get_db", return_value=conn), patch(
+            "telegram.Bot", return_value=bot
+        ):
             from api import _validate_packs_async
+
             result = _run_async(_validate_packs_async("fake:token", 1))
 
         self.assertEqual(len(result), 1)
@@ -634,9 +689,11 @@ class TestValidatePacksAsync(unittest.TestCase):
         conn, cursor = self._make_conn([row])
         bot = self._make_bot(sticker_sets={"coolpack": "Cool Pack"})
 
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
+        with patch("api.get_db", return_value=conn), patch(
+            "telegram.Bot", return_value=bot
+        ):
             from api import _validate_packs_async
+
             result = _run_async(_validate_packs_async("fake:token", 1))
 
         self.assertEqual(result[0]["link"], "https://t.me/addstickers/coolpack")
@@ -645,28 +702,34 @@ class TestValidatePacksAsync(unittest.TestCase):
 
     def test_title_update_when_telegram_title_differs(self):
         import api
+
         api._TG_PACK_CACHE.clear()
         row = _make_db_row("mypack", "Old Title")
         conn, cursor = self._make_conn([row])
         bot = self._make_bot(sticker_sets={"mypack": "New Title"})
 
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
+        with patch("api.get_db", return_value=conn), patch(
+            "telegram.Bot", return_value=bot
+        ):
             from api import _validate_packs_async
+
             result = _run_async(_validate_packs_async("fake:token", 1))
 
         self.assertEqual(result[0]["title"], "New Title")
 
     def test_title_update_executes_sql_update_on_same_cursor(self):
         import api
+
         api._TG_PACK_CACHE.clear()
         row = _make_db_row("mypack", "Old Title")
         conn, cursor = self._make_conn([row])
         bot = self._make_bot(sticker_sets={"mypack": "New Title"})
 
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
+        with patch("api.get_db", return_value=conn), patch(
+            "telegram.Bot", return_value=bot
+        ):
             from api import _validate_packs_async
+
             _run_async(_validate_packs_async("fake:token", 42))
 
         # cursor.executemany should have been called for UPDATE
@@ -687,9 +750,11 @@ class TestValidatePacksAsync(unittest.TestCase):
         conn, cursor = self._make_conn([row])
         bot = self._make_bot(sticker_sets={"mypack": "New Title"})
 
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
+        with patch("api.get_db", return_value=conn), patch(
+            "telegram.Bot", return_value=bot
+        ):
             from api import _validate_packs_async
+
             _run_async(_validate_packs_async("fake:token", 1))
 
         conn.commit.assert_called()
@@ -701,9 +766,11 @@ class TestValidatePacksAsync(unittest.TestCase):
         conn, cursor = self._make_conn([row])
         bot = self._make_bot(raise_for={"deadpack"})
 
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
+        with patch("api.get_db", return_value=conn), patch(
+            "telegram.Bot", return_value=bot
+        ):
             from api import _validate_packs_async
+
             result = _run_async(_validate_packs_async("fake:token", 7))
 
         self.assertEqual(result, [])
@@ -713,9 +780,11 @@ class TestValidatePacksAsync(unittest.TestCase):
         conn, cursor = self._make_conn([row])
         bot = self._make_bot(raise_for={"deadpack"})
 
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
+        with patch("api.get_db", return_value=conn), patch(
+            "telegram.Bot", return_value=bot
+        ):
             from api import _validate_packs_async
+
             _run_async(_validate_packs_async("fake:token", 7))
 
         calls = cursor.executemany.call_args_list
@@ -723,7 +792,7 @@ class TestValidatePacksAsync(unittest.TestCase):
         self.assertEqual(len(delete_calls), 1)
         delete_args = delete_calls[0][0]
         self.assertIn("DELETE FROM packs", delete_args[0])
-        self.assertEqual(delete_args[1][0][0], 7)   # user_id
+        self.assertEqual(delete_args[1][0][0], 7)  # user_id
         self.assertEqual(delete_args[1][0][1], "deadpack")
 
     def test_missing_pack_commits_delete_on_existing_connection(self):
@@ -731,9 +800,11 @@ class TestValidatePacksAsync(unittest.TestCase):
         conn, cursor = self._make_conn([row])
         bot = self._make_bot(raise_for={"deadpack"})
 
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
+        with patch("api.get_db", return_value=conn), patch(
+            "telegram.Bot", return_value=bot
+        ):
             from api import _validate_packs_async
+
             _run_async(_validate_packs_async("fake:token", 1))
 
         conn.commit.assert_called()
@@ -744,17 +815,23 @@ class TestValidatePacksAsync(unittest.TestCase):
         """Only one DB connection opened regardless of the number of packs."""
         rows = [
             _make_db_row("pack1", "Pack One"),
-            _make_db_row("pack2", "Old Two"),   # title differs → UPDATE
+            _make_db_row("pack2", "Old Two"),  # title differs → UPDATE
             _make_db_row("pack3", "Pack Three"),
         ]
         conn, cursor = self._make_conn(rows)
         bot = self._make_bot(
-            sticker_sets={"pack1": "Pack One", "pack2": "New Two", "pack3": "Pack Three"}
+            sticker_sets={
+                "pack1": "Pack One",
+                "pack2": "New Two",
+                "pack3": "Pack Three",
+            }
         )
 
-        with patch("api.get_db", return_value=conn) as mock_get_db, \
-             patch("telegram.Bot", return_value=bot):
+        with patch("api.get_db", return_value=conn) as mock_get_db, patch(
+            "telegram.Bot", return_value=bot
+        ):
             from api import _validate_packs_async
+
             _run_async(_validate_packs_async("fake:token", 1))
 
         mock_get_db.assert_called_once()
@@ -765,9 +842,11 @@ class TestValidatePacksAsync(unittest.TestCase):
         conn, cursor = self._make_conn(rows)
         bot = self._make_bot(raise_for={"deadpack"})
 
-        with patch("api.get_db", return_value=conn) as mock_get_db, \
-             patch("telegram.Bot", return_value=bot):
+        with patch("api.get_db", return_value=conn) as mock_get_db, patch(
+            "telegram.Bot", return_value=bot
+        ):
             from api import _validate_packs_async
+
             _run_async(_validate_packs_async("fake:token", 1))
 
         mock_get_db.assert_called_once()
@@ -778,9 +857,11 @@ class TestValidatePacksAsync(unittest.TestCase):
         conn, cursor = self._make_conn(rows)
         bot = self._make_bot(sticker_sets={"renamed": "New Name"})
 
-        with patch("api.get_db", return_value=conn) as mock_get_db, \
-             patch("telegram.Bot", return_value=bot):
+        with patch("api.get_db", return_value=conn) as mock_get_db, patch(
+            "telegram.Bot", return_value=bot
+        ):
             from api import _validate_packs_async
+
             _run_async(_validate_packs_async("fake:token", 1))
 
         mock_get_db.assert_called_once()
@@ -792,9 +873,11 @@ class TestValidatePacksAsync(unittest.TestCase):
         conn, cursor = self._make_conn(rows)
         bot = self._make_bot(sticker_sets={"pack1": "Pack One"})
 
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
+        with patch("api.get_db", return_value=conn), patch(
+            "telegram.Bot", return_value=bot
+        ):
             from api import _validate_packs_async
+
             _run_async(_validate_packs_async("fake:token", 1))
 
         conn.close.assert_called_once()
@@ -808,9 +891,11 @@ class TestValidatePacksAsync(unittest.TestCase):
         conn, cursor = self._make_conn(rows)
         bot = self._make_bot(raise_for={"dead1", "dead2"})
 
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
+        with patch("api.get_db", return_value=conn), patch(
+            "telegram.Bot", return_value=bot
+        ):
             from api import _validate_packs_async
+
             _run_async(_validate_packs_async("fake:token", 1))
 
         conn.close.assert_called_once()
@@ -821,9 +906,11 @@ class TestValidatePacksAsync(unittest.TestCase):
         conn, cursor = self._make_conn(rows)
         bot = self._make_bot(sticker_sets={"pack1": "Pack One"})
 
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
+        with patch("api.get_db", return_value=conn), patch(
+            "telegram.Bot", return_value=bot
+        ):
             from api import _validate_packs_async
+
             _run_async(_validate_packs_async("fake:token", 1))
 
         bot.close.assert_awaited_once()
@@ -834,9 +921,11 @@ class TestValidatePacksAsync(unittest.TestCase):
         conn, cursor = self._make_conn(rows)
         bot = self._make_bot(raise_for={"deadpack"})
 
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
+        with patch("api.get_db", return_value=conn), patch(
+            "telegram.Bot", return_value=bot
+        ):
             from api import _validate_packs_async
+
             _run_async(_validate_packs_async("fake:token", 1))
 
         bot.close.assert_awaited_once()
@@ -846,9 +935,9 @@ class TestValidatePacksAsync(unittest.TestCase):
     def test_mixed_valid_renamed_and_deleted_packs(self):
         """All three branches (match / rename / delete) work in one call."""
         rows = [
-            _make_db_row("good",    "Good Pack"),
+            _make_db_row("good", "Good Pack"),
             _make_db_row("renamed", "Old Name"),
-            _make_db_row("dead",    "Dead Pack"),
+            _make_db_row("dead", "Dead Pack"),
         ]
         conn, cursor = self._make_conn(rows)
         bot = self._make_bot(
@@ -856,9 +945,11 @@ class TestValidatePacksAsync(unittest.TestCase):
             raise_for={"dead"},
         )
 
-        with patch("api.get_db", return_value=conn) as mock_get_db, \
-             patch("telegram.Bot", return_value=bot):
+        with patch("api.get_db", return_value=conn) as mock_get_db, patch(
+            "telegram.Bot", return_value=bot
+        ):
             from api import _validate_packs_async
+
             result = _run_async(_validate_packs_async("fake:token", 99))
 
         # Only one DB connection opened throughout
@@ -881,16 +972,16 @@ class TestValidatePacksAsync(unittest.TestCase):
     # ── boundary / regression cases ────────────────────────────
 
     def test_returns_all_packs_when_all_valid(self):
-        rows = [
-            _make_db_row(f"pack{i}", f"Pack {i}") for i in range(5)
-        ]
+        rows = [_make_db_row(f"pack{i}", f"Pack {i}") for i in range(5)]
         conn, cursor = self._make_conn(rows)
         sticker_sets = {f"pack{i}": f"Pack {i}" for i in range(5)}
         bot = self._make_bot(sticker_sets=sticker_sets)
 
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
+        with patch("api.get_db", return_value=conn), patch(
+            "telegram.Bot", return_value=bot
+        ):
             from api import _validate_packs_async
+
             result = _run_async(_validate_packs_async("fake:token", 1))
 
         self.assertEqual(len(result), 5)
@@ -900,9 +991,11 @@ class TestValidatePacksAsync(unittest.TestCase):
         conn, cursor = self._make_conn([row])
         bot = self._make_bot(sticker_sets={"mypack": "My Pack"})
 
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
+        with patch("api.get_db", return_value=conn), patch(
+            "telegram.Bot", return_value=bot
+        ):
             from api import _validate_packs_async
+
             result = _run_async(_validate_packs_async("fake:token", 1))
 
         self.assertIn("name", result[0])
@@ -915,9 +1008,11 @@ class TestValidatePacksAsync(unittest.TestCase):
         conn, cursor = self._make_conn([row])
         bot = self._make_bot(sticker_sets={"samepack": "Same Title"})
 
-        with patch("api.get_db", return_value=conn), \
-             patch("telegram.Bot", return_value=bot):
+        with patch("api.get_db", return_value=conn), patch(
+            "telegram.Bot", return_value=bot
+        ):
             from api import _validate_packs_async
+
             _run_async(_validate_packs_async("fake:token", 1))
 
         calls = cursor.executemany.call_args_list
