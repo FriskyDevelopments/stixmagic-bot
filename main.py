@@ -1343,13 +1343,12 @@ async def show_packs(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(msg, parse_mode="HTML", reply_markup=keyboard)
         return
 
-    msg = f"📖 <b>YOUR GRIMOIRE</b>\n{DIV}\n\n"
-    for idx, (name, title) in enumerate(packs, 1):
-        msg += f"<b>{idx}. {title}</b>\n"
-
+    msg_parts = [f"📖 <b>YOUR GRIMOIRE</b>\n{DIV}\n\n"]
     keyboard_rows = []
-    for name, title in packs:
+    for idx, (name, title) in enumerate(packs, 1):
+        msg_parts.append(f"<b>{idx}. {title}</b>\n")
         keyboard_rows.append([InlineKeyboardButton(f"🔗 {title}", url=f"https://t.me/addstickers/{name}")])
+    msg = "".join(msg_parts)
     keyboard_rows.append([
         InlineKeyboardButton("⚗️ Forge Pack", callback_data="menu_create"),
         InlineKeyboardButton("✦ Inscribe Sticker", callback_data="menu_addsticker"),
