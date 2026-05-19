@@ -1262,11 +1262,9 @@ async def manage_stickers(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     msg = f"⚗️ <b>THE CRUCIBLE</b>\n{DIV}\n\n"
+    keyboard_rows = []
     for idx, (name, title) in enumerate(packs, 1):
         msg += f"{idx}.  <b>{title}</b>\n"
-
-    keyboard_rows = []
-    for name, title in packs:
         keyboard_rows.append([
             InlineKeyboardButton(f"✦ {title}", callback_data=f"addto_{name}"),
             InlineKeyboardButton("🜄", callback_data=f"del_{name}"),
