@@ -640,7 +640,7 @@ async def magic_mask(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await progress.delete()
         await update.message.reply_photo(
             photo=io.BytesIO(context.user_data['cut_result']),
-            caption=f"◈ <b>The cut is revealed.</b>",
+            caption="◈ <b>The cut is revealed.</b>",
             parse_mode="HTML"
         )
 
@@ -962,7 +962,7 @@ async def pack_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         ss = await context.bot.get_sticker_set(pack_name)
         title = ss.title
-        sticker_type = ss.sticker_type
+
         count = len(ss.stickers)
         animated = any(s.is_animated for s in ss.stickers)
         video = any(s.is_video for s in ss.stickers)
@@ -1261,9 +1261,10 @@ async def manage_stickers(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(msg, parse_mode="HTML", reply_markup=keyboard)
         return
 
-    msg = f"⚗️ <b>THE CRUCIBLE</b>\n{DIV}\n\n"
+    msg_parts = [f"⚗️ <b>THE CRUCIBLE</b>\n{DIV}\n\n"]
     for idx, (name, title) in enumerate(packs, 1):
-        msg += f"{idx}.  <b>{title}</b>\n"
+        msg_parts.append(f"{idx}.  <b>{title}</b>\n")
+    msg = "".join(msg_parts)
 
     keyboard_rows = []
     for name, title in packs:
@@ -1343,9 +1344,10 @@ async def show_packs(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(msg, parse_mode="HTML", reply_markup=keyboard)
         return
 
-    msg = f"📖 <b>YOUR GRIMOIRE</b>\n{DIV}\n\n"
+    msg_parts = [f"📖 <b>YOUR GRIMOIRE</b>\n{DIV}\n\n"]
     for idx, (name, title) in enumerate(packs, 1):
-        msg += f"<b>{idx}. {title}</b>\n"
+        msg_parts.append(f"<b>{idx}. {title}</b>\n")
+    msg = "".join(msg_parts)
 
     keyboard_rows = []
     for name, title in packs:
