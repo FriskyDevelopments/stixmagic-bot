@@ -8,11 +8,9 @@ from .contracts import (  # noqa: F401
     PACK_TYPE_VIDEO,
     PACK_TYPES,
     PRODUCT_NAME,
-    START_PAYLOAD_ADD,
-    START_PAYLOAD_CREATE,
-    START_PAYLOAD_FEATURE,
-    START_PAYLOAD_MAGIC,
-    START_PAYLOAD_MANAGE,
 )
 from .settings import AppSettings, get_settings  # noqa: F401
-from .telegram_auth import TelegramInitDataError, validate_init_data  # noqa: F401
+from .telegram_auth import (  # noqa: F401
+    TelegramInitDataError,
+    validate_init_data,
+)
