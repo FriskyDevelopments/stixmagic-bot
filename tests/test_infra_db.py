@@ -24,7 +24,6 @@ import time
 import unittest
 from unittest.mock import patch
 
-
 # We patch stixmagic.settings.get_settings to return a settings object
 # whose .database_path is ":memory:".  Because ":memory:" gives a new DB
 # per connection we use a file-backed temp DB instead so all functions
@@ -51,6 +50,7 @@ class InfraDbTestCase(unittest.TestCase):
 
         # Now safe to import and call init_db
         import infra.db as db_mod
+
         self.db = db_mod
         db_mod.init_db()
 
@@ -252,19 +252,23 @@ class TestCatalogSearch(InfraDbTestCase):
         conn = sqlite3.connect(self.db_path)
         conn.execute(
             "INSERT INTO catalog_packs (name,title,description,type,public,likes,view_count,added_at,added_by) "
-            "VALUES ('alpha','Alpha Pack','cool stuff','image',1,10,50,?,1)", (now - 100,)
+            "VALUES ('alpha','Alpha Pack','cool stuff','image',1,10,50,?,1)",
+            (now - 100,),
         )
         conn.execute(
             "INSERT INTO catalog_packs (name,title,description,type,public,likes,view_count,added_at,added_by) "
-            "VALUES ('beta','Beta Pack','nice things','image',1,5,200,?,1)", (now - 200,)
+            "VALUES ('beta','Beta Pack','nice things','image',1,5,200,?,1)",
+            (now - 200,),
         )
         conn.execute(
             "INSERT INTO catalog_packs (name,title,description,type,public,likes,view_count,added_at,added_by) "
-            "VALUES ('gamma','Gamma Pack','cool animated','animated',1,20,10,?,1)", (now - 10,)
+            "VALUES ('gamma','Gamma Pack','cool animated','animated',1,20,10,?,1)",
+            (now - 10,),
         )
         conn.execute(
             "INSERT INTO catalog_packs (name,title,description,type,public,likes,view_count,added_at,added_by) "
-            "VALUES ('private','Private Pack','hidden','image',0,0,0,?,1)", (now,)
+            "VALUES ('private','Private Pack','hidden','image',0,0,0,?,1)",
+            (now,),
         )
         conn.commit()
         conn.close()
@@ -365,37 +369,49 @@ class TestCatalogReact(InfraDbTestCase):
         self.db.catalog_add_pack("react_pack", "React Pack", 1)
 
     def test_like_increments_likes(self):
-        result = self.db.catalog_react(user_id=1, pack_name="react_pack", reaction="like")
+        result = self.db.catalog_react(
+            user_id=1, pack_name="react_pack", reaction="like"
+        )
         self.assertEqual(result["likes"], 1)
         self.assertEqual(result["current"], "like")
 
     def test_dislike_increments_dislikes(self):
-        result = self.db.catalog_react(user_id=1, pack_name="react_pack", reaction="dislike")
+        result = self.db.catalog_react(
+            user_id=1, pack_name="react_pack", reaction="dislike"
+        )
         self.assertEqual(result["dislikes"], 1)
         self.assertEqual(result["current"], "dislike")
 
     def test_toggle_like_off(self):
         self.db.catalog_react(user_id=1, pack_name="react_pack", reaction="like")
-        result = self.db.catalog_react(user_id=1, pack_name="react_pack", reaction="like")
+        result = self.db.catalog_react(
+            user_id=1, pack_name="react_pack", reaction="like"
+        )
         self.assertEqual(result["likes"], 0)
         self.assertIsNone(result["current"])
 
     def test_toggle_dislike_off(self):
         self.db.catalog_react(user_id=1, pack_name="react_pack", reaction="dislike")
-        result = self.db.catalog_react(user_id=1, pack_name="react_pack", reaction="dislike")
+        result = self.db.catalog_react(
+            user_id=1, pack_name="react_pack", reaction="dislike"
+        )
         self.assertEqual(result["dislikes"], 0)
         self.assertIsNone(result["current"])
 
     def test_switch_like_to_dislike(self):
         self.db.catalog_react(user_id=1, pack_name="react_pack", reaction="like")
-        result = self.db.catalog_react(user_id=1, pack_name="react_pack", reaction="dislike")
+        result = self.db.catalog_react(
+            user_id=1, pack_name="react_pack", reaction="dislike"
+        )
         self.assertEqual(result["dislikes"], 1)
         self.assertEqual(result["likes"], 0)
         self.assertEqual(result["current"], "dislike")
 
     def test_switch_dislike_to_like(self):
         self.db.catalog_react(user_id=1, pack_name="react_pack", reaction="dislike")
-        result = self.db.catalog_react(user_id=1, pack_name="react_pack", reaction="like")
+        result = self.db.catalog_react(
+            user_id=1, pack_name="react_pack", reaction="like"
+        )
         self.assertEqual(result["likes"], 1)
         self.assertEqual(result["dislikes"], 0)
         self.assertEqual(result["current"], "like")
@@ -409,7 +425,9 @@ class TestCatalogReact(InfraDbTestCase):
     def test_likes_floor_at_zero(self):
         """Toggling a like should not drive likes below 0."""
         self.db.catalog_react(user_id=1, pack_name="react_pack", reaction="like")
-        result = self.db.catalog_react(user_id=1, pack_name="react_pack", reaction="like")
+        result = self.db.catalog_react(
+            user_id=1, pack_name="react_pack", reaction="like"
+        )
         self.assertGreaterEqual(result["likes"], 0)
 
 
@@ -435,10 +453,32 @@ class TestCatalogGetUserReaction(InfraDbTestCase):
 
     def test_after_toggle_off_returns_none(self):
         self.db.catalog_react(user_id=1, pack_name="urpack", reaction="like")
-        self.db.catalog_react(user_id=1, pack_name="urpack", reaction="like")  # toggle off
+        self.db.catalog_react(
+            user_id=1, pack_name="urpack", reaction="like"
+        )  # toggle off
         result = self.db.catalog_get_user_reaction(user_id=1, pack_name="urpack")
         self.assertIsNone(result)
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDbFile(unittest.TestCase):
+    @patch("infra.db.get_settings")
+    def test_db_file_returns_correct_path(self, mock_get_settings):
+        """Test that _db_file returns the database_path from settings."""
+        # Setup mock
+        from unittest.mock import MagicMock
+        import infra.db
+
+        mock_settings = MagicMock()
+        mock_settings.database_path = "/tmp/test_db_path.sqlite3"
+        mock_get_settings.return_value = mock_settings
+
+        # Call function
+        result = infra.db._db_file()
+
+        # Verify
+        self.assertEqual(result, "/tmp/test_db_path.sqlite3")
+        mock_get_settings.assert_called_once()
