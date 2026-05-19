@@ -38,3 +38,6 @@
 ## 2026-05-13 - Loop Invariant Code Motion and Lookup Optimization
 **Learning:** Found that `pipeline/packager/__init__.py::build_pack` had an O(Assets * Presets * Formats) nested loop that repeatedly performed identical dictionary lookups and conditional checks (like checking if the format was 'thumbnail') which were invariant for a given asset or the entire execution. This resulted in redundant work and slower execution.
 **Action:** Extracted loop invariants and pre-computed static values (e.g. format tuples, constant thumbnail paths) outside the inner loops. This minimizes repeated dictionary accesses and condition evaluations, yielding an ~23% performance improvement in manifest generation.
+## 2024-05-19 - Testing Pipeline Metadata
+**Learning:** Pure logic functions (like reading/validating JSON schemas and CRUD operations) are easily testable and improve code coverage drastically without requiring heavy integration.
+**Action:** Identified testing gaps for `pipeline/metadata/__init__.py` and implemented unit tests handling strict/non-strict validation paths.
