@@ -2,10 +2,9 @@ import os
 import json
 import tempfile
 import unittest
-from unittest.mock import patch
 
 from pipeline.metadata import AssetCatalog, CatalogValidationError, _validate_raw_asset
-from pipeline.asset_model import Asset, AssetCategory, AssetTheme, SourceFormat
+from pipeline.asset_model import Asset, AssetCategory, AssetTheme
 
 class TestPipelineMetadata(unittest.TestCase):
     def setUp(self):
