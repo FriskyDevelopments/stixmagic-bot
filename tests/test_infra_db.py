@@ -75,14 +75,82 @@ class TestInitDb(InfraDbTestCase):
     def test_packs_table_created(self):
         self.assertIn("packs", self._table_names())
 
+    def test_packs_table_schema(self):
+        """Verify packs table has correct columns."""
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute("PRAGMA table_info(packs)")
+        columns = {row[1]: row[2] for row in c.fetchall()}
+        conn.close()
+
+        self.assertIn("id", columns)
+        self.assertEqual(columns["id"], "INTEGER")
+        self.assertIn("user_id", columns)
+        self.assertEqual(columns["user_id"], "INTEGER")
+        self.assertIn("name", columns)
+        self.assertEqual(columns["name"], "TEXT")
+        self.assertIn("title", columns)
+        self.assertEqual(columns["title"], "TEXT")
+
+
     def test_user_settings_table_created(self):
         self.assertIn("user_settings", self._table_names())
+
+    def test_user_settings_table_schema(self):
+        """Verify user_settings table has correct columns."""
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute("PRAGMA table_info(user_settings)")
+        columns = {row[1]: row[2] for row in c.fetchall()}
+        conn.close()
+
+        self.assertIn("user_id", columns)
+        self.assertEqual(columns["user_id"], "INTEGER")
+        self.assertIn("mask_inverted", columns)
+        self.assertEqual(columns["mask_inverted"], "INTEGER")
+
 
     def test_catalog_packs_table_created(self):
         self.assertIn("catalog_packs", self._table_names())
 
+    def test_catalog_packs_table_schema(self):
+        """Verify catalog_packs table has correct columns."""
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute("PRAGMA table_info(catalog_packs)")
+        columns = {row[1]: row[2] for row in c.fetchall()}
+        conn.close()
+
+        self.assertIn("id", columns)
+        self.assertEqual(columns["id"], "INTEGER")
+        self.assertIn("name", columns)
+        self.assertEqual(columns["name"], "TEXT")
+        self.assertIn("title", columns)
+        self.assertEqual(columns["title"], "TEXT")
+        self.assertIn("description", columns)
+        self.assertEqual(columns["description"], "TEXT")
+        self.assertIn("type", columns)
+        self.assertEqual(columns["type"], "TEXT")
+
+
     def test_catalog_reactions_table_created(self):
         self.assertIn("catalog_reactions", self._table_names())
+
+    def test_catalog_reactions_table_schema(self):
+        """Verify catalog_reactions table has correct columns."""
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute("PRAGMA table_info(catalog_reactions)")
+        columns = {row[1]: row[2] for row in c.fetchall()}
+        conn.close()
+
+        self.assertIn("user_id", columns)
+        self.assertEqual(columns["user_id"], "INTEGER")
+        self.assertIn("pack_name", columns)
+        self.assertEqual(columns["pack_name"], "TEXT")
+        self.assertIn("reaction", columns)
+        self.assertEqual(columns["reaction"], "TEXT")
+
 
     def test_init_db_idempotent(self):
         """Calling init_db() twice should not raise."""
@@ -438,6 +506,21 @@ class TestCatalogGetUserReaction(InfraDbTestCase):
         self.db.catalog_react(user_id=1, pack_name="urpack", reaction="like")  # toggle off
         result = self.db.catalog_get_user_reaction(user_id=1, pack_name="urpack")
         self.assertIsNone(result)
+
+class TestDbFile(InfraDbTestCase):
+    def test_db_file_returns_settings_path(self):
+        """Test that _db_file retrieves the database_path from settings."""
+        # Unpatch _db_file temporarily to test the real implementation
+        self._patcher.stop()
+        try:
+            import infra.db
+            from stixmagic.settings import get_settings
+
+            # This should equal the path from the settings
+            expected_path = get_settings().database_path
+            self.assertEqual(infra.db._db_file(), expected_path)
+        finally:
+            self._patcher.start()
 
 
 if __name__ == "__main__":
