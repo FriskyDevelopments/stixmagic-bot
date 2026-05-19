@@ -252,6 +252,22 @@ class TestRequireMiniappAuth(ApiTestBase):
         self.assertEqual(resp.status_code, 401)
         data = json.loads(resp.data)
         self.assertFalse(data["ok"])
+
+class TestCatalogFeatureReactAuth(ApiTestBase):
+    def test_feature_requires_auth(self):
+        from stixmagic.telegram_auth import TelegramInitDataError
+        with patch("api.validate_init_data", side_effect=TelegramInitDataError("Missing")):
+            resp = self.client.post("/api/catalog/packs/mypack/feature", json={"title": "foo", "type": "image"})
+        self.assertEqual(resp.status_code, 401)
+        data = resp.get_json()
+        self.assertEqual(data["error"]["code"], "miniapp_unauthorized")
+
+    def test_react_requires_auth(self):
+        from stixmagic.telegram_auth import TelegramInitDataError
+        with patch("api.validate_init_data", side_effect=TelegramInitDataError("Missing")):
+            resp = self.client.post("/api/catalog/packs/mypack/react", json={"type": "like"})
+        self.assertEqual(resp.status_code, 401)
+        data = resp.get_json()
         self.assertEqual(data["error"]["code"], "miniapp_unauthorized")
 
     def test_invalid_init_data_returns_401(self):

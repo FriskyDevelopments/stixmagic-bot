@@ -860,18 +860,17 @@ def catalog_pack_detail(pack_name):
 
 
 @app.route("/api/catalog/packs/<pack_name>/react", methods=["POST"])
+@require_miniapp_auth
 def catalog_pack_react(pack_name):
     """
     POST /api/catalog/packs/<name>/react
-    Body: {"user_id": int, "type": "like"|"dislike"}
-    No API key required (uses user_id from request body).
+    Body: {"type": "like"|"dislike"}
+    Requires Mini App authentication.
     """
     data = request.get_json(silent=True) or {}
-    user_id = data.get("user_id")
+    user_id = g.miniapp_user_id
     reaction = data.get("type", "")
 
-    if not user_id or not str(user_id).lstrip("-").isdigit():
-        return err("Missing or invalid user_id", 400, "missing_param")
     if reaction not in ("like", "dislike"):
         return err("type must be 'like' or 'dislike'", 400, "invalid_param")
 
@@ -956,20 +955,20 @@ def catalog_pack_react(pack_name):
 
 
 @app.route("/api/catalog/packs/<pack_name>/feature", methods=["POST"])
+@require_miniapp_auth
 def catalog_pack_feature(pack_name):
     """
     POST /api/catalog/packs/<name>/feature
-    Body: {"user_id": int, "title": str, "description": str, "type": str}
+    Body: {"title": str, "description": str, "type": str}
     Allows a Mini App user to feature a pack in the catalog.
+    Requires Mini App authentication.
     """
     data = request.get_json(silent=True) or {}
-    user_id = data.get("user_id")
+    user_id = g.miniapp_user_id
     title = str(data.get("title", "")).strip()
     description = str(data.get("description", "")).strip()
     pack_type = data.get("type", "image")
 
-    if not user_id or not str(user_id).lstrip("-").isdigit():
-        return err("Missing or invalid user_id", 400, "missing_param")
     if not title:
         return err("title is required", 400, "missing_param")
     if pack_type not in ("image", "animated", "video"):
