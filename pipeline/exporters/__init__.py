@@ -302,6 +302,54 @@ def export_thumbnail(
 
 # ── Aggregate exporter ────────────────────────────────────────
 
+def _get_dispatch_map(renders_root: str) -> dict:
+    """Return mapping of formats to their exporter functions and output dirs."""
+    return {
+        "gif":          (export_gif,          os.path.join(renders_root, "gif")),
+        "webp":         (export_animated_webp, os.path.join(renders_root, "webp")),
+        "webm":         (export_webm,          os.path.join(renders_root, "webm")),
+        "mov":          (export_mov,           os.path.join(renders_root, "mov")),
+        "png_sequence": (export_png_sequence,  os.path.join(renders_root, "png_sequences")),
+    }
+
+
+def _execute_export(
+    fmt: str,
+    source_path: str,
+    preset: MotionPreset,
+    renders_root: str,
+    result: ExportResult,
+    dispatch_map: dict,
+) -> None:
+    """Execute export for a single format and update the result object."""
+    if fmt == "thumbnail":
+        path = export_thumbnail(source_path, os.path.join(renders_root, "thumbnails"))
+        if path:
+            result.thumbnail = path
+        else:
+            result.errors.append("thumbnail export failed")
+        return
+
+    if fmt not in dispatch_map:
+        result.errors.append(f"unknown format: {fmt!r}")
+        return
+
+    exporter_fn, out_dir = dispatch_map[fmt]
+    try:
+        path = exporter_fn(source_path, preset, out_dir)
+    except Exception as exc:
+        result.errors.append(f"{fmt} export raised: {exc}")
+        path = None
+
+    if path:
+        if fmt == "png_sequence":
+            result.png_sequence_dir = path
+        else:
+            setattr(result, fmt, path)
+    else:
+        result.errors.append(f"{fmt} export returned None")
+
+
 def export_all(
     asset_id: str,
     source_path: str,
@@ -338,41 +386,9 @@ def export_all(
 
     result = ExportResult(asset_id=asset_id, preset_id=preset.id)
 
-    _dispatch = {
-        "gif":          (export_gif,          os.path.join(renders_root, "gif")),
-        "webp":         (export_animated_webp, os.path.join(renders_root, "webp")),
-        "webm":         (export_webm,          os.path.join(renders_root, "webm")),
-        "mov":          (export_mov,           os.path.join(renders_root, "mov")),
-        "png_sequence": (export_png_sequence,  os.path.join(renders_root, "png_sequences")),
-    }
-
+    dispatch_map = _get_dispatch_map(renders_root)
     for fmt in formats:
-        if fmt == "thumbnail":
-            path = export_thumbnail(source_path, os.path.join(renders_root, "thumbnails"))
-            if path:
-                result.thumbnail = path
-            else:
-                result.errors.append("thumbnail export failed")
-            continue
-
-        if fmt not in _dispatch:
-            result.errors.append(f"unknown format: {fmt!r}")
-            continue
-
-        exporter_fn, out_dir = _dispatch[fmt]
-        try:
-            path = exporter_fn(source_path, preset, out_dir)
-        except Exception as exc:
-            result.errors.append(f"{fmt} export raised: {exc}")
-            path = None
-
-        if path:
-            if fmt == "png_sequence":
-                result.png_sequence_dir = path
-            else:
-                setattr(result, fmt, path)
-        else:
-            result.errors.append(f"{fmt} export returned None")
+        _execute_export(fmt, source_path, preset, renders_root, result, dispatch_map)
 
     return result
 
