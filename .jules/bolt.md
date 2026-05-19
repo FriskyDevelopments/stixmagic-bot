@@ -38,3 +38,7 @@
 ## 2026-05-13 - Loop Invariant Code Motion and Lookup Optimization
 **Learning:** Found that `pipeline/packager/__init__.py::build_pack` had an O(Assets * Presets * Formats) nested loop that repeatedly performed identical dictionary lookups and conditional checks (like checking if the format was 'thumbnail') which were invariant for a given asset or the entire execution. This resulted in redundant work and slower execution.
 **Action:** Extracted loop invariants and pre-computed static values (e.g. format tuples, constant thumbnail paths) outside the inner loops. This minimizes repeated dictionary accesses and condition evaluations, yielding an ~23% performance improvement in manifest generation.
+
+## 2026-05-18 - [Code Health] Refactor build_pack function
+**Learning:** The `build_pack` function in `pipeline/packager/__init__.py` was overly complex, handling asset resolution, preset resolution, and entry building in a single large block. Breaking this down into smaller helper functions (`_resolve_assets`, `_resolve_presets`, `_build_entries`) significantly improves readability, testability, and maintainability without altering functionality.
+**Action:** When encountering functions that span over 100 lines and handle multiple distinct logical steps, proactively extract those steps into private helper functions with clear type hints to maintain code health.
