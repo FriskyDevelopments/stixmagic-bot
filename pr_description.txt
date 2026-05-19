@@ -1,0 +1,11 @@
+🎯 **What:**
+Added a test suite for `pipeline.manifest.generate_pipeline_manifest` which had a testing gap.
+
+📊 **Coverage:**
+- Happy path testing: Ensures manifest is built properly when given correct inputs.
+- Edge cases testing: Handles missing or empty packs directory without failure, returning empty metadata.
+- Error handling testing: Handles and logs exceptions from `PackDefinition.from_file` and `build_pack` to gracefully skip specific files and continue processing.
+- IO error testing: Handles exceptions gracefully if writing the manifest file fails after everything is built.
+
+✨ **Result:**
+Significant test coverage increase for the pipeline manifest generation, increasing reliability for downstream consumption (extension loaders, API, overlay compositor).
