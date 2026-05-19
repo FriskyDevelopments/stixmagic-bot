@@ -71,70 +71,24 @@ DEFAULT_PACKS_DIR = "packs"
 DEFAULT_RENDERS_ROOT = "renders"
 
 
-def generate_pipeline_manifest(
+def build_pipeline_manifest(
+    packs: list[Any],  # list[pipeline.packager.PackDefinition]
+    catalog: Any,      # pipeline.metadata.AssetCatalog
     *,
-    output_path: str = DEFAULT_MANIFEST_PATH,
-    packs_dir: str = DEFAULT_PACKS_DIR,
     renders_root: str = DEFAULT_RENDERS_ROOT,
-    catalog_path: str | None = None,
 ) -> dict[str, Any]:
     """
-    Build and write a ``pipeline_manifest.json`` for all defined packs.
+    Build the pipeline manifest dictionary from a list of packs.
 
-    Discovers all ``pack.json`` files under *packs_dir*, loads the asset
-    catalog, and calls :func:`~pipeline.packager.build_pack` for each pack
-    to produce the manifest.
-
-    Parameters
-    ----------
-    output_path:
-        Path where the manifest JSON will be written
-        (default: ``"pipeline_manifest.json"`` in the working directory).
-    packs_dir:
-        Directory containing per-pack subdirectories with ``pack.json`` files.
-    renders_root:
-        Root directory of the export outputs tree (for output path resolution).
-    catalog_path:
-        Override the default asset catalog path.  ``None`` uses the built-in
-        default (``assets/catalog.json``).
-
-    Returns
-    -------
-    dict
-        The full manifest as a Python dict (also written to *output_path*).
+    This function contains the pure business logic of resolving entries,
+    and formats them according to the manifest JSON schema.
     """
-    from pipeline.metadata import AssetCatalog
-    from pipeline.packager import PackDefinition, build_pack
-
-    # Load asset catalog
-    catalog_kwargs: dict[str, Any] = {"auto_load": True}
-    if catalog_path is not None:
-        catalog_kwargs["path"] = catalog_path
-    catalog = AssetCatalog(**catalog_kwargs)
-
-    # Discover pack definitions
-    pack_json_files: list[str] = []
-    if os.path.isdir(packs_dir):
-        for entry in sorted(os.listdir(packs_dir)):
-            candidate = os.path.join(packs_dir, entry, "pack.json")
-            if os.path.isfile(candidate):
-                pack_json_files.append(candidate)
-
-    if not pack_json_files:
-        logger.warning(
-            "generate_pipeline_manifest: no pack.json files found under %r", packs_dir
-        )
+    from pipeline.packager import build_pack
 
     manifest_packs: list[dict[str, Any]] = []
     total_assets_seen: set[str] = set()
 
-    for pack_file in pack_json_files:
-        try:
-            pack = PackDefinition.from_file(pack_file)
-        except Exception as exc:
-            logger.error("Skipping %s – failed to load: %s", pack_file, exc)
-            continue
-
+    for pack in packs:
         try:
             pack_manifest = build_pack(
                 pack, catalog, renders_root=renders_root, strict_validation=False
@@ -168,7 +122,7 @@ def generate_pipeline_manifest(
             "export_formats":  pack.export_formats,
             "entries":         entries,
         })
-        logger.info("generate_pipeline_manifest: added pack %r (%d entries)", pack.pack_id, len(entries))
+        logger.info("build_pipeline_manifest: added pack %r (%d entries)", pack.pack_id, len(entries))
 
     manifest: dict[str, Any] = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -177,12 +131,82 @@ def generate_pipeline_manifest(
         "packs":        manifest_packs,
     }
 
+    return manifest
+
+
+def generate_pipeline_manifest(
+    *,
+    output_path: str = DEFAULT_MANIFEST_PATH,
+    packs_dir: str = DEFAULT_PACKS_DIR,
+    renders_root: str = DEFAULT_RENDERS_ROOT,
+    catalog_path: str | None = None,
+) -> dict[str, Any]:
+    """
+    Build and write a ``pipeline_manifest.json`` for all defined packs.
+
+    Discovers all ``pack.json`` files under *packs_dir*, loads the asset
+    catalog, and calls :func:`build_pipeline_manifest` for each pack
+    to produce the manifest.
+
+    Parameters
+    ----------
+    output_path:
+        Path where the manifest JSON will be written
+        (default: ``"pipeline_manifest.json"`` in the working directory).
+    packs_dir:
+        Directory containing per-pack subdirectories with ``pack.json`` files.
+    renders_root:
+        Root directory of the export outputs tree (for output path resolution).
+    catalog_path:
+        Override the default asset catalog path.  ``None`` uses the built-in
+        default (``assets/catalog.json``).
+
+    Returns
+    -------
+    dict
+        The full manifest as a Python dict (also written to *output_path*).
+    """
+    from pipeline.metadata import AssetCatalog
+    from pipeline.packager import PackDefinition
+
+    # Load asset catalog
+    catalog_kwargs: dict[str, Any] = {"auto_load": True}
+    if catalog_path is not None:
+        catalog_kwargs["path"] = catalog_path
+    catalog = AssetCatalog(**catalog_kwargs)
+
+    # Discover pack definitions
+    pack_json_files: list[str] = []
+    if os.path.isdir(packs_dir):
+        with os.scandir(packs_dir) as it:
+            for entry in sorted(it, key=lambda e: e.name):
+                if entry.is_dir():
+                    candidate = os.path.join(entry.path, "pack.json")
+                    if os.path.isfile(candidate):
+                        pack_json_files.append(candidate)
+
+    if not pack_json_files:
+        logger.warning(
+            "generate_pipeline_manifest: no pack.json files found under %r", packs_dir
+        )
+
+    packs = []
+    for pack_file in pack_json_files:
+        try:
+            pack = PackDefinition.from_file(pack_file)
+            packs.append(pack)
+        except Exception as exc:
+            logger.error("Skipping %s – failed to load: %s", pack_file, exc)
+            continue
+
+    manifest = build_pipeline_manifest(packs, catalog, renders_root=renders_root)
+
     try:
         with open(output_path, "w", encoding="utf-8") as fh:
             json.dump(manifest, fh, indent=2)
         logger.info(
             "generate_pipeline_manifest: wrote %d packs / %d unique assets to %s",
-            len(manifest_packs), len(total_assets_seen), output_path,
+            manifest["total_packs"], manifest["total_assets"], output_path,
         )
     except Exception as exc:
         logger.error("Failed to write manifest to %s: %s", output_path, exc)
