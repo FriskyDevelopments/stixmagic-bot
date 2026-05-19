@@ -445,9 +445,6 @@ class TestCatalogGetUserReaction(InfraDbTestCase):
         result = self.db.catalog_get_user_reaction(user_id=1, pack_name="urpack")
         self.assertIsNone(result)
 
-
-if __name__ == "__main__":
-    unittest.main()
 class TestDbFile(unittest.TestCase):
 
     def test_db_file_returns_settings_path(self):
@@ -460,3 +457,7 @@ class TestDbFile(unittest.TestCase):
         with patch('infra.db.get_settings') as mock_get_settings:
             mock_get_settings.return_value.database_path = '/tmp/my_test_db.sqlite'
             self.assertEqual(db_mod._db_file(), '/tmp/my_test_db.sqlite')
+
+
+if __name__ == "__main__":
+    unittest.main()
