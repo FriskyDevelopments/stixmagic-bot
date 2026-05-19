@@ -58,12 +58,13 @@ logger = logging.getLogger(__name__)
 
 # ── Output classification ─────────────────────────────────────
 
-STICKER_READY_FORMATS   = {"gif", "webp", "webm"}
-OVERLAY_READY_FORMATS   = {"webm", "mov"}
-PREVIEW_FORMATS         = {"thumbnail"}
+STICKER_READY_FORMATS = {"gif", "webp", "webm"}
+OVERLAY_READY_FORMATS = {"webm", "mov"}
+PREVIEW_FORMATS = {"thumbnail"}
 
 
 # ── Stable result container ───────────────────────────────────
+
 
 @dataclass
 class ExportResult:
@@ -99,13 +100,13 @@ class ExportResult:
 
     asset_id: str
     preset_id: str
-    gif:              Optional[str] = None
-    webp:             Optional[str] = None
-    webm:             Optional[str] = None
-    mov:              Optional[str] = None
+    gif: Optional[str] = None
+    webp: Optional[str] = None
+    webm: Optional[str] = None
+    mov: Optional[str] = None
     png_sequence_dir: Optional[str] = None
-    thumbnail:        Optional[str] = None
-    errors:           list[str]     = field(default_factory=list)
+    thumbnail: Optional[str] = None
+    errors: list[str] = field(default_factory=list)
 
     @property
     def sticker_ready_outputs(self) -> dict[str, str]:
@@ -140,6 +141,7 @@ class ExportResult:
 
 # ── Output filename helper ────────────────────────────────────
 
+
 def _output_name(asset_id: str, preset_id: str, ext: str) -> str:
     """Return a canonical output filename, e.g. ``letter_A_pulse.gif``."""
     return f"{asset_id}_{preset_id}.{ext}"
@@ -157,12 +159,16 @@ def _export_placeholder_file(
     asset_id = source_path_to_id(source_path)
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, _output_name(asset_id, preset_id, ext))
-    _write_placeholder(out_path, f"{format_name} placeholder | asset={source_path} | preset={preset_id}")
+    _write_placeholder(
+        out_path,
+        f"{format_name} placeholder | asset={source_path} | preset={preset_id}",
+    )
     _log_placeholder(exporter_name, out_path)
     return out_path
 
 
 # ── Individual format exporters ───────────────────────────────
+
 
 def export_gif(
     source_path: str,
@@ -172,13 +178,15 @@ def export_gif(
 ) -> str | None:
     """
     Export an animated GIF for the given source and preset.
-    
+
     This is a placeholder exporter: it writes a small marker file at the canonical output path so downstream steps can reference the expected GIF location.
-    
+
     Returns:
         out_path (str | None): Path to the created placeholder GIF file, or `None` if the export failed.
     """
-    return _export_placeholder_file("export_gif", "gif", "GIF", source_path, preset.id, output_dir)
+    return _export_placeholder_file(
+        "export_gif", "gif", "GIF", source_path, preset.id, output_dir
+    )
 
 
 def export_animated_webp(
@@ -189,13 +197,15 @@ def export_animated_webp(
 ) -> str | None:
     """
     Export an animated WebP for the given source using the provided preset.
-    
+
     This is a placeholder exporter: it writes a small text placeholder file named "{asset_id}_{preset_id}.webp" into output_dir and does not perform real frame rendering.
-    
+
     Returns:
         str | None: Path to the created placeholder `.webp` file, or `None` if the export failed.
     """
-    return _export_placeholder_file("export_animated_webp", "webp", "WEBP", source_path, preset.id, output_dir)
+    return _export_placeholder_file(
+        "export_animated_webp", "webp", "WEBP", source_path, preset.id, output_dir
+    )
 
 
 def export_webm(
@@ -206,13 +216,15 @@ def export_webm(
 ) -> str | None:
     """
     Produce a WebM export file for the given source asset and preset (placeholder implementation).
-    
+
     This function writes a small UTF-8 placeholder file named "{asset_id}_{preset_id}.webm" into the specified output directory and logs a warning that the exporter is a placeholder.
-    
+
     Returns:
         out_path (str): Path to the created placeholder WebM file, or `None` if the export failed.
     """
-    return _export_placeholder_file("export_webm", "webm", "WEBM", source_path, preset.id, output_dir)
+    return _export_placeholder_file(
+        "export_webm", "webm", "WEBM", source_path, preset.id, output_dir
+    )
 
 
 def export_mov(
@@ -223,13 +235,15 @@ def export_mov(
 ) -> str | None:
     """
     Write a placeholder MOV export file for the given source and preset and return its path.
-    
+
     This is a stub that writes a text placeholder at the canonical output filename (no real encoding is performed).
-    
+
     Returns:
         out_path (str | None): Filesystem path to the created placeholder MOV file, or `None` if creation failed.
     """
-    return _export_placeholder_file("export_mov", "mov", "MOV", source_path, preset.id, output_dir)
+    return _export_placeholder_file(
+        "export_mov", "mov", "MOV", source_path, preset.id, output_dir
+    )
 
 
 def export_png_sequence(
@@ -242,17 +256,17 @@ def export_png_sequence(
 ) -> str | None:
     """
     Prepare a numbered PNG frame sequence directory for the given source and preset.
-    
+
     This creates (if needed) a directory named "{asset_id}_{preset.id}_frames" inside output_dir, writes a placeholder frame file into that directory, and returns the directory path. Real frame rendering is not implemented; the function currently writes a textual placeholder to indicate where frames would be produced.
-    
+
     Parameters:
-    	source_path (str): Path to the source asset; used to derive the asset id.
-    	preset (MotionPreset): Preset that determines naming; only its `id` is used.
-    	output_dir (str): Root directory where the frames directory will be created.
-    	fps (int): Frames per second that would be used for the sequence.
-    
+        source_path (str): Path to the source asset; used to derive the asset id.
+        preset (MotionPreset): Preset that determines naming; only its `id` is used.
+        output_dir (str): Root directory where the frames directory will be created.
+        fps (int): Frames per second that would be used for the sequence.
+
     Returns:
-    	seq_dir (str | None): Path to the created frames directory, or `None` on failure.
+        seq_dir (str | None): Path to the created frames directory, or `None` on failure.
     """
     asset_id = source_path_to_id(source_path)
     seq_dir = os.path.join(output_dir, f"{asset_id}_{preset.id}_frames")
@@ -302,6 +316,7 @@ def export_thumbnail(
 
 # ── Aggregate exporter ────────────────────────────────────────
 
+
 def export_all(
     asset_id: str,
     source_path: str,
@@ -338,46 +353,67 @@ def export_all(
 
     result = ExportResult(asset_id=asset_id, preset_id=preset.id)
 
-    _dispatch = {
-        "gif":          (export_gif,          os.path.join(renders_root, "gif")),
-        "webp":         (export_animated_webp, os.path.join(renders_root, "webp")),
-        "webm":         (export_webm,          os.path.join(renders_root, "webm")),
-        "mov":          (export_mov,           os.path.join(renders_root, "mov")),
-        "png_sequence": (export_png_sequence,  os.path.join(renders_root, "png_sequences")),
-    }
+    _dispatch = _get_format_exporters(renders_root)
 
     for fmt in formats:
-        if fmt == "thumbnail":
-            path = export_thumbnail(source_path, os.path.join(renders_root, "thumbnails"))
-            if path:
-                result.thumbnail = path
-            else:
-                result.errors.append("thumbnail export failed")
-            continue
-
-        if fmt not in _dispatch:
-            result.errors.append(f"unknown format: {fmt!r}")
-            continue
-
-        exporter_fn, out_dir = _dispatch[fmt]
-        try:
-            path = exporter_fn(source_path, preset, out_dir)
-        except Exception as exc:
-            result.errors.append(f"{fmt} export raised: {exc}")
-            path = None
-
-        if path:
-            if fmt == "png_sequence":
-                result.png_sequence_dir = path
-            else:
-                setattr(result, fmt, path)
-        else:
-            result.errors.append(f"{fmt} export returned None")
+        _run_single_export(fmt, source_path, preset, renders_root, result, _dispatch)
 
     return result
 
 
 # ── Internal helpers ──────────────────────────────────────────
+
+
+def _get_format_exporters(renders_root: str) -> dict:
+    """Return a mapping of format names to (exporter_function, output_dir_path)."""
+    return {
+        "gif": (export_gif, os.path.join(renders_root, "gif")),
+        "webp": (export_animated_webp, os.path.join(renders_root, "webp")),
+        "webm": (export_webm, os.path.join(renders_root, "webm")),
+        "mov": (export_mov, os.path.join(renders_root, "mov")),
+        "png_sequence": (
+            export_png_sequence,
+            os.path.join(renders_root, "png_sequences"),
+        ),
+    }
+
+
+def _run_single_export(
+    fmt: str,
+    source_path: str,
+    preset: MotionPreset,
+    renders_root: str,
+    result: ExportResult,
+    dispatch: dict,
+) -> None:
+    """Execute a single format export and update the result object."""
+    if fmt == "thumbnail":
+        path = export_thumbnail(source_path, os.path.join(renders_root, "thumbnails"))
+        if path:
+            result.thumbnail = path
+        else:
+            result.errors.append("thumbnail export failed")
+        return
+
+    if fmt not in dispatch:
+        result.errors.append(f"unknown format: {fmt!r}")
+        return
+
+    exporter_fn, out_dir = dispatch[fmt]
+    try:
+        path = exporter_fn(source_path, preset, out_dir)
+    except Exception as exc:
+        result.errors.append(f"{fmt} export raised: {exc}")
+        path = None
+
+    if path:
+        if fmt == "png_sequence":
+            result.png_sequence_dir = path
+        else:
+            setattr(result, fmt, path)
+    else:
+        result.errors.append(f"{fmt} export returned None")
+
 
 def source_path_to_id(source_path: str) -> str:
     """Derive a simple asset id slug from a source file path."""
