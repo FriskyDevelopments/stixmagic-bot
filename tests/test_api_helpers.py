@@ -20,7 +20,7 @@ import sys
 import time
 import tempfile
 import unittest
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import urlencode
 
 
