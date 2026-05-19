@@ -40,6 +40,7 @@ class PackValidationError(ValueError):
 
 # ── PackDefinition ────────────────────────────────────────────
 
+
 @dataclass
 class PackDefinition:
     """
@@ -74,7 +75,9 @@ class PackDefinition:
     theme: str = ""
     included_assets: list[str] = field(default_factory=list)
     included_motion_presets: list[str] = field(default_factory=list)
-    export_formats: list[str] = field(default_factory=lambda: ["gif", "webp", "webm", "thumbnail"])
+    export_formats: list[str] = field(
+        default_factory=lambda: ["gif", "webp", "webm", "thumbnail"]
+    )
     target_platforms: list[str] = field(default_factory=list)
     use_cases: list[str] = field(default_factory=list)
     notes: str = ""
@@ -100,7 +103,9 @@ class PackDefinition:
             theme=data.get("theme", ""),
             included_assets=data.get("included_assets", []),
             included_motion_presets=data.get("included_motion_presets", []),
-            export_formats=data.get("export_formats", ["gif", "webp", "webm", "thumbnail"]),
+            export_formats=data.get(
+                "export_formats", ["gif", "webp", "webm", "thumbnail"]
+            ),
             target_platforms=data.get("target_platforms", []),
             use_cases=data.get("use_cases", []),
             notes=data.get("notes", ""),
@@ -121,9 +126,11 @@ class PackDefinition:
 
 # ── PackManifest ──────────────────────────────────────────────
 
+
 @dataclass
 class PackManifestEntry:
     """One row in a pack build manifest."""
+
     asset_id: str
     preset_id: str
     expected_outputs: dict[str, str]  # format → expected output path
@@ -132,6 +139,7 @@ class PackManifestEntry:
 @dataclass
 class PackManifest:
     """The full set of expected outputs for a pack build."""
+
     pack_id: str
     entries: list[PackManifestEntry] = field(default_factory=list)
 
@@ -145,6 +153,7 @@ class PackManifest:
 
 
 # ── Validation helper ─────────────────────────────────────────
+
 
 def validate_pack(
     pack: PackDefinition,
@@ -202,7 +211,95 @@ def validate_pack(
     return errors
 
 
-# ── Build helper ──────────────────────────────────────────────
+# ── Build helpers ─────────────────────────────────────────────
+
+
+def _resolve_assets(pack: PackDefinition, catalog: Any) -> list[Asset]:
+    if pack.included_assets:
+        return [
+            a for aid in pack.included_assets if (a := catalog.get(aid)) is not None
+        ]
+    return catalog.all()
+
+
+def _resolve_presets(pack: PackDefinition) -> list[Any]:
+    from pipeline.motion_presets import get_preset, BUILTIN_PRESETS
+
+    if pack.included_motion_presets:
+        return [
+            p
+            for pid in pack.included_motion_presets
+            if (p := get_preset(pid)) is not None
+        ]
+    return list(BUILTIN_PRESETS)
+
+
+def _build_entries(
+    pack: PackDefinition, assets: list[Asset], presets: list[Any], renders_root: str
+) -> list[PackManifestEntry]:
+    entries: list[PackManifestEntry] = []
+    _dir_map = {
+        "gif": os.path.join(renders_root, "gif"),
+        "webp": os.path.join(renders_root, "webp"),
+        "webm": os.path.join(renders_root, "webm"),
+        "mov": os.path.join(renders_root, "mov"),
+        "png_sequence": os.path.join(renders_root, "png_sequences"),
+        "thumbnail": os.path.join(renders_root, "thumbnails"),
+    }
+    _ext_map = {
+        "gif": "gif",
+        "webp": "webp",
+        "webm": "webm",
+        "mov": "mov",
+        "thumbnail": "png",
+    }
+
+    # ⚡ Bolt Optimization: Pre-compute formats and loop invariants
+    # Impact: Reduces O(Assets * Presets * Formats) dictionary lookups and path building
+    has_thumb = "thumbnail" in pack.export_formats
+    has_seq = "png_sequence" in pack.export_formats
+    thumb_dir = _dir_map.get("thumbnail")
+    seq_dir = _dir_map.get("png_sequence")
+
+    other_formats = [
+        (fmt, _ext_map.get(fmt, fmt), _dir_map[fmt])
+        for fmt in pack.export_formats
+        if fmt not in ("thumbnail", "png_sequence") and fmt in _dir_map
+    ]
+
+    for asset in assets:
+        asset_id = asset.id
+        # Thumbnail only depends on the asset, not the preset
+        thumb_path = (
+            os.path.join(thumb_dir, f"{asset_id}_thumb.png")
+            if has_thumb and thumb_dir
+            else None
+        )
+
+        for preset in presets:
+            preset_id = preset.id
+            outputs: dict[str, str] = {}
+
+            if has_thumb and thumb_path:
+                outputs["thumbnail"] = thumb_path
+
+            if has_seq and seq_dir:
+                outputs["png_sequence"] = os.path.join(
+                    seq_dir, f"{asset_id}_{preset_id}_frames"
+                )
+
+            for fmt, ext, fdir in other_formats:
+                outputs[fmt] = os.path.join(fdir, f"{asset_id}_{preset_id}.{ext}")
+
+            entries.append(
+                PackManifestEntry(
+                    asset_id=asset_id,
+                    preset_id=preset_id,
+                    expected_outputs=outputs,
+                )
+            )
+    return entries
+
 
 def build_pack(
     pack: PackDefinition,
@@ -241,79 +338,14 @@ def build_pack(
     PackValidationError
         When ``strict_validation=True`` and an invalid reference is found.
     """
-    from pipeline.motion_presets import get_preset, BUILTIN_PRESETS
-
     # Validate referenced assets and presets before building the manifest
     validate_pack(pack, catalog, strict=strict_validation)
 
-    # Resolve assets
-    if pack.included_assets:
-        assets: list[Asset] = [
-            a for aid in pack.included_assets
-            if (a := catalog.get(aid)) is not None
-        ]
-    else:
-        assets = catalog.all()
+    assets = _resolve_assets(pack, catalog)
+    presets = _resolve_presets(pack)
+    entries = _build_entries(pack, assets, presets, renders_root)
 
-    # Resolve presets
-    if pack.included_motion_presets:
-        presets = [p for pid in pack.included_motion_presets if (p := get_preset(pid)) is not None]
-    else:
-        presets = list(BUILTIN_PRESETS)
-
-    manifest = PackManifest(pack_id=pack.pack_id)
-
-    _dir_map = {
-        "gif":          os.path.join(renders_root, "gif"),
-        "webp":         os.path.join(renders_root, "webp"),
-        "webm":         os.path.join(renders_root, "webm"),
-        "mov":          os.path.join(renders_root, "mov"),
-        "png_sequence": os.path.join(renders_root, "png_sequences"),
-        "thumbnail":    os.path.join(renders_root, "thumbnails"),
-    }
-    _ext_map = {
-        "gif": "gif", "webp": "webp", "webm": "webm",
-        "mov": "mov", "thumbnail": "png",
-    }
-
-    # ⚡ Bolt Optimization: Pre-compute formats and loop invariants
-    # Impact: Reduces O(Assets * Presets * Formats) dictionary lookups and path building
-    has_thumb = "thumbnail" in pack.export_formats
-    has_seq = "png_sequence" in pack.export_formats
-    thumb_dir = _dir_map.get("thumbnail")
-    seq_dir = _dir_map.get("png_sequence")
-
-    other_formats = [
-        (fmt, _ext_map.get(fmt, fmt), _dir_map[fmt])
-        for fmt in pack.export_formats
-        if fmt not in ("thumbnail", "png_sequence") and fmt in _dir_map
-    ]
-
-    for asset in assets:
-        asset_id = asset.id
-        # Thumbnail only depends on the asset, not the preset
-        thumb_path = os.path.join(thumb_dir, f"{asset_id}_thumb.png") if has_thumb else None
-
-        for preset in presets:
-            preset_id = preset.id
-            outputs: dict[str, str] = {}
-
-            if has_thumb and thumb_path:
-                outputs["thumbnail"] = thumb_path
-
-            if has_seq and seq_dir:
-                outputs["png_sequence"] = os.path.join(seq_dir, f"{asset_id}_{preset_id}_frames")
-
-            for fmt, ext, fdir in other_formats:
-                outputs[fmt] = os.path.join(fdir, f"{asset_id}_{preset_id}.{ext}")
-
-            manifest.entries.append(
-                PackManifestEntry(
-                    asset_id=asset_id,
-                    preset_id=preset_id,
-                    expected_outputs=outputs,
-                )
-            )
+    manifest = PackManifest(pack_id=pack.pack_id, entries=entries)
 
     logger.info("build_pack: %s", manifest.summary())
     return manifest

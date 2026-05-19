@@ -38,3 +38,6 @@
 ## 2026-05-13 - Loop Invariant Code Motion and Lookup Optimization
 **Learning:** Found that `pipeline/packager/__init__.py::build_pack` had an O(Assets * Presets * Formats) nested loop that repeatedly performed identical dictionary lookups and conditional checks (like checking if the format was 'thumbnail') which were invariant for a given asset or the entire execution. This resulted in redundant work and slower execution.
 **Action:** Extracted loop invariants and pre-computed static values (e.g. format tuples, constant thumbnail paths) outside the inner loops. This minimizes repeated dictionary accesses and condition evaluations, yielding an ~23% performance improvement in manifest generation.
+## 2024-05-18 - [Extract pipeline/packager/__init__.py helpers]
+**Learning:** Pre-computing loop invariants and extracting helpers significantly improves O(Assets * Presets * Formats) dictionary lookups and path building, while increasing readability.
+**Action:** When looping deeply over dictionaries, extract helpers to improve unit testability and pre-compute common dictionary resolutions.
