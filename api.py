@@ -40,10 +40,10 @@ moderation_harness = create_default_harness()
 def _normalize_origin(url: str) -> str:
     """
     Normalize an origin or URL to a canonical origin string.
-    
+
     Parameters:
         url (str): The origin or URL to normalize; may be empty.
-    
+
     Returns:
         str: The canonical origin as "scheme://host[:port]" when the input includes a scheme and netloc; otherwise the input with any trailing slashes removed, or an empty string if the input is falsy.
     """
@@ -74,7 +74,7 @@ if not _MINIAPP_CORS_ORIGINS:
 def get_db():
     """
     Open a SQLite connection to the configured database path.
-    
+
     Returns:
         sqlite3.Connection: A connection to SETTINGS.database_path with `row_factory` set to `sqlite3.Row`.
     """
@@ -88,7 +88,7 @@ def get_db():
 def _settings_str(name: str, default: str = "") -> str:
     """
     Get a SETTINGS attribute by name and return it as a string, falling back to a default if absent or not a string.
-    
+
     Returns:
         The SETTINGS.<name> value if it exists and is a string, otherwise `default`.
     """
@@ -99,12 +99,12 @@ def _settings_str(name: str, default: str = "") -> str:
 def ok(data, status=200, **meta):
     """
     Create a Flask JSON response for a successful API call.
-    
+
     Parameters:
         data: The payload to include under the "data" key.
         status (int): HTTP status code for the response (default 200).
         **meta: Additional top-level fields to merge into the JSON body.
-    
+
     Returns:
         flask.Response: A JSON response with structure `{"ok": True, "data": <data>, ...}` and the given HTTP status code.
     """
@@ -128,12 +128,12 @@ def err(message, status=400, code=None):
 def add_headers(response):
     """
     Apply CORS, allowed headers/methods, and the API version header to the given Flask response.
-    
+
     For requests under /api/miniapp/, set Access-Control-Allow-Origin to the request Origin only if that origin matches the configured miniapp CORS origins and set Vary: Origin; for other routes set Access-Control-Allow-Origin to "*". Always set Access-Control-Allow-Headers, Access-Control-Allow-Methods, and X-API-Version.
-    
+
     Parameters:
         response: The Flask response object to modify.
-    
+
     Returns:
         The modified Flask response object with CORS and version headers applied.
     """
@@ -146,8 +146,12 @@ def add_headers(response):
             response.headers["Vary"] = "Origin"
     else:
         response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Headers"] = "X-API-Key, Content-Type, X-Telegram-Init-Data, Authorization"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = (
+        "X-API-Key, Content-Type, X-Telegram-Init-Data, Authorization"
+    )
+    response.headers["Access-Control-Allow-Methods"] = (
+        "GET, POST, PATCH, DELETE, OPTIONS"
+    )
     response.headers["X-API-Version"] = API_VERSION
     return response
 
@@ -162,26 +166,32 @@ def handle_preflight():
 def require_api_key(f):
     """
     Decorator that requires the incoming request to present the configured API key.
-    
+
     Parameters:
         f (callable): The Flask view function to wrap.
-    
+
     Returns:
         callable: A wrapped view function that returns a 401 JSON error with code "unauthorized" when the `X-API-Key` header is missing or does not match the configured API key; otherwise calls the original view.
     """
+
     @wraps(f)
     def decorated(*args, **kwargs):
         key = request.headers.get("X-API-Key")
         if not API_KEY or key != API_KEY:
-            return err("Valid API key required. Pass it as X-API-Key header.", 401, "unauthorized")
+            return err(
+                "Valid API key required. Pass it as X-API-Key header.",
+                401,
+                "unauthorized",
+            )
         return f(*args, **kwargs)
+
     return decorated
 
 
 def _telegram_init_data_from_request() -> str:
     """
     Extract Telegram Mini App init data from the current Flask request.
-    
+
     Checks the `X-Telegram-Init-Data` header first, then the `Authorization` header for a value prefixed with `tma `.
     Returns:
         str: The init data string if found, or an empty string otherwise.
@@ -199,19 +209,20 @@ def _telegram_init_data_from_request() -> str:
 def require_miniapp_auth(f):
     """
     Require valid Telegram Mini App init data for a Flask route and attach the validated session to flask.g.
-    
+
     Wraps a view function to:
     - extract Telegram init data from the request,
     - validate it using the configured Telegram bot token,
     - ensure the session contains an integer `user.id`,
     - store the validated session as `g.miniapp_session` and the user id as `g.miniapp_user_id` before calling the wrapped handler.
-    
+
     Parameters:
         f (callable): The Flask view function to wrap.
-    
+
     Returns:
         callable: A wrapper around `f` that enforces Mini App authentication. On invalid or missing init data the wrapper returns an HTTP 401 JSON error with code `"miniapp_unauthorized"`.
     """
+
     @wraps(f)
     def decorated(*args, **kwargs):
         init_data = _telegram_init_data_from_request()
@@ -255,10 +266,10 @@ def get_pagination_params():
 def paginate(query_result):
     """
     Builds a paginated view of query_result according to `page` and `limit` URL query parameters.
-    
+
     Parameters:
         query_result (Sequence): Full list-like sequence of items to paginate.
-    
+
     Returns:
         tuple: A pair (items, pagination) where:
             - items (list): Slice of `query_result` for the requested page.
@@ -272,11 +283,17 @@ def paginate(query_result):
 
     total = len(query_result)
     start = (page - 1) * limit
-    items = query_result[start:start + limit]
-    return items, {"page": page, "limit": limit, "total": total, "pages": max(1, -(-total // limit))}
+    items = query_result[start : start + limit]
+    return items, {
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "pages": max(1, -(-total // limit)),
+    }
 
 
 # ── PUBLIC ────────────────────────────────────────────────────
+
 
 @app.route("/")
 def landing():
@@ -297,6 +314,7 @@ def miniapp():
 
 # ── MINI APP (no API key — user_id comes from Telegram initData) ──
 
+
 def _run_async(coro):
     """Run an async coroutine safely from a synchronous Flask route."""
     loop = asyncio.new_event_loop()
@@ -309,9 +327,11 @@ def _run_async(coro):
 _TG_PACK_CACHE = {}  # {name: (timestamp, title, status)}
 _TG_PACK_CACHE_TTL = 300  # 5 minutes
 
+
 async def _validate_packs_async(token, user_id):
     """Validate all DB packs against Telegram; prune deleted, sync renamed titles."""
     from telegram import Bot as TelegramBot
+
     bot = TelegramBot(token=token)
     # ⚡ Bolt Optimization: Concurrently validate packs with bounded concurrency (Semaphore=5)
     # Impact: Reduces N sequential network calls to Telegram down to O(N/5) while preventing HTTP 429 rate limit drops that could lead to accidental pack deletion
@@ -326,23 +346,43 @@ async def _validate_packs_async(token, user_id):
 
         # ⚡ Bolt Optimization: Cache expensive Telegram API calls per pack for 5 minutes
         # Impact: Drastically reduces network latency and avoids 429 errors when reloading /api/miniapp/packs
-        if name in _TG_PACK_CACHE and now - _TG_PACK_CACHE[name][0] < _TG_PACK_CACHE_TTL:
+        if (
+            name in _TG_PACK_CACHE
+            and now - _TG_PACK_CACHE[name][0] < _TG_PACK_CACHE_TTL
+        ):
             _, cached_title, status = _TG_PACK_CACHE[name]
-            return {"name": name, "title": cached_title, "old_title": title, "status": status}
+            return {
+                "name": name,
+                "title": cached_title,
+                "old_title": title,
+                "status": status,
+            }
 
         async with sem:
             try:
                 ss = await bot.get_sticker_set(name)
                 _TG_PACK_CACHE[name] = (now, ss.title, "valid")
-                return {"name": name, "title": ss.title, "old_title": title, "status": "valid"}
+                return {
+                    "name": name,
+                    "title": ss.title,
+                    "old_title": title,
+                    "status": "valid",
+                }
             except Exception:
                 _TG_PACK_CACHE[name] = (now, title, "deleted")
-                return {"name": name, "title": title, "old_title": title, "status": "deleted"}
+                return {
+                    "name": name,
+                    "title": title,
+                    "old_title": title,
+                    "status": "deleted",
+                }
 
     try:
         conn = get_db()
         c = conn.cursor()
-        c.execute("SELECT name, title FROM packs WHERE user_id = ? ORDER BY id", (user_id,))
+        c.execute(
+            "SELECT name, title FROM packs WHERE user_id = ? ORDER BY id", (user_id,)
+        )
         rows = c.fetchall()
 
         # Gather network validations concurrently
@@ -353,18 +393,31 @@ async def _validate_packs_async(token, user_id):
         updates = []
         deletes = []
         for res in results:
-            name, title, old_title, status = res["name"], res["title"], res["old_title"], res["status"]
+            name, title, old_title, status = (
+                res["name"],
+                res["title"],
+                res["old_title"],
+                res["status"],
+            )
             if status == "valid":
                 if title != old_title:
                     updates.append((title, user_id, name))
-                valid.append({"name": name, "title": title, "link": f"https://t.me/addstickers/{name}"})
+                valid.append(
+                    {
+                        "name": name,
+                        "title": title,
+                        "link": f"https://t.me/addstickers/{name}",
+                    }
+                )
             else:
                 deletes.append((user_id, name))
 
         # ⚡ Bolt Optimization: Batch database operations with executemany
         # Impact: Reduces database round-trips from O(N) to O(1) for mass updates/deletes
         if updates:
-            c.executemany("UPDATE packs SET title = ? WHERE user_id = ? AND name = ?", updates)
+            c.executemany(
+                "UPDATE packs SET title = ? WHERE user_id = ? AND name = ?", updates
+            )
         if deletes:
             c.executemany("DELETE FROM packs WHERE user_id = ? AND name = ?", deletes)
         conn.commit()
@@ -379,16 +432,16 @@ async def _validate_packs_async(token, user_id):
 def miniapp_packs():
     """
     Fetch the authenticated miniapp user's sticker packs, validating stored titles against Telegram when a valid bot token is available.
-    
+
     If Telegram validation is unavailable or fails, returns the packs as read from the local database without external verification.
-    
+
     Returns:
         A JSON `ok` payload whose data is a list of pack objects. Each object contains `name`, `title`, and `link` (a t.me addstickers URL).
     """
     uid = g.miniapp_user_id
 
     raw_token = SETTINGS.telegram_bot_token
-    token_match = re.search(r'\d+:[A-Za-z0-9_-]{35,}', raw_token)
+    token_match = re.search(r"\d+:[A-Za-z0-9_-]{35,}", raw_token)
     if token_match:
         try:
             packs = _run_async(_validate_packs_async(token_match.group(0), uid))
@@ -401,11 +454,16 @@ def miniapp_packs():
     c.execute("SELECT name, title FROM packs WHERE user_id = ? ORDER BY id", (uid,))
     rows = c.fetchall()
     conn.close()
-    return ok([
-        {"name": r["name"], "title": r["title"],
-         "link": f"https://t.me/addstickers/{r['name']}"}
-        for r in rows
-    ])
+    return ok(
+        [
+            {
+                "name": r["name"],
+                "title": r["title"],
+                "link": f"https://t.me/addstickers/{r['name']}",
+            }
+            for r in rows
+        ]
+    )
 
 
 @app.route("/api/miniapp/settings")
@@ -413,17 +471,24 @@ def miniapp_packs():
 def miniapp_settings_get():
     """
     Return the miniapp settings for the currently authenticated miniapp user.
-    
+
     Returns:
         dict: Contains `user_id` (int) and `mask_inverted` (`true` if the user's mask setting is inverted, `false` otherwise). Default `mask_inverted` is `false` when no settings exist for the user.
     """
     user_id = g.miniapp_user_id
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT mask_inverted FROM user_settings WHERE user_id = ?", (int(user_id),))
+    c.execute(
+        "SELECT mask_inverted FROM user_settings WHERE user_id = ?", (int(user_id),)
+    )
     row = c.fetchone()
     conn.close()
-    return ok({"user_id": int(user_id), "mask_inverted": bool(row["mask_inverted"]) if row else False})
+    return ok(
+        {
+            "user_id": int(user_id),
+            "mask_inverted": bool(row["mask_inverted"]) if row else False,
+        }
+    )
 
 
 @app.route("/api/miniapp/settings", methods=["PATCH"])
@@ -431,9 +496,9 @@ def miniapp_settings_get():
 def miniapp_settings_patch():
     """
     Update the authenticated miniapp user's `mask_inverted` setting and return the stored value.
-    
+
     If `"mask_inverted"` is present in the JSON body it is coerced to a boolean and upserted into the user's settings; the handler then returns the resulting stored value. If the request has no JSON body, an error response is returned indicating a JSON body is required with code `"invalid_body"`.
-    
+
     @returns
         On success: JSON object {"user_id": <int>, "mask_inverted": <bool>}.
         On error (missing JSON): JSON error response with message "JSON body required" and code "invalid_body".
@@ -449,13 +514,20 @@ def miniapp_settings_patch():
         c.execute(
             "INSERT INTO user_settings (user_id, mask_inverted) VALUES (?, ?) "
             "ON CONFLICT(user_id) DO UPDATE SET mask_inverted = ?",
-            (int(user_id), val, val)
+            (int(user_id), val, val),
         )
     conn.commit()
-    c.execute("SELECT mask_inverted FROM user_settings WHERE user_id = ?", (int(user_id),))
+    c.execute(
+        "SELECT mask_inverted FROM user_settings WHERE user_id = ?", (int(user_id),)
+    )
     row = c.fetchone()
     conn.close()
-    return ok({"user_id": int(user_id), "mask_inverted": bool(row["mask_inverted"]) if row else False})
+    return ok(
+        {
+            "user_id": int(user_id),
+            "mask_inverted": bool(row["mask_inverted"]) if row else False,
+        }
+    )
 
 
 @app.route("/api/miniapp/bootstrap")
@@ -463,11 +535,11 @@ def miniapp_settings_patch():
 def miniapp_bootstrap():
     """
     Builds the bootstrap payload for the authenticated Telegram mini app session.
-    
+
     The payload includes the authenticated user's session info, bot configuration (including deep links when a bot username is configured), launch metadata (surface and start parameter), and API base URLs.
-    
+
     Returns:
-    	A Flask JSON response containing the bootstrap payload with keys: `user`, `bot` (may include `username` and `links`), `launch`, and `api`.
+        A Flask JSON response containing the bootstrap payload with keys: `user`, `bot` (may include `username` and `links`), `launch`, and `api`.
     """
     session = g.miniapp_session
     user = session["user"]
@@ -497,16 +569,16 @@ def miniapp_bootstrap():
 def miniapp_intent():
     """
     Validate the miniapp intent request and return a generated action token and an optional Telegram deep link.
-    
+
     Expects a JSON body with an "action" field matching one of: "create_pack", "add_sticker", "manage_packs", "magic_cut", "feature_pack".
     If the application setting `telegram_bot_username` is configured, the response includes a deep link to start the bot with the corresponding start payload.
-    
+
     Returns:
         dict: Object with keys:
             - action (str): The validated action string.
             - token (str): A short, URL-safe token for the intent.
             - deep_link (str): A Telegram deep link when a bot username is configured, otherwise an empty string.
-    
+
     Errors:
         Returns a 400 error with code "invalid_body" if the request body is missing or not JSON.
         Returns a 400 error with code "invalid_action" if the "action" value is missing or not one of the allowed actions.
@@ -530,8 +602,6 @@ def miniapp_intent():
     if username:
         deep_link = f"https://t.me/{username}?start={action_to_start[action]}"
     return ok({"action": action, "token": token_urlsafe(18), "deep_link": deep_link})
-
-
 
 
 @app.route("/api/moderation/dev/state")
@@ -564,9 +634,9 @@ def moderation_dev_replay():
 def health():
     """
     Return a JSON health-check payload summarizing service status.
-    
+
     The response payload includes service name, API version, bot mode, database status, and the current UNIX timestamp.
-    
+
     Returns:
         Flask response: JSON object with keys:
             - status: "ok"
@@ -584,17 +654,20 @@ def health():
         db_ok = False
     finally:
         conn.close()
-    return ok({
-        "status": "ok",
-        "service": PRODUCT_NAME,
-        "version": API_VERSION,
-        "bot_mode": SETTINGS.bot_mode,
-        "db": "ok" if db_ok else "error",
-        "timestamp": int(time.time()),
-    })
+    return ok(
+        {
+            "status": "ok",
+            "service": PRODUCT_NAME,
+            "version": API_VERSION,
+            "bot_mode": SETTINGS.bot_mode,
+            "db": "ok" if db_ok else "error",
+            "timestamp": int(time.time()),
+        }
+    )
 
 
 # ── AUTHENTICATED ─────────────────────────────────────────────
+
 
 @app.route("/api/stats")
 @require_api_key
@@ -608,11 +681,13 @@ def stats():
     c.execute("SELECT COUNT(DISTINCT user_id) FROM user_settings")
     total_settings_users = c.fetchone()[0]
     conn.close()
-    return ok({
-        "users": total_users,
-        "packs": total_packs,
-        "users_with_settings": total_settings_users,
-    })
+    return ok(
+        {
+            "users": total_users,
+            "packs": total_packs,
+            "users_with_settings": total_settings_users,
+        }
+    )
 
 
 @app.route("/api/search")
@@ -634,23 +709,32 @@ def search_packs():
     # Impact: Reduces memory usage and response time from O(N) to O(limit) for large result sets
     c.execute(
         "SELECT COUNT(*) FROM packs WHERE title LIKE ? OR name LIKE ?",
-        (f"%{q}%", f"%{q}%")
+        (f"%{q}%", f"%{q}%"),
     )
     total = c.fetchone()[0]
 
     c.execute(
         "SELECT user_id, name, title FROM packs WHERE title LIKE ? OR name LIKE ? ORDER BY title LIMIT ? OFFSET ?",
-        (f"%{q}%", f"%{q}%", limit, offset)
+        (f"%{q}%", f"%{q}%", limit, offset),
     )
     rows = c.fetchall()
     conn.close()
 
     items = [
-        {"user_id": r["user_id"], "name": r["name"], "title": r["title"],
-         "link": f"https://t.me/addstickers/{r['name']}"}
+        {
+            "user_id": r["user_id"],
+            "name": r["name"],
+            "title": r["title"],
+            "link": f"https://t.me/addstickers/{r['name']}",
+        }
         for r in rows
     ]
-    pagination = {"page": page, "limit": limit, "total": total, "pages": max(1, -(-total // limit))}
+    pagination = {
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "pages": max(1, -(-total // limit)),
+    }
     return ok(items, query=q, pagination=pagination)
 
 
@@ -668,15 +752,27 @@ def user_packs(user_id):
     c.execute("SELECT COUNT(*) FROM packs WHERE user_id = ?", (user_id,))
     total = c.fetchone()[0]
 
-    c.execute("SELECT name, title FROM packs WHERE user_id = ? ORDER BY id LIMIT ? OFFSET ?", (user_id, limit, offset))
+    c.execute(
+        "SELECT name, title FROM packs WHERE user_id = ? ORDER BY id LIMIT ? OFFSET ?",
+        (user_id, limit, offset),
+    )
     rows = c.fetchall()
     conn.close()
 
     items = [
-        {"name": r["name"], "title": r["title"], "link": f"https://t.me/addstickers/{r['name']}"}
+        {
+            "name": r["name"],
+            "title": r["title"],
+            "link": f"https://t.me/addstickers/{r['name']}",
+        }
         for r in rows
     ]
-    pagination = {"page": page, "limit": limit, "total": total, "pages": max(1, -(-total // limit))}
+    pagination = {
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "pages": max(1, -(-total // limit)),
+    }
     return ok(items, user_id=user_id, pagination=pagination)
 
 
@@ -685,17 +781,22 @@ def user_packs(user_id):
 def pack_detail(user_id, pack_name):
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT name, title FROM packs WHERE user_id = ? AND name = ?", (user_id, pack_name))
+    c.execute(
+        "SELECT name, title FROM packs WHERE user_id = ? AND name = ?",
+        (user_id, pack_name),
+    )
     row = c.fetchone()
     conn.close()
     if not row:
         return err("Pack not found", 404, "not_found")
-    return ok({
-        "user_id": user_id,
-        "name": row["name"],
-        "title": row["title"],
-        "link": f"https://t.me/addstickers/{row['name']}",
-    })
+    return ok(
+        {
+            "user_id": user_id,
+            "name": row["name"],
+            "title": row["title"],
+            "link": f"https://t.me/addstickers/{row['name']}",
+        }
+    )
 
 
 @app.route("/api/packs/<int:user_id>/<pack_name>", methods=["DELETE"])
@@ -703,7 +804,9 @@ def pack_detail(user_id, pack_name):
 def delete_pack(user_id, pack_name):
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT id FROM packs WHERE user_id = ? AND name = ?", (user_id, pack_name))
+    c.execute(
+        "SELECT id FROM packs WHERE user_id = ? AND name = ?", (user_id, pack_name)
+    )
     row = c.fetchone()
     if not row:
         conn.close()
@@ -722,10 +825,12 @@ def user_settings_get(user_id):
     c.execute("SELECT mask_inverted FROM user_settings WHERE user_id = ?", (user_id,))
     row = c.fetchone()
     conn.close()
-    return ok({
-        "user_id": user_id,
-        "mask_inverted": bool(row["mask_inverted"]) if row else False,
-    })
+    return ok(
+        {
+            "user_id": user_id,
+            "mask_inverted": bool(row["mask_inverted"]) if row else False,
+        }
+    )
 
 
 @app.route("/api/settings/<int:user_id>", methods=["PATCH"])
@@ -743,20 +848,23 @@ def user_settings_update(user_id):
         c.execute(
             "INSERT INTO user_settings (user_id, mask_inverted) VALUES (?, ?) "
             "ON CONFLICT(user_id) DO UPDATE SET mask_inverted = ?",
-            (user_id, val, val)
+            (user_id, val, val),
         )
 
     conn.commit()
     c.execute("SELECT mask_inverted FROM user_settings WHERE user_id = ?", (user_id,))
     row = c.fetchone()
     conn.close()
-    return ok({
-        "user_id": user_id,
-        "mask_inverted": bool(row["mask_inverted"]) if row else False,
-    })
+    return ok(
+        {
+            "user_id": user_id,
+            "mask_inverted": bool(row["mask_inverted"]) if row else False,
+        }
+    )
 
 
 # ── CATALOG (public) ──────────────────────────────────────────
+
 
 def _catalog_row_to_dict(row) -> dict:
     r = dict(row)
@@ -802,25 +910,33 @@ def catalog_packs():
             "ORDER BY likes DESC LIMIT ? OFFSET ?"
         )
         rows = conn.execute(sql, (limit, skip)).fetchall()
-        count_row = conn.execute("SELECT COUNT(*) FROM catalog_packs WHERE public = 1").fetchone()
+        count_row = conn.execute(
+            "SELECT COUNT(*) FROM catalog_packs WHERE public = 1"
+        ).fetchone()
     elif sort == "trending":
         sql = (
             "SELECT * FROM catalog_packs WHERE public = 1 "
             "ORDER BY view_count DESC, likes DESC LIMIT ? OFFSET ?"
         )
         rows = conn.execute(sql, (limit, skip)).fetchall()
-        count_row = conn.execute("SELECT COUNT(*) FROM catalog_packs WHERE public = 1").fetchone()
+        count_row = conn.execute(
+            "SELECT COUNT(*) FROM catalog_packs WHERE public = 1"
+        ).fetchone()
     elif sort == "new":
         sql = (
             "SELECT * FROM catalog_packs WHERE public = 1 "
             "ORDER BY added_at DESC LIMIT ? OFFSET ?"
         )
         rows = conn.execute(sql, (limit, skip)).fetchall()
-        count_row = conn.execute("SELECT COUNT(*) FROM catalog_packs WHERE public = 1").fetchone()
+        count_row = conn.execute(
+            "SELECT COUNT(*) FROM catalog_packs WHERE public = 1"
+        ).fetchone()
     else:
         if not query:
             conn.close()
-            return err("Missing required param 'q' for search type", 400, "missing_param")
+            return err(
+                "Missing required param 'q' for search type", 400, "missing_param"
+            )
         pattern = f"%{query}%"
         sql = (
             "SELECT * FROM catalog_packs WHERE public = 1 "
@@ -860,18 +976,16 @@ def catalog_pack_detail(pack_name):
 
 
 @app.route("/api/catalog/packs/<pack_name>/react", methods=["POST"])
+@require_miniapp_auth
 def catalog_pack_react(pack_name):
     """
     POST /api/catalog/packs/<name>/react
-    Body: {"user_id": int, "type": "like"|"dislike"}
-    No API key required (uses user_id from request body).
+    Body: {"type": "like"|"dislike"}
+    Requires Mini App authentication.
     """
+    user_id = g.miniapp_user_id
     data = request.get_json(silent=True) or {}
-    user_id = data.get("user_id")
     reaction = data.get("type", "")
-
-    if not user_id or not str(user_id).lstrip("-").isdigit():
-        return err("Missing or invalid user_id", 400, "missing_param")
     if reaction not in ("like", "dislike"):
         return err("type must be 'like' or 'dislike'", 400, "invalid_param")
 
@@ -946,30 +1060,30 @@ def catalog_pack_react(pack_name):
     ).fetchone()
     conn.close()
 
-    return ok({
-        "total": {
-            "like": result_row["likes"] if result_row else 0,
-            "dislike": result_row["dislikes"] if result_row else 0,
-        },
-        "current": current,
-    })
+    return ok(
+        {
+            "total": {
+                "like": result_row["likes"] if result_row else 0,
+                "dislike": result_row["dislikes"] if result_row else 0,
+            },
+            "current": current,
+        }
+    )
 
 
 @app.route("/api/catalog/packs/<pack_name>/feature", methods=["POST"])
+@require_miniapp_auth
 def catalog_pack_feature(pack_name):
     """
     POST /api/catalog/packs/<name>/feature
-    Body: {"user_id": int, "title": str, "description": str, "type": str}
+    Body: {"title": str, "description": str, "type": str}
     Allows a Mini App user to feature a pack in the catalog.
     """
+    user_id = g.miniapp_user_id
     data = request.get_json(silent=True) or {}
-    user_id = data.get("user_id")
     title = str(data.get("title", "")).strip()
     description = str(data.get("description", "")).strip()
     pack_type = data.get("type", "image")
-
-    if not user_id or not str(user_id).lstrip("-").isdigit():
-        return err("Missing or invalid user_id", 400, "missing_param")
     if not title:
         return err("title is required", 400, "missing_param")
     if pack_type not in ("image", "animated", "video"):
@@ -995,6 +1109,7 @@ def catalog_pack_feature(pack_name):
 
 # ── ERRORS ────────────────────────────────────────────────────
 
+
 @app.errorhandler(404)
 def not_found(e):
     if request.path.startswith("/api"):
@@ -1015,7 +1130,12 @@ def server_error(e):
 def run_api():
     """
     Start the Flask API server bound to all network interfaces using the PORT environment variable or 8080 by default.
-    
+
     Runs the app with debug mode disabled and the reloader disabled; this call blocks the current thread until the server stops.
     """
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8080")), debug=False, use_reloader=False)
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", "8080")),
+        debug=False,
+        use_reloader=False,
+    )
