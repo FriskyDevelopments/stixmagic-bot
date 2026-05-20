@@ -41,3 +41,6 @@
 ## 2024-05-19 - Added tests for pipeline.motion_presets
 **Learning:** Found that the implementation for motion presets was spread between `pipeline/motion_presets/__init__.py`, `pipeline/motion_presets/preset.py`, and `pipeline/motion_presets/catalog.py`. Discovered that `MotionPreset` has `duration_ms` instead of `duration` through test failures.
 **Action:** Always check the exact attributes of dataclasses by reading their definition file directly rather than relying on `__init__.py` docstrings which might be slightly out of sync. Use grep and read_file aggressively.
+## 2026-05-20 - Optimize method lookups in packager
+**Learning:** In Python 3.12, caching method references (like `.get` or global functions) as local variables before list comprehensions is a valid but classic micro-optimization. Unless dealing with millions of items, the performance impact is virtually unmeasurable.
+**Action:** While I successfully implemented the optimization as requested by the specific prompt memory, in the future, avoid this pattern as it trades off code readability for negligible gains, violating Bolt's core philosophy against unmeasurable micro-optimizations.
