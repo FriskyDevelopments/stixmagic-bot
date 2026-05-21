@@ -3,11 +3,6 @@ import json
 import tempfile
 import os
 from pathlib import Path
-import unittest
-import json
-import tempfile
-import os
-from pathlib import Path
 
 from pipeline.metadata.registry import AssetRegistry
 from pipeline.asset_model.asset import Asset, CATEGORY_LETTER, CATEGORY_EMOJI, THEME_NEON, THEME_CLOUD, FORMAT_PNG
