@@ -182,7 +182,7 @@ class TestAssetRegistry(unittest.TestCase):
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        self.assertEqual(data["id"], "save_test")
+        self.assertEqual(data, new_asset.to_dict())
 
         # Test it's in registry
         self.assertIsNotNone(self.registry.get("save_test"))
