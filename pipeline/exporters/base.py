@@ -85,7 +85,7 @@ class BaseExporter(abc.ABC):
         filename = f"{asset.id}_{preset.id}{suffix}.{self.format_id}"
         return str(subdir / filename)
 
-    def _result_ok(self, path: str) -> ExportResult:
+    def result_ok(self, path: str) -> ExportResult:
         size = os.path.getsize(path) if os.path.exists(path) else 0
         return ExportResult(
             format=self.format_id,
@@ -95,7 +95,7 @@ class BaseExporter(abc.ABC):
             size_bytes=size,
         )
 
-    def _result_err(self, message: str) -> ExportResult:
+    def result_err(self, message: str) -> ExportResult:
         return ExportResult(
             format=self.format_id,
             success=False,

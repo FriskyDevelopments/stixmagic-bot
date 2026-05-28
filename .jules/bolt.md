@@ -41,3 +41,6 @@
 ## 2024-05-19 - Added tests for pipeline.motion_presets
 **Learning:** Found that the implementation for motion presets was spread between `pipeline/motion_presets/__init__.py`, `pipeline/motion_presets/preset.py`, and `pipeline/motion_presets/catalog.py`. Discovered that `MotionPreset` has `duration_ms` instead of `duration` through test failures.
 **Action:** Always check the exact attributes of dataclasses by reading their definition file directly rather than relying on `__init__.py` docstrings which might be slightly out of sync. Use grep and read_file aggressively.
+## 2026-05-28 - Code Health: Renamed protected result methods to public
+**Learning:** Linter flags for 'unused private methods' might be false positives if the methods are intended as protected helpers for subclasses.
+**Action:** Renamed `_result_err` and `_result_ok` to public methods (`result_err`, `result_ok`) across `pipeline/exporters/base.py` and its subclasses to resolve the code health warning without duplicating code.
