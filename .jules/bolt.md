@@ -41,3 +41,6 @@
 ## 2024-05-19 - Added tests for pipeline.motion_presets
 **Learning:** Found that the implementation for motion presets was spread between `pipeline/motion_presets/__init__.py`, `pipeline/motion_presets/preset.py`, and `pipeline/motion_presets/catalog.py`. Discovered that `MotionPreset` has `duration_ms` instead of `duration` through test failures.
 **Action:** Always check the exact attributes of dataclasses by reading their definition file directly rather than relying on `__init__.py` docstrings which might be slightly out of sync. Use grep and read_file aggressively.
+## 2024-05-18 - Replace O(N) generator lookups with dictionary lookups in main.py
+**Learning:** In Python, for small lists of tuples, replacing a generator expression lookup (e.g. `next((v for k_, v in items if k_ == k), default)`) with a dictionary lookup (e.g. `dict(items).get(k, default)`) can improve performance. While dictionary creation has some overhead, its highly optimized C implementation avoids bytecode execution overhead per iteration, making it noticeably faster in micro-benchmarks for small collections like user sticker packs.
+**Action:** Replaced inline `next(...)` generator calls with `dict(packs).get(...)` in `main.py` sticker pack selection and retrieval flows.

@@ -458,14 +458,15 @@ async def addsticker_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     pack_name = query.data.replace("pack_", "")
     packs = context.user_data.get('user_packs', [])
-    selected_name = next((n for n, _ in packs if n == pack_name), None)
+    packs_dict = dict(packs)
+    selected_name = pack_name if pack_name in packs_dict else None
 
     if not selected_name:
         await query.edit_message_text("Pack not found. Try again.")
         return ConversationHandler.END
 
     context.user_data['selected_pack'] = selected_name
-    pack_title = next((t for n, t in packs if n == pack_name), pack_name)
+    pack_title = packs_dict.get(pack_name, pack_name)
 
     await query.edit_message_text(
         f"✦ <b>{html.escape(pack_title)}</b>\n"
@@ -482,7 +483,8 @@ async def addsticker_receive(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user = update.message.from_user
     pack_name = context.user_data.get('selected_pack')
     packs = context.user_data.get('user_packs', [])
-    pack_title = next((t for n, t in packs if n == pack_name), pack_name)
+    packs_dict = dict(packs)
+    pack_title = packs_dict.get(pack_name, pack_name)
 
     media = telegram_adapter.parse_message_media(update.message)
     if not media:
@@ -712,7 +714,7 @@ async def magic_pack_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pack_name = data.replace("cutpack_", "")
         user = query.from_user
         packs = get_user_packs(user.id)
-        pack_title = next((t for n, t in packs if n == pack_name), pack_name)
+        pack_title = dict(packs).get(pack_name, pack_name)
 
         try:
             sticker_file = io.BytesIO(cut_result)
@@ -1290,7 +1292,7 @@ async def delete_pack_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     pack_name = query.data.replace("del_", "")
     user = query.from_user
     packs = get_user_packs(user.id)
-    pack_title = next((t for n, t in packs if n == pack_name), pack_name)
+    pack_title = dict(packs).get(pack_name, pack_name)
 
     keyboard = InlineKeyboardMarkup([
         [
@@ -1312,7 +1314,7 @@ async def delete_pack_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE
     pack_name = query.data.replace("delconfirm_", "")
     user = query.from_user
     packs = get_user_packs(user.id)
-    pack_title = next((t for n, t in packs if n == pack_name), pack_name)
+    pack_title = dict(packs).get(pack_name, pack_name)
 
     delete_pack_from_db(user.id, pack_name)
 
