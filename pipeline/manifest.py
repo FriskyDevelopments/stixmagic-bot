@@ -75,6 +75,55 @@ DEFAULT_PACKS_DIR = "packs"
 DEFAULT_RENDERS_ROOT = "renders"
 
 
+def _format_pack_entry(entry: Any, catalog: 'AssetCatalog', total_assets_seen: set[str]) -> dict[str, Any]:
+    """Format an individual entry and update total assets seen."""
+    total_assets_seen.add(entry.asset_id)
+    asset = catalog.get(entry.asset_id)
+    return {
+        "asset_id":       entry.asset_id,
+        "asset_name":     asset.name if asset else entry.asset_id,
+        "asset_category": asset.category.value if asset else "",
+        "preset_id":      entry.preset_id,
+        "thumbnail":      entry.expected_outputs.get("thumbnail"),
+        "outputs": {
+            fmt: path
+            for fmt, path in entry.expected_outputs.items()
+            if fmt != "thumbnail"
+        },
+    }
+
+def _process_pack(
+    pack: 'PackDefinition',
+    catalog: 'AssetCatalog',
+    renders_root: str,
+    total_assets_seen: set[str],
+) -> dict[str, Any] | None:
+    """Process a single pack definition, build it, and format its entries."""
+    from pipeline.packager import build_pack
+
+    try:
+        pack_manifest = build_pack(
+            pack, catalog, renders_root=renders_root, strict_validation=False
+        )
+    except Exception as exc:
+        logger.error("Skipping pack %r – build_pack failed: %s", pack.pack_id, exc)
+        return None
+
+    entries = [
+        _format_pack_entry(entry, catalog, total_assets_seen)
+        for entry in pack_manifest.entries
+    ]
+
+    logger.info("build_pipeline_manifest: added pack %r (%d entries)", pack.pack_id, len(entries))
+    return {
+        "pack_id":         pack.pack_id,
+        "title":           pack.title,
+        "theme":           pack.theme,
+        "target_platforms": pack.target_platforms,
+        "export_formats":  pack.export_formats,
+        "entries":         entries,
+    }
+
 def build_pipeline_manifest(
     packs: list['PackDefinition'],
     catalog: 'AssetCatalog',
@@ -97,46 +146,13 @@ def build_pipeline_manifest(
     dict
         The full manifest as a Python dict.
     """
-    from pipeline.packager import build_pack
-
     manifest_packs: list[dict[str, Any]] = []
     total_assets_seen: set[str] = set()
 
     for pack in packs:
-        try:
-            pack_manifest = build_pack(
-                pack, catalog, renders_root=renders_root, strict_validation=False
-            )
-        except Exception as exc:
-            logger.error("Skipping pack %r – build_pack failed: %s", pack.pack_id, exc)
-            continue
-
-        entries: list[dict[str, Any]] = []
-        for entry in pack_manifest.entries:
-            total_assets_seen.add(entry.asset_id)
-            asset = catalog.get(entry.asset_id)
-            entries.append({
-                "asset_id":       entry.asset_id,
-                "asset_name":     asset.name if asset else entry.asset_id,
-                "asset_category": asset.category.value if asset else "",
-                "preset_id":      entry.preset_id,
-                "thumbnail":      entry.expected_outputs.get("thumbnail"),
-                "outputs": {
-                    fmt: path
-                    for fmt, path in entry.expected_outputs.items()
-                    if fmt != "thumbnail"
-                },
-            })
-
-        manifest_packs.append({
-            "pack_id":         pack.pack_id,
-            "title":           pack.title,
-            "theme":           pack.theme,
-            "target_platforms": pack.target_platforms,
-            "export_formats":  pack.export_formats,
-            "entries":         entries,
-        })
-        logger.info("build_pipeline_manifest: added pack %r (%d entries)", pack.pack_id, len(entries))
+        processed = _process_pack(pack, catalog, renders_root, total_assets_seen)
+        if processed is not None:
+            manifest_packs.append(processed)
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
