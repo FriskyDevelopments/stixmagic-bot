@@ -146,6 +146,30 @@ class PackManifest:
 
 # ── Validation helper ─────────────────────────────────────────
 
+def _validate_pack_assets(pack: PackDefinition, catalog: Any) -> list[str]:
+    """Validate that all assets referenced by the pack exist in the catalog."""
+    errors: list[str] = []
+    for asset_id in pack.included_assets:
+        if catalog.get(asset_id) is None:
+            errors.append(
+                f"Pack '{pack.pack_id}': asset '{asset_id}' not found in catalog."
+            )
+    return errors
+
+
+def _validate_pack_presets(pack: PackDefinition) -> list[str]:
+    """Validate that all motion presets referenced by the pack exist in the registry."""
+    from pipeline.motion_presets import PRESET_REGISTRY
+
+    errors: list[str] = []
+    for preset_id in pack.included_motion_presets:
+        if preset_id not in PRESET_REGISTRY:
+            errors.append(
+                f"Pack '{pack.pack_id}': motion preset '{preset_id}' not found in preset registry."
+            )
+    return errors
+
+
 def validate_pack(
     pack: PackDefinition,
     catalog: Any,  # pipeline.metadata.AssetCatalog
@@ -177,21 +201,10 @@ def validate_pack(
     PackValidationError
         When ``strict=True`` and any referenced asset or preset is not found.
     """
-    from pipeline.motion_presets import PRESET_REGISTRY
-
     errors: list[str] = []
 
-    for asset_id in pack.included_assets:
-        if catalog.get(asset_id) is None:
-            errors.append(
-                f"Pack '{pack.pack_id}': asset '{asset_id}' not found in catalog."
-            )
-
-    for preset_id in pack.included_motion_presets:
-        if preset_id not in PRESET_REGISTRY:
-            errors.append(
-                f"Pack '{pack.pack_id}': motion preset '{preset_id}' not found in preset registry."
-            )
+    errors.extend(_validate_pack_assets(pack, catalog))
+    errors.extend(_validate_pack_presets(pack))
 
     if errors:
         for err in errors:
