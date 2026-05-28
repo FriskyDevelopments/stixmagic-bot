@@ -41,3 +41,7 @@
 ## 2024-05-19 - Added tests for pipeline.motion_presets
 **Learning:** Found that the implementation for motion presets was spread between `pipeline/motion_presets/__init__.py`, `pipeline/motion_presets/preset.py`, and `pipeline/motion_presets/catalog.py`. Discovered that `MotionPreset` has `duration_ms` instead of `duration` through test failures.
 **Action:** Always check the exact attributes of dataclasses by reading their definition file directly rather than relying on `__init__.py` docstrings which might be slightly out of sync. Use grep and read_file aggressively.
+
+## 2024-05-24 - Refactored `init_db` in `infra/db.py`
+**Learning:** Refactoring a long, monolithic database initialization function into discrete helper functions (e.g., `_create_tables`, `_create_indices`, `_seed_initial_data`) significantly improves readability and modularity, making future schema updates or data migrations much easier to manage.
+**Action:** Split `init_db` into helper functions and updated `init_db` to orchestrate them sequentially. Verified changes using tests and standard linters.
