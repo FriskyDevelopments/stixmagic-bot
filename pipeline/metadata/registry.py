@@ -19,11 +19,8 @@ File layout convention::
 Each file must contain a valid ``Asset.from_dict()``-compatible JSON object.
 """
 
-from __future__ import annotations
-
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -53,7 +50,9 @@ class AssetRegistry:
     """
 
     def __init__(self, source_dir: Optional[str] = None) -> None:
-        self._source_dir = Path(source_dir).resolve() if source_dir else _DEFAULT_SOURCE_DIR
+        self._source_dir = (
+            Path(source_dir).resolve() if source_dir else _DEFAULT_SOURCE_DIR
+        )
         self._assets: Dict[str, Asset] = {}
         self._load()
 
@@ -79,7 +78,9 @@ class AssetRegistry:
             except Exception as exc:
                 logger.error("Failed to load asset from %s: %s", path, exc)
 
-        logger.info("AssetRegistry: loaded %d asset(s) from %s", loaded, self._source_dir)
+        logger.info(
+            "AssetRegistry: loaded %d asset(s) from %s", loaded, self._source_dir
+        )
 
     def reload(self) -> None:
         """Clear and reload all assets from disk."""
