@@ -41,3 +41,7 @@
 ## 2024-05-19 - Added tests for pipeline.motion_presets
 **Learning:** Found that the implementation for motion presets was spread between `pipeline/motion_presets/__init__.py`, `pipeline/motion_presets/preset.py`, and `pipeline/motion_presets/catalog.py`. Discovered that `MotionPreset` has `duration_ms` instead of `duration` through test failures.
 **Action:** Always check the exact attributes of dataclasses by reading their definition file directly rather than relying on `__init__.py` docstrings which might be slightly out of sync. Use grep and read_file aggressively.
+
+## 2024-05-28 - Split adapter registration logic
+**Learning:** Extracting asset construction logic into a helper function `_build_asset_record` helps separate object instantiation and validation from catalog registration, effectively reducing the length of `register_asset`.
+**Action:** Created `_build_asset_record` to handle object instantiation and validation logic, significantly shortening `register_asset` in `src/adapters/pipeline.py` and modularizing the code.

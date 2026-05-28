@@ -51,6 +51,7 @@ def _load_pipeline():
     try:
         from pipeline.metadata import AssetCatalog
         from pipeline.asset_model import Asset, AssetCategory, SourceFormat
+
         return AssetCatalog, Asset, AssetCategory, SourceFormat
     except ImportError as exc:
         logger.warning("pipeline_adapter: pipeline package not available – %s", exc)
@@ -58,6 +59,55 @@ def _load_pipeline():
 
 
 # ── Public interface ──────────────────────────────────────────
+
+
+def _build_asset_record(
+    Asset: Any,
+    AssetCategory: Any,
+    SourceFormat: Any,
+    asset_id: str,
+    name: str,
+    category: str,
+    source_path: str,
+    source_format: str | None,
+    theme: str | None,
+    tags: list[str] | None,
+    notes: str,
+) -> Any | None:
+    """Construct an Asset instance from primitive inputs, resolving enums."""
+    # Infer source format from file extension when not supplied
+    if source_format is None:
+        ext = os.path.splitext(source_path)[1].lstrip(".").lower()
+        source_format = ext or "png"
+
+    try:
+        cat = AssetCategory(category)
+        fmt = SourceFormat(source_format)
+    except ValueError as exc:
+        logger.error("pipeline_adapter.register_asset: invalid value – %s", exc)
+        return None
+
+    from pipeline.asset_model import AssetTheme
+
+    resolved_theme = None
+    if theme:
+        try:
+            resolved_theme = AssetTheme(theme)
+        except ValueError:
+            logger.warning(
+                "pipeline_adapter.register_asset: unknown theme %r – ignoring", theme
+            )
+
+    return Asset(
+        id=asset_id,
+        name=name,
+        category=cat,
+        source_format=fmt,
+        source_path=source_path,
+        theme=resolved_theme,
+        tags=tags or [],
+        notes=notes,
+    )
 
 
 def register_asset(
@@ -110,36 +160,22 @@ def register_asset(
 
     AssetCatalog, Asset, AssetCategory, SourceFormat = modules
 
-    # Infer source format from file extension when not supplied
-    if source_format is None:
-        ext = os.path.splitext(source_path)[1].lstrip(".").lower()
-        source_format = ext or "png"
-
-    try:
-        cat  = AssetCategory(category)
-        fmt  = SourceFormat(source_format)
-    except ValueError as exc:
-        logger.error("pipeline_adapter.register_asset: invalid value – %s", exc)
-        return False
-
-    from pipeline.asset_model import AssetTheme
-    resolved_theme = None
-    if theme:
-        try:
-            resolved_theme = AssetTheme(theme)
-        except ValueError:
-            logger.warning("pipeline_adapter.register_asset: unknown theme %r – ignoring", theme)
-
-    asset = Asset(
-        id=asset_id,
-        name=name,
-        category=cat,
-        source_format=fmt,
-        source_path=source_path,
-        theme=resolved_theme,
-        tags=tags or [],
-        notes=notes,
+    asset = _build_asset_record(
+        Asset,
+        AssetCategory,
+        SourceFormat,
+        asset_id,
+        name,
+        category,
+        source_path,
+        source_format,
+        theme,
+        tags,
+        notes,
     )
+
+    if asset is None:
+        return False
 
     catalog = AssetCatalog(auto_load=True)
     catalog.add(asset)
@@ -198,7 +234,9 @@ def generate_exports(
 
     logger.info(
         "pipeline_adapter: running export for asset=%r preset=%r formats=%r",
-        asset_id, preset_id, formats,
+        asset_id,
+        preset_id,
+        formats,
     )
     return export_all(
         asset_id,
@@ -209,7 +247,9 @@ def generate_exports(
     )
 
 
-def get_export_status(asset_id: str, preset_id: str, renders_root: str = "renders") -> dict[str, bool]:
+def get_export_status(
+    asset_id: str, preset_id: str, renders_root: str = "renders"
+) -> dict[str, bool]:
     """
     Check which export formats already exist on disk for an asset+preset pair.
 
@@ -230,10 +270,18 @@ def get_export_status(asset_id: str, preset_id: str, renders_root: str = "render
         _output_name = lambda a, p, e: f"{a}_{p}.{e}"  # noqa: E731
 
     _format_paths = {
-        "gif":       os.path.join(renders_root, "gif",        _output_name(asset_id, preset_id, "gif")),
-        "webp":      os.path.join(renders_root, "webp",       _output_name(asset_id, preset_id, "webp")),
-        "webm":      os.path.join(renders_root, "webm",       _output_name(asset_id, preset_id, "webm")),
-        "mov":       os.path.join(renders_root, "mov",        _output_name(asset_id, preset_id, "mov")),
+        "gif": os.path.join(
+            renders_root, "gif", _output_name(asset_id, preset_id, "gif")
+        ),
+        "webp": os.path.join(
+            renders_root, "webp", _output_name(asset_id, preset_id, "webp")
+        ),
+        "webm": os.path.join(
+            renders_root, "webm", _output_name(asset_id, preset_id, "webm")
+        ),
+        "mov": os.path.join(
+            renders_root, "mov", _output_name(asset_id, preset_id, "mov")
+        ),
         "thumbnail": os.path.join(renders_root, "thumbnails", f"{asset_id}_thumb.png"),
     }
     return {fmt: os.path.exists(path) for fmt, path in _format_paths.items()}
