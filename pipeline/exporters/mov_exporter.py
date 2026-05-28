@@ -52,7 +52,7 @@ class MovExporter(BaseExporter):
             return self._result_ok(path)
         except Exception as exc:
             logger.error("MovExporter failed for %s/%s: %s", asset.id, preset.id, exc)
-            return self._result_err(str(exc))
+            return ExportResult(format=self.format_id, success=False, message=str(exc))
 
     def _render(self, asset: Asset, preset: MotionPreset) -> bytes:
         """

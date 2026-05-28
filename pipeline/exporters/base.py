@@ -62,7 +62,9 @@ class BaseExporter(abc.ABC):
     format_id: str = "unknown"
 
     def __init__(self, renders_dir: Optional[str] = None) -> None:
-        self.renders_dir = Path(renders_dir).resolve() if renders_dir else _DEFAULT_RENDERS_DIR
+        self.renders_dir = (
+            Path(renders_dir).resolve() if renders_dir else _DEFAULT_RENDERS_DIR
+        )
 
     @abc.abstractmethod
     def export(self, asset: Asset, preset: MotionPreset) -> ExportResult:
@@ -93,11 +95,4 @@ class BaseExporter(abc.ABC):
             success=True,
             message="OK",
             size_bytes=size,
-        )
-
-    def _result_err(self, message: str) -> ExportResult:
-        return ExportResult(
-            format=self.format_id,
-            success=False,
-            message=message,
         )

@@ -72,7 +72,7 @@ class ThumbnailExporter(BaseExporter):
             logger.error(
                 "ThumbnailExporter failed for %s/%s: %s", asset.id, preset.id, exc
             )
-            return self._result_err(str(exc))
+            return ExportResult(format=self.format_id, success=False, message=str(exc))
 
     def _render_thumbnail(self, asset: Asset, preset: MotionPreset) -> bytes:
         """
