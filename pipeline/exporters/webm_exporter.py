@@ -47,10 +47,10 @@ class WebmExporter(BaseExporter):
             with open(path, "wb") as fh:
                 fh.write(data)
             logger.info("WebmExporter: wrote %s (%d bytes)", path, len(data))
-            return self._result_ok(path)
+            return ExportResult(format=self.format_id, path=path, success=True, message="OK", size_bytes=len(data))
         except Exception as exc:
             logger.error("WebmExporter failed for %s/%s: %s", asset.id, preset.id, exc)
-            return self._result_err(str(exc))
+            return ExportResult(format=self.format_id, success=False, message=str(exc))
 
     def _render(self, asset: Asset, preset: MotionPreset) -> bytes:
         """

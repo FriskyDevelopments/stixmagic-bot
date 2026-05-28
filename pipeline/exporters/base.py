@@ -15,10 +15,9 @@ registered exporters.
 from __future__ import annotations
 
 import abc
-import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 from pipeline._paths import RENDERS_DIR
 from pipeline.asset_model.asset import Asset
@@ -85,19 +84,3 @@ class BaseExporter(abc.ABC):
         filename = f"{asset.id}_{preset.id}{suffix}.{self.format_id}"
         return str(subdir / filename)
 
-    def _result_ok(self, path: str) -> ExportResult:
-        size = os.path.getsize(path) if os.path.exists(path) else 0
-        return ExportResult(
-            format=self.format_id,
-            path=path,
-            success=True,
-            message="OK",
-            size_bytes=size,
-        )
-
-    def _result_err(self, message: str) -> ExportResult:
-        return ExportResult(
-            format=self.format_id,
-            success=False,
-            message=message,
-        )
