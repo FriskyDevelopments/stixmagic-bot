@@ -809,7 +809,7 @@ class TestValidatePacksAsync(unittest.TestCase):
 
         conn.commit.assert_called()
 
-    # ── single-connection guarantee (N+1 fix) ─────────────────
+    # ── single-connection guarantee (N+1 prevention) ─────────────────
 
     def test_get_db_called_exactly_once_for_multiple_packs(self):
         """Only one DB connection opened regardless of the number of packs."""
