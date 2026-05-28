@@ -301,6 +301,30 @@ def export_thumbnail(
 
 # ── Aggregate exporter ────────────────────────────────────────
 
+
+def _process_thumbnail(source_path: str, renders_root: str, result: ExportResult) -> None:
+    path = export_thumbnail(source_path, os.path.join(renders_root, "thumbnails"))
+    if path:
+        result.thumbnail = path
+    else:
+        result.errors.append("thumbnail export failed")
+
+def _process_format(fmt: str, source_path: str, preset: MotionPreset, dispatch_info: tuple, result: ExportResult) -> None:
+    exporter_fn, out_dir = dispatch_info
+    try:
+        path = exporter_fn(source_path, preset, out_dir)
+    except Exception as exc:
+        result.errors.append(f"{fmt} export raised: {exc}")
+        path = None
+
+    if path:
+        if fmt == "png_sequence":
+            result.png_sequence_dir = path
+        else:
+            setattr(result, fmt, path)
+    else:
+        result.errors.append(f"{fmt} export returned None")
+
 def export_all(
     asset_id: str,
     source_path: str,
@@ -347,31 +371,11 @@ def export_all(
 
     for fmt in formats:
         if fmt == "thumbnail":
-            path = export_thumbnail(source_path, os.path.join(renders_root, "thumbnails"))
-            if path:
-                result.thumbnail = path
-            else:
-                result.errors.append("thumbnail export failed")
-            continue
-
-        if fmt not in _dispatch:
+            _process_thumbnail(source_path, renders_root, result)
+        elif fmt not in _dispatch:
             result.errors.append(f"unknown format: {fmt!r}")
-            continue
-
-        exporter_fn, out_dir = _dispatch[fmt]
-        try:
-            path = exporter_fn(source_path, preset, out_dir)
-        except Exception as exc:
-            result.errors.append(f"{fmt} export raised: {exc}")
-            path = None
-
-        if path:
-            if fmt == "png_sequence":
-                result.png_sequence_dir = path
-            else:
-                setattr(result, fmt, path)
         else:
-            result.errors.append(f"{fmt} export returned None")
+            _process_format(fmt, source_path, preset, _dispatch[fmt], result)
 
     return result
 
