@@ -1,7 +1,7 @@
 import unittest
 
 from pipeline.metadata import AssetCatalog
-from pipeline.asset_model import Asset
+from pipeline.asset_model import Asset, AssetCategory, SourceFormat
 
 class TestAssetCatalog(unittest.TestCase):
     def test_remove_existing_asset(self):
@@ -9,8 +9,8 @@ class TestAssetCatalog(unittest.TestCase):
         asset = Asset(
             id="test_id",
             name="Test",
-            category="letter",
-            source_format="png",
+            category=AssetCategory.LETTER,
+            source_format=SourceFormat.PNG,
             source_path="test.png"
         )
         catalog.add(asset)
