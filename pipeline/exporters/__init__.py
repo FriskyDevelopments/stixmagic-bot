@@ -299,6 +299,36 @@ def export_thumbnail(
         return None
 
 
+
+def _export_thumbnail_impl(source_path: str, renders_root: str, result) -> None:
+    path = export_thumbnail(source_path, os.path.join(renders_root, "thumbnails"))
+    if path:
+        result.thumbnail = path
+    else:
+        result.errors.append("thumbnail export failed")
+
+def _export_format_impl(
+    fmt: str,
+    source_path: str,
+    preset: MotionPreset,
+    out_dir: str,
+    exporter_fn,
+    result
+) -> None:
+    try:
+        path = exporter_fn(source_path, preset, out_dir)
+    except Exception as exc:
+        result.errors.append(f"{fmt} export raised: {exc}")
+        path = None
+
+    if path:
+        if fmt == "png_sequence":
+            result.png_sequence_dir = path
+        else:
+            setattr(result, fmt, path)
+    else:
+        result.errors.append(f"{fmt} export returned None")
+
 # ── Aggregate exporter ────────────────────────────────────────
 
 def export_all(
@@ -347,31 +377,12 @@ def export_all(
 
     for fmt in formats:
         if fmt == "thumbnail":
-            path = export_thumbnail(source_path, os.path.join(renders_root, "thumbnails"))
-            if path:
-                result.thumbnail = path
-            else:
-                result.errors.append("thumbnail export failed")
-            continue
-
-        if fmt not in _dispatch:
-            result.errors.append(f"unknown format: {fmt!r}")
-            continue
-
-        exporter_fn, out_dir = _dispatch[fmt]
-        try:
-            path = exporter_fn(source_path, preset, out_dir)
-        except Exception as exc:
-            result.errors.append(f"{fmt} export raised: {exc}")
-            path = None
-
-        if path:
-            if fmt == "png_sequence":
-                result.png_sequence_dir = path
-            else:
-                setattr(result, fmt, path)
+            _export_thumbnail_impl(source_path, renders_root, result)
+        elif fmt in _dispatch:
+            exporter_fn, out_dir = _dispatch[fmt]
+            _export_format_impl(fmt, source_path, preset, out_dir, exporter_fn, result)
         else:
-            result.errors.append(f"{fmt} export returned None")
+            result.errors.append(f"unknown format: {fmt!r}")
 
     return result
 
