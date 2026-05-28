@@ -41,3 +41,6 @@
 ## 2024-05-19 - Added tests for pipeline.motion_presets
 **Learning:** Found that the implementation for motion presets was spread between `pipeline/motion_presets/__init__.py`, `pipeline/motion_presets/preset.py`, and `pipeline/motion_presets/catalog.py`. Discovered that `MotionPreset` has `duration_ms` instead of `duration` through test failures.
 **Action:** Always check the exact attributes of dataclasses by reading their definition file directly rather than relying on `__init__.py` docstrings which might be slightly out of sync. Use grep and read_file aggressively.
+## 2024-05-28 - Add tests for Asset.is_animation_compatible
+**Learning:** Testing simple pure functions like list inclusion on Dataclasses can be done elegantly using helper methods to mock the dataclasses rapidly. Test isolation is ensured by instantiating new assets in each test method.
+**Action:** Created `tests/test_pipeline_asset_model_asset.py` to add missing tests for `pipeline.asset_model.asset.Asset.is_animation_compatible` method covering all key logical branching of the condition `not list or item in list`.
