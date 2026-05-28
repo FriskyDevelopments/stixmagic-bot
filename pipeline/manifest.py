@@ -56,7 +56,7 @@ The generated JSON has the following top-level structure::
     }
 """
 
-from __future__ import annotations
+
 
 import json
 import logging

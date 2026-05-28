@@ -41,3 +41,7 @@
 ## 2024-05-19 - Added tests for pipeline.motion_presets
 **Learning:** Found that the implementation for motion presets was spread between `pipeline/motion_presets/__init__.py`, `pipeline/motion_presets/preset.py`, and `pipeline/motion_presets/catalog.py`. Discovered that `MotionPreset` has `duration_ms` instead of `duration` through test failures.
 **Action:** Always check the exact attributes of dataclasses by reading their definition file directly rather than relying on `__init__.py` docstrings which might be slightly out of sync. Use grep and read_file aggressively.
+
+## 2024-05-18 - Remove unused import from pipeline/manifest.py
+**Learning:** Removing unused imports is a straightforward, low-risk change that improves code hygiene.
+**Action:** Removed `from __future__ import annotations` from `pipeline/manifest.py`.
