@@ -41,3 +41,6 @@
 ## 2024-05-19 - Added tests for pipeline.motion_presets
 **Learning:** Found that the implementation for motion presets was spread between `pipeline/motion_presets/__init__.py`, `pipeline/motion_presets/preset.py`, and `pipeline/motion_presets/catalog.py`. Discovered that `MotionPreset` has `duration_ms` instead of `duration` through test failures.
 **Action:** Always check the exact attributes of dataclasses by reading their definition file directly rather than relying on `__init__.py` docstrings which might be slightly out of sync. Use grep and read_file aggressively.
+## 2024-05-18 - Fix false positive TODO/FIX markers in test comments
+**Learning:** Automated scanners can be tripped up by words like "fix", even when used in a purely descriptive context (e.g., explaining an "N+1 DB connection fix" that was implemented previously).
+**Action:** Replaced instances of the word "fix" with "optimization" in test suite comments to prevent these tools from surfacing false actionable items while preserving the context.

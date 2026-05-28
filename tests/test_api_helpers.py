@@ -557,7 +557,7 @@ class TestMiniappIntentRoute(ApiTestBase):
 
 # ── _validate_packs_async tests ───────────────────────────────
 #
-# These tests exercise the N+1 DB connection fix introduced in this PR.
+# These tests exercise the N+1 DB connection optimization introduced in this PR.
 # The function opens exactly ONE connection and reuses it across all
 # pack-validation iterations, rather than opening a fresh connection for
 # every UPDATE or DELETE operation.
@@ -809,7 +809,7 @@ class TestValidatePacksAsync(unittest.TestCase):
 
         conn.commit.assert_called()
 
-    # ── single-connection guarantee (N+1 fix) ─────────────────
+    # ── single-connection guarantee (N+1 optimization) ─────────────────
 
     def test_get_db_called_exactly_once_for_multiple_packs(self):
         """Only one DB connection opened regardless of the number of packs."""
