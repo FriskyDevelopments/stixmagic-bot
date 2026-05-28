@@ -12,6 +12,8 @@ pulse, glow, wobble, bounce, orbit, glitch, sparkle,
 particle_burst, laser_sweep, signal_flash
 """
 
+from __future__ import annotations
+
 # ── Catalog helpers ───────────────────────────────────────────
 # catalog.py and preset.py provide a dict-based preset registry that wraps
 # the dataclass above.  Both APIs are exposed from this package.
