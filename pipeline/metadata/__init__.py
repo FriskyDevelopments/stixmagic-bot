@@ -14,8 +14,6 @@ Usage
 >>> catalog.save()
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import os
@@ -94,7 +92,9 @@ class AssetCatalog:
     offending entry so that a partially valid catalog is still usable).
     """
 
-    def __init__(self, path: str = DEFAULT_CATALOG_PATH, *, auto_load: bool = False) -> None:
+    def __init__(
+        self, path: str = DEFAULT_CATALOG_PATH, *, auto_load: bool = False
+    ) -> None:
         self._path = os.path.abspath(path)
         self._assets: dict[str, Asset] = {}
         if auto_load and os.path.exists(self._path):
@@ -149,7 +149,9 @@ class AssetCatalog:
             except (CatalogValidationError, ValueError, KeyError) as exc:
                 if strict:
                     raise CatalogValidationError(str(exc)) from exc
-                logger.error("Catalog entry [%d] skipped due to validation error: %s", i, exc)
+                logger.error(
+                    "Catalog entry [%d] skipped due to validation error: %s", i, exc
+                )
                 continue
             loaded[asset.id] = asset
 
@@ -205,7 +207,8 @@ class AssetCatalog:
         compatible with *all* presets.
         """
         return [
-            a for a in self._assets.values()
+            a
+            for a in self._assets.values()
             if not a.animation_compatible_presets
             or preset_id in a.animation_compatible_presets
         ]
@@ -213,7 +216,9 @@ class AssetCatalog:
     def search(self, tag: str) -> list[Asset]:
         """Return assets whose tag list contains the given tag (case-insensitive)."""
         tag_lower = tag.lower()
-        return [a for a in self._assets.values() if tag_lower in (t.lower() for t in a.tags)]
+        return [
+            a for a in self._assets.values() if tag_lower in (t.lower() for t in a.tags)
+        ]
 
     def __len__(self) -> int:
         return len(self._assets)
