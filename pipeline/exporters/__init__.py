@@ -107,6 +107,21 @@ class ExportResult:
     errors:           list[str]     = field(default_factory=list)
 
     @property
+    def summary(self) -> str:
+        """Return a short summary of this export result."""
+        ok_list = []
+        if self.gif: ok_list.append("gif")
+        if self.webp: ok_list.append("webp")
+        if self.webm: ok_list.append("webm")
+        if self.mov: ok_list.append("mov")
+        if self.png_sequence_dir: ok_list.append("png_seq")
+        if self.thumbnail: ok_list.append("thumb")
+        status = f"OK ({','.join(ok_list)})" if ok_list else "FAILED"
+        if self.errors:
+            status += f" with {len(self.errors)} error(s)"
+        return status
+
+    @property
     def sticker_ready_outputs(self) -> dict[str, str]:
         """Always-present dict of format → path for Telegram-sticker-ready outputs."""
         result: dict[str, str] = {}
