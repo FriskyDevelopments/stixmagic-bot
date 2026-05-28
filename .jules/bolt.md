@@ -41,3 +41,7 @@
 ## 2024-05-19 - Added tests for pipeline.motion_presets
 **Learning:** Found that the implementation for motion presets was spread between `pipeline/motion_presets/__init__.py`, `pipeline/motion_presets/preset.py`, and `pipeline/motion_presets/catalog.py`. Discovered that `MotionPreset` has `duration_ms` instead of `duration` through test failures.
 **Action:** Always check the exact attributes of dataclasses by reading their definition file directly rather than relying on `__init__.py` docstrings which might be slightly out of sync. Use grep and read_file aggressively.
+
+## 2024-05-30 - Code Health Improvement: Refactor `generate_pipeline_manifest`
+**Learning:** `generate_pipeline_manifest` had multiple responsibilities including data discovery, parsing, and file I/O, which made it lengthy and hard to read. By separating these into private helper functions (`_load_catalog`, `_discover_and_load_packs`, and `_write_manifest`), the code maintains the exact original API for callers while significantly improving readability and isolation. Inline imports inside the helpers were necessary to avoid top-level circular dependencies.
+**Action:** Refactored `pipeline/manifest.py` using Python string replacement via bash. Formatted, linted, and ran the test suite to verify no regressions were introduced.

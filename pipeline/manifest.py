@@ -62,7 +62,7 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from pipeline.metadata import AssetCatalog
@@ -76,8 +76,8 @@ DEFAULT_RENDERS_ROOT = "renders"
 
 
 def build_pipeline_manifest(
-    packs: list['PackDefinition'],
-    catalog: 'AssetCatalog',
+    packs: list["PackDefinition"],
+    catalog: "AssetCatalog",
     renders_root: str = DEFAULT_RENDERS_ROOT,
 ) -> dict[str, Any]:
     """
@@ -115,35 +115,92 @@ def build_pipeline_manifest(
         for entry in pack_manifest.entries:
             total_assets_seen.add(entry.asset_id)
             asset = catalog.get(entry.asset_id)
-            entries.append({
-                "asset_id":       entry.asset_id,
-                "asset_name":     asset.name if asset else entry.asset_id,
-                "asset_category": asset.category.value if asset else "",
-                "preset_id":      entry.preset_id,
-                "thumbnail":      entry.expected_outputs.get("thumbnail"),
-                "outputs": {
-                    fmt: path
-                    for fmt, path in entry.expected_outputs.items()
-                    if fmt != "thumbnail"
-                },
-            })
+            entries.append(
+                {
+                    "asset_id": entry.asset_id,
+                    "asset_name": asset.name if asset else entry.asset_id,
+                    "asset_category": asset.category.value if asset else "",
+                    "preset_id": entry.preset_id,
+                    "thumbnail": entry.expected_outputs.get("thumbnail"),
+                    "outputs": {
+                        fmt: path
+                        for fmt, path in entry.expected_outputs.items()
+                        if fmt != "thumbnail"
+                    },
+                }
+            )
 
-        manifest_packs.append({
-            "pack_id":         pack.pack_id,
-            "title":           pack.title,
-            "theme":           pack.theme,
-            "target_platforms": pack.target_platforms,
-            "export_formats":  pack.export_formats,
-            "entries":         entries,
-        })
-        logger.info("build_pipeline_manifest: added pack %r (%d entries)", pack.pack_id, len(entries))
+        manifest_packs.append(
+            {
+                "pack_id": pack.pack_id,
+                "title": pack.title,
+                "theme": pack.theme,
+                "target_platforms": pack.target_platforms,
+                "export_formats": pack.export_formats,
+                "entries": entries,
+            }
+        )
+        logger.info(
+            "build_pipeline_manifest: added pack %r (%d entries)",
+            pack.pack_id,
+            len(entries),
+        )
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "total_packs":  len(manifest_packs),
+        "total_packs": len(manifest_packs),
         "total_assets": len(total_assets_seen),
-        "packs":        manifest_packs,
+        "packs": manifest_packs,
     }
+
+
+def _load_catalog(catalog_path: str | None) -> "AssetCatalog":
+    from pipeline.metadata import AssetCatalog
+
+    catalog_kwargs: dict[str, Any] = {"auto_load": True}
+    if catalog_path is not None:
+        catalog_kwargs["path"] = catalog_path
+    return AssetCatalog(**catalog_kwargs)
+
+
+def _discover_and_load_packs(packs_dir: str) -> list["PackDefinition"]:
+    from pipeline.packager import PackDefinition
+
+    pack_json_files: list[str] = []
+    if os.path.isdir(packs_dir):
+        for entry in sorted(os.listdir(packs_dir)):
+            candidate = os.path.join(packs_dir, entry, "pack.json")
+            if os.path.isfile(candidate):
+                pack_json_files.append(candidate)
+
+    if not pack_json_files:
+        logger.warning(
+            "generate_pipeline_manifest: no pack.json files found under %r", packs_dir
+        )
+
+    packs: list["PackDefinition"] = []
+    for pack_file in pack_json_files:
+        try:
+            pack = PackDefinition.from_file(pack_file)
+            packs.append(pack)
+        except Exception as exc:
+            logger.error("Skipping %s – failed to load: %s", pack_file, exc)
+            continue
+    return packs
+
+
+def _write_manifest(manifest: dict[str, Any], output_path: str) -> None:
+    try:
+        with open(output_path, "w", encoding="utf-8") as fh:
+            json.dump(manifest, fh, indent=2)
+        logger.info(
+            "generate_pipeline_manifest: wrote %d packs / %d unique assets to %s",
+            manifest["total_packs"],
+            manifest["total_assets"],
+            output_path,
+        )
+    except Exception as exc:
+        logger.error("Failed to write manifest to %s: %s", output_path, exc)
 
 
 def generate_pipeline_manifest(
@@ -178,54 +235,17 @@ def generate_pipeline_manifest(
     dict
         The full manifest as a Python dict (also written to *output_path*).
     """
-    from pipeline.metadata import AssetCatalog
-    from pipeline.packager import PackDefinition
-
-    # Load asset catalog
-    catalog_kwargs: dict[str, Any] = {"auto_load": True}
-    if catalog_path is not None:
-        catalog_kwargs["path"] = catalog_path
-    catalog = AssetCatalog(**catalog_kwargs)
-
-    # Discover pack definitions
-    pack_json_files: list[str] = []
-    if os.path.isdir(packs_dir):
-        for entry in sorted(os.listdir(packs_dir)):
-            candidate = os.path.join(packs_dir, entry, "pack.json")
-            if os.path.isfile(candidate):
-                pack_json_files.append(candidate)
-
-    if not pack_json_files:
-        logger.warning(
-            "generate_pipeline_manifest: no pack.json files found under %r", packs_dir
-        )
-
-    packs: list['PackDefinition'] = []
-    for pack_file in pack_json_files:
-        try:
-            pack = PackDefinition.from_file(pack_file)
-            packs.append(pack)
-        except Exception as exc:
-            logger.error("Skipping %s – failed to load: %s", pack_file, exc)
-            continue
-
+    catalog = _load_catalog(catalog_path)
+    packs = _discover_and_load_packs(packs_dir)
     manifest = build_pipeline_manifest(packs, catalog, renders_root)
-
-    try:
-        with open(output_path, "w", encoding="utf-8") as fh:
-            json.dump(manifest, fh, indent=2)
-        logger.info(
-            "generate_pipeline_manifest: wrote %d packs / %d unique assets to %s",
-            manifest["total_packs"], manifest["total_assets"], output_path,
-        )
-    except Exception as exc:
-        logger.error("Failed to write manifest to %s: %s", output_path, exc)
+    _write_manifest(manifest, output_path)
 
     return manifest
 
 
 if __name__ == "__main__":
     import sys
+
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     out = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_MANIFEST_PATH
     result = generate_pipeline_manifest(output_path=out)
