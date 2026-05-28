@@ -116,6 +116,20 @@ def convert_to_sticker(file_bytes: io.BytesIO) -> io.BytesIO | None:
 
 # ── Video / GIF pipeline ──────────────────────────────────────
 
+def _run_ffmpeg(tmp_in_path: str, bitrate: str, out_path: str) -> subprocess.CompletedProcess:
+    cmd = [
+        "ffmpeg", "-y", "-i", tmp_in_path,
+        "-vf", "scale='if(gt(iw,ih),512,-2)':'if(gt(iw,ih),-2,512)',fps=30",
+        "-c:v", "libvpx-vp9",
+        "-b:v", bitrate,
+        "-t", "3",
+        "-an",
+        "-pix_fmt", "yuva420p",
+        out_path,
+    ]
+    return subprocess.run(cmd, capture_output=True, timeout=30)
+
+
 def convert_video_to_sticker(file_bytes: io.BytesIO) -> io.BytesIO | None:
     """
     Convert a video / GIF to a VP9 WEBM animated sticker.
@@ -127,6 +141,9 @@ def convert_video_to_sticker(file_bytes: io.BytesIO) -> io.BytesIO | None:
       • yuva420p pixel format (transparency support)
       • File size ≤ 256 KB (bitrate stepped down if needed)
     """
+    tmp_in_path = None
+    tmp_out_path = None
+    tmp_out_path2 = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_in:
             tmp_in.write(file_bytes.getvalue())
@@ -134,20 +151,7 @@ def convert_video_to_sticker(file_bytes: io.BytesIO) -> io.BytesIO | None:
 
         tmp_out_path = tmp_in_path.replace(".mp4", "_out.webm")
 
-        def _run_ffmpeg(bitrate: str, out_path: str) -> subprocess.CompletedProcess:
-            cmd = [
-                "ffmpeg", "-y", "-i", tmp_in_path,
-                "-vf", "scale='if(gt(iw,ih),512,-2)':'if(gt(iw,ih),-2,512)',fps=30",
-                "-c:v", "libvpx-vp9",
-                "-b:v", bitrate,
-                "-t", "3",
-                "-an",
-                "-pix_fmt", "yuva420p",
-                out_path,
-            ]
-            return subprocess.run(cmd, capture_output=True, timeout=30)
-
-        result = _run_ffmpeg("200k", tmp_out_path)
+        result = _run_ffmpeg(tmp_in_path, "200k", tmp_out_path)
 
         if result.returncode != 0:
             logger.error("ffmpeg error: %s", result.stderr.decode()[:500])
@@ -157,24 +161,24 @@ def convert_video_to_sticker(file_bytes: io.BytesIO) -> io.BytesIO | None:
             data = f.read()
 
         if len(data) > 256_000:
-            os.unlink(tmp_out_path)
             tmp_out_path2 = tmp_in_path.replace(".mp4", "_out2.webm")
-            _run_ffmpeg("100k", tmp_out_path2)
+            _run_ffmpeg(tmp_in_path, "100k", tmp_out_path2)
             if os.path.exists(tmp_out_path2):
                 with open(tmp_out_path2, "rb") as f:
                     data = f.read()
-                os.unlink(tmp_out_path2)
-            tmp_out_path = tmp_out_path2
-
-        os.unlink(tmp_in_path)
-        if os.path.exists(tmp_out_path):
-            os.unlink(tmp_out_path)
 
         return io.BytesIO(data)
 
     except Exception as exc:
         logger.error("Video conversion error: %s", exc)
         return None
+    finally:
+        for path in filter(None, [tmp_in_path, tmp_out_path, tmp_out_path2]):
+            if os.path.exists(path):
+                try:
+                    os.unlink(path)
+                except Exception as cleanup_exc:
+                    logger.warning("Failed to remove temporary file %s: %s", path, cleanup_exc)
 
 
 # ── Mask compositing ──────────────────────────────────────────
