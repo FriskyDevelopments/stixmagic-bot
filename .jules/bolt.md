@@ -41,3 +41,6 @@
 ## 2024-05-19 - Added tests for pipeline.motion_presets
 **Learning:** Found that the implementation for motion presets was spread between `pipeline/motion_presets/__init__.py`, `pipeline/motion_presets/preset.py`, and `pipeline/motion_presets/catalog.py`. Discovered that `MotionPreset` has `duration_ms` instead of `duration` through test failures.
 **Action:** Always check the exact attributes of dataclasses by reading their definition file directly rather than relying on `__init__.py` docstrings which might be slightly out of sync. Use grep and read_file aggressively.
+## 2026-05-28 - Add missing tests for AssetCatalog.by_preset edge cases
+**Learning:** When testing classes like `AssetCatalog` that perform file IO on instantiation, initialize with `auto_load=False` to avoid hitting the actual filesystem.
+**Action:** Created `tests/test_pipeline_metadata_catalog.py` covering empty catalogs, mismatches, and list checking for `AssetCatalog.by_preset`.
