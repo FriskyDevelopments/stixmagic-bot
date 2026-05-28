@@ -21,6 +21,10 @@ class TestAssetCatalog(unittest.TestCase):
         empty_catalog = AssetCatalog(auto_load=False)
         self.assertEqual(empty_catalog.by_preset("pulse"), [])
 
+    def test_by_preset_match(self):
+        res = self.catalog.by_preset("pulse")
+        self.assertEqual(res, [self.asset1])
+
     def test_by_preset_mismatch(self):
         # The catalog has asset1 with "pulse" and "fade" presets.
         # "zoom" is a mismatch.
