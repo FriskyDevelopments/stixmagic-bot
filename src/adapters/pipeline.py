@@ -60,6 +60,58 @@ def _load_pipeline():
 # ── Public interface ──────────────────────────────────────────
 
 
+def _build_asset(
+    Asset: Any,
+    AssetCategory: Any,
+    SourceFormat: Any,
+    asset_id: str,
+    name: str,
+    category: str,
+    source_path: str,
+    source_format: str | None,
+    theme: str | None,
+    tags: list[str] | None,
+    notes: str,
+) -> Any | None:
+    # Infer source format from file extension when not supplied
+    if source_format is None:
+        ext = os.path.splitext(source_path)[1].lstrip(".").lower()
+        source_format = ext or "png"
+
+    try:
+        cat = AssetCategory(category)
+        fmt = SourceFormat(source_format)
+    except ValueError as exc:
+        logger.error("pipeline_adapter.register_asset: invalid value – %s", exc)
+        return None
+
+    from pipeline.asset_model import AssetTheme
+    resolved_theme = None
+    if theme:
+        try:
+            resolved_theme = AssetTheme(theme)
+        except ValueError:
+            logger.warning("pipeline_adapter.register_asset: unknown theme %r – ignoring", theme)
+
+    return Asset(
+        id=asset_id,
+        name=name,
+        category=cat,
+        source_format=fmt,
+        source_path=source_path,
+        theme=resolved_theme,
+        tags=tags or [],
+        notes=notes,
+    )
+
+
+def _save_to_catalog(AssetCatalog: Any, asset: Any) -> None:
+    catalog = AssetCatalog(auto_load=True)
+    catalog.add(asset)
+    catalog.save()
+    logger.info("pipeline_adapter: registered asset %r in catalog", asset.id)
+
+
 def register_asset(
     asset_id: str,
     name: str,
@@ -110,41 +162,23 @@ def register_asset(
 
     AssetCatalog, Asset, AssetCategory, SourceFormat = modules
 
-    # Infer source format from file extension when not supplied
-    if source_format is None:
-        ext = os.path.splitext(source_path)[1].lstrip(".").lower()
-        source_format = ext or "png"
-
-    try:
-        cat  = AssetCategory(category)
-        fmt  = SourceFormat(source_format)
-    except ValueError as exc:
-        logger.error("pipeline_adapter.register_asset: invalid value – %s", exc)
+    asset = _build_asset(
+        Asset,
+        AssetCategory,
+        SourceFormat,
+        asset_id,
+        name,
+        category,
+        source_path,
+        source_format,
+        theme,
+        tags,
+        notes,
+    )
+    if asset is None:
         return False
 
-    from pipeline.asset_model import AssetTheme
-    resolved_theme = None
-    if theme:
-        try:
-            resolved_theme = AssetTheme(theme)
-        except ValueError:
-            logger.warning("pipeline_adapter.register_asset: unknown theme %r – ignoring", theme)
-
-    asset = Asset(
-        id=asset_id,
-        name=name,
-        category=cat,
-        source_format=fmt,
-        source_path=source_path,
-        theme=resolved_theme,
-        tags=tags or [],
-        notes=notes,
-    )
-
-    catalog = AssetCatalog(auto_load=True)
-    catalog.add(asset)
-    catalog.save()
-    logger.info("pipeline_adapter: registered asset %r in catalog", asset_id)
+    _save_to_catalog(AssetCatalog, asset)
     return True
 
 
