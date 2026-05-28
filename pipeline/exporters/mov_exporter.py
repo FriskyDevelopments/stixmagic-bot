@@ -49,10 +49,10 @@ class MovExporter(BaseExporter):
             with open(path, "wb") as fh:
                 fh.write(data)
             logger.info("MovExporter: wrote %s (%d bytes)", path, len(data))
-            return self._result_ok(path)
+            return self.create_result_ok(path)
         except Exception as exc:
             logger.error("MovExporter failed for %s/%s: %s", asset.id, preset.id, exc)
-            return self._result_err(str(exc))
+            return self.create_result_err(str(exc))
 
     def _render(self, asset: Asset, preset: MotionPreset) -> bytes:
         """

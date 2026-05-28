@@ -20,7 +20,6 @@ Real implementation notes
 from __future__ import annotations
 
 import logging
-import os
 
 from pipeline.asset_model.asset import Asset
 from pipeline.motion_presets.preset import MotionPreset
@@ -49,10 +48,10 @@ class GifExporter(BaseExporter):
             with open(path, "wb") as fh:
                 fh.write(frames)
             logger.info("GifExporter: wrote %s (%d bytes)", path, len(frames))
-            return self._result_ok(path)
+            return self.create_result_ok(path)
         except Exception as exc:
             logger.error("GifExporter failed for %s/%s: %s", asset.id, preset.id, exc)
-            return self._result_err(str(exc))
+            return self.create_result_err(str(exc))
 
     def _render_frames(self, asset: Asset, preset: MotionPreset) -> bytes:
         """
