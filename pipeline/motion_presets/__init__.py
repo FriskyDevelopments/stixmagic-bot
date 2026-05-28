@@ -12,23 +12,19 @@ pulse, glow, wobble, bounce, orbit, glitch, sparkle,
 particle_burst, laser_sweep, signal_flash
 """
 
-from __future__ import annotations
-
-from dataclasses import dataclass, field
-from typing import Any
-
-
 # ── Catalog helpers ───────────────────────────────────────────
 # catalog.py and preset.py provide a dict-based preset registry that wraps
 # the dataclass above.  Both APIs are exposed from this package.
 try:
+    from .catalog import PRESETS
+    from .catalog import get_preset as _catalog_get_preset
     from .preset import MotionPreset
-    from .catalog import PRESETS, get_preset as _catalog_get_preset, list_presets as _catalog_list_presets
 
     PRESET_REGISTRY = PRESETS
     BUILTIN_PRESETS = list(PRESETS.values())
 except ImportError:
     pass
+
 
 def get_preset(preset_id: str) -> MotionPreset | None:
     """Return the MotionPreset with the given id, or None if not found."""
@@ -61,7 +57,8 @@ def list_presets(
 
     if category is not None:
         result = [
-            p for p in result
+            p
+            for p in result
             if not p.recommended_categories or category in p.recommended_categories
         ]
     if sticker_safe is not None:
@@ -70,4 +67,3 @@ def list_presets(
         result = [p for p in result if p.overlay_safe is overlay_safe]
 
     return result
-
