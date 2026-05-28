@@ -41,3 +41,7 @@
 ## 2024-05-19 - Added tests for pipeline.motion_presets
 **Learning:** Found that the implementation for motion presets was spread between `pipeline/motion_presets/__init__.py`, `pipeline/motion_presets/preset.py`, and `pipeline/motion_presets/catalog.py`. Discovered that `MotionPreset` has `duration_ms` instead of `duration` through test failures.
 **Action:** Always check the exact attributes of dataclasses by reading their definition file directly rather than relying on `__init__.py` docstrings which might be slightly out of sync. Use grep and read_file aggressively.
+
+## 2026-05-28 - Optimize pack existence check with dict lookup
+**Learning:** In Python, for small lists of tuples, replacing a generator expression lookup (e.g. `next((v for k_, v in items if k_ == k), default)`) with a dictionary lookup (e.g. `dict(items).get(k, default)`) can improve performance because the `dict` constructor uses a highly optimized C implementation, avoiding bytecode execution overhead per iteration.
+**Action:** Replaced `any(n == pack_name for n, _ in existing)` with `pack_name in dict(existing)` in `main.py` at line 1450.

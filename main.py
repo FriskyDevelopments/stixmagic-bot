@@ -1447,7 +1447,7 @@ async def _sync_process(update: Update, context: ContextTypes.DEFAULT_TYPE, pack
         return WAITING_SYNC_NAME
 
     existing = get_user_packs(user.id)
-    if any(n == pack_name for n, _ in existing):
+    if pack_name in dict(existing):
         await status_msg.edit_text(
             f"✦ <b>{html.escape(ss.title)}</b> is already bound to your grimoire.",
             parse_mode="HTML",
