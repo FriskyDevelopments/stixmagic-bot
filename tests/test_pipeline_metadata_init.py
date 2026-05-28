@@ -1,8 +1,7 @@
 import unittest
-import tempfile
 
 from pipeline.metadata import AssetCatalog
-from pipeline.asset_model.asset import Asset, CATEGORY_LETTER, THEME_NEON, FORMAT_PNG
+from pipeline.asset_model import Asset, AssetCategory, AssetTheme, SourceFormat
 
 class TestAssetCatalog(unittest.TestCase):
     def setUp(self):
@@ -18,9 +17,9 @@ class TestAssetCatalog(unittest.TestCase):
         asset1 = Asset(
             id="asset1",
             name="Asset 1",
-            category=CATEGORY_LETTER,
-            theme=THEME_NEON,
-            source_format=FORMAT_PNG,
+            category=AssetCategory.LETTER,
+            theme=AssetTheme.NEON,
+            source_format=SourceFormat.PNG,
             source_path="dummy.png",
             width=100,
             height=100,
@@ -38,9 +37,9 @@ class TestAssetCatalog(unittest.TestCase):
         asset1 = Asset(
             id="asset1",
             name="Asset 1",
-            category=CATEGORY_LETTER,
-            theme=THEME_NEON,
-            source_format=FORMAT_PNG,
+            category=AssetCategory.LETTER,
+            theme=AssetTheme.NEON,
+            source_format=SourceFormat.PNG,
             source_path="dummy.png",
             width=100,
             height=100,
@@ -58,9 +57,9 @@ class TestAssetCatalog(unittest.TestCase):
         asset1 = Asset(
             id="asset1",
             name="Asset 1",
-            category=CATEGORY_LETTER,
-            theme=THEME_NEON,
-            source_format=FORMAT_PNG,
+            category=AssetCategory.LETTER,
+            theme=AssetTheme.NEON,
+            source_format=SourceFormat.PNG,
             source_path="dummy.png",
             width=100,
             height=100,
