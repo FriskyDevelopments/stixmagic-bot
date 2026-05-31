@@ -45,3 +45,6 @@
 ## 2024-05-24 - Refactored `init_db` in `infra/db.py`
 **Learning:** Refactoring a long, monolithic database initialization function into discrete helper functions (e.g., `_create_tables`, `_create_indices`, `_seed_initial_data`) significantly improves readability and modularity, making future schema updates or data migrations much easier to manage.
 **Action:** Split `init_db` into helper functions and updated `init_db` to orchestrate them sequentially. Verified changes using tests and standard linters.
+## 2026-05-30 - Replace `+=` with `Array.push().join('')` in miniapp
+**Learning:** Found that `miniapp.html` was generating a potentially large HTML string for the catalog using iterative string concatenation (`html +=`) inside a `.forEach` loop over packs. In older JS engines or with very large catalogs, string immutability causes O(n^2) allocations for `+=`, leading to memory thrashing.
+**Action:** Replaced iterative string concatenation with an array buffer approach (`htmlParts.push(...)` and `htmlParts.join('')`) to reduce memory allocations and slightly improve rendering performance for large catalog lists.
