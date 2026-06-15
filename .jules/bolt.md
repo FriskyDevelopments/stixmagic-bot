@@ -48,3 +48,7 @@
 ## 2026-05-30 - Replace `+=` with `Array.push().join('')` in miniapp
 **Learning:** Found that `miniapp.html` was generating a potentially large HTML string for the catalog using iterative string concatenation (`html +=`) inside a `.forEach` loop over packs. In older JS engines or with very large catalogs, string immutability causes O(n^2) allocations for `+=`, leading to memory thrashing.
 **Action:** Replaced iterative string concatenation with an array buffer approach (`htmlParts.push(...)` and `htmlParts.join('')`) to reduce memory allocations and slightly improve rendering performance for large catalog lists.
+
+## 2026-05-31 - Replace loop `appendChild()` with `Array.push().join('')` in renderMyPacks
+**Learning:** Found that `miniapp.html` was repeatedly creating DOM nodes (`createElement`) and appending them (`appendChild`) to a container inside a loop while iterating over user packs. For users with many packs, this causes significant DOM layout thrashing and slows down rendering.
+**Action:** Replaced the loop logic to build an array of HTML strings using `Array.push()` and then perform a single DOM update using `.join('')` and `.innerHTML`. This reduces DOM reflows and improves rendering performance for large lists.
