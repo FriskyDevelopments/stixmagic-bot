@@ -41,7 +41,7 @@ def cancel_keyboard() -> InlineKeyboardMarkup:
 def title_confirmation_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("✅ Seal Name", callback_data="forge_confirm")],
+            [InlineKeyboardButton("✅ Confirm Name", callback_data="forge_confirm")],
             [InlineKeyboardButton("✏️ Rename", callback_data="forge_edit")],
             [InlineKeyboardButton("✕ Cancel", callback_data="nav:home")],
         ]
