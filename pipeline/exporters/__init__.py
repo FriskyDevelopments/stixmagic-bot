@@ -301,6 +301,43 @@ def export_thumbnail(
 
 # ── Aggregate exporter ────────────────────────────────────────
 
+def _get_dispatch(renders_root: str) -> dict:
+    return {
+        "gif":          (export_gif,          os.path.join(renders_root, "gif")),
+        "webp":         (export_animated_webp, os.path.join(renders_root, "webp")),
+        "webm":         (export_webm,          os.path.join(renders_root, "webm")),
+        "mov":          (export_mov,           os.path.join(renders_root, "mov")),
+        "png_sequence": (export_png_sequence,  os.path.join(renders_root, "png_sequences")),
+    }
+
+
+def _run_exporter(
+    fmt: str,
+    source_path: str,
+    preset: MotionPreset,
+    renders_root: str,
+    dispatch: dict,
+) -> tuple[str | None, str | None]:
+    """Run a single exporter and return (path, error_message)."""
+    if fmt == "thumbnail":
+        path = export_thumbnail(source_path, os.path.join(renders_root, "thumbnails"))
+        if not path:
+            return None, "thumbnail export failed"
+        return path, None
+
+    if fmt not in dispatch:
+        return None, f"unknown format: {fmt!r}"
+
+    exporter_fn, out_dir = dispatch[fmt]
+    try:
+        path = exporter_fn(source_path, preset, out_dir)
+        if not path:
+            return None, f"{fmt} export returned None"
+        return path, None
+    except Exception as exc:
+        return None, f"{fmt} export raised: {exc}"
+
+
 def export_all(
     asset_id: str,
     source_path: str,
@@ -336,42 +373,17 @@ def export_all(
         formats = ["gif", "webp", "webm", "mov", "png_sequence", "thumbnail"]
 
     result = ExportResult(asset_id=asset_id, preset_id=preset.id)
-
-    _dispatch = {
-        "gif":          (export_gif,          os.path.join(renders_root, "gif")),
-        "webp":         (export_animated_webp, os.path.join(renders_root, "webp")),
-        "webm":         (export_webm,          os.path.join(renders_root, "webm")),
-        "mov":          (export_mov,           os.path.join(renders_root, "mov")),
-        "png_sequence": (export_png_sequence,  os.path.join(renders_root, "png_sequences")),
-    }
+    dispatch = _get_dispatch(renders_root)
 
     for fmt in formats:
-        if fmt == "thumbnail":
-            path = export_thumbnail(source_path, os.path.join(renders_root, "thumbnails"))
-            if path:
-                result.thumbnail = path
-            else:
-                result.errors.append("thumbnail export failed")
-            continue
-
-        if fmt not in _dispatch:
-            result.errors.append(f"unknown format: {fmt!r}")
-            continue
-
-        exporter_fn, out_dir = _dispatch[fmt]
-        try:
-            path = exporter_fn(source_path, preset, out_dir)
-        except Exception as exc:
-            result.errors.append(f"{fmt} export raised: {exc}")
-            path = None
-
-        if path:
+        path, error = _run_exporter(fmt, source_path, preset, renders_root, dispatch)
+        if error:
+            result.errors.append(error)
+        else:
             if fmt == "png_sequence":
                 result.png_sequence_dir = path
             else:
                 setattr(result, fmt, path)
-        else:
-            result.errors.append(f"{fmt} export returned None")
 
     return result
 
