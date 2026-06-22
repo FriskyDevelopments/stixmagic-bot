@@ -148,6 +148,26 @@ def register_asset(
     return True
 
 
+
+def _load_export_modules():
+    try:
+        from pipeline.motion_presets import get_preset
+        from pipeline.exporters import export_all
+        return get_preset, export_all
+    except ImportError as exc:
+        logger.warning("pipeline_adapter: pipeline package not available – %s", exc)
+        return None
+
+def _get_preset_for_export(get_preset_fn, preset_id: str):
+    preset = get_preset_fn(preset_id)
+    if preset is None:
+        logger.error(
+            "pipeline_adapter.generate_exports: preset %r not found – skipping export",
+            preset_id,
+        )
+        return None
+    return preset
+
 def generate_exports(
     asset_id: str,
     source_path: str,
@@ -181,19 +201,13 @@ def generate_exports(
         The export result container, or None if the pipeline is unavailable
         or the preset is not found.
     """
-    try:
-        from pipeline.motion_presets import get_preset
-        from pipeline.exporters import export_all
-    except ImportError as exc:
-        logger.warning("pipeline_adapter: pipeline package not available – %s", exc)
+    modules = _load_export_modules()
+    if modules is None:
         return None
+    get_preset, export_all = modules
 
-    preset = get_preset(preset_id)
+    preset = _get_preset_for_export(get_preset, preset_id)
     if preset is None:
-        logger.error(
-            "pipeline_adapter.generate_exports: preset %r not found – skipping export",
-            preset_id,
-        )
         return None
 
     logger.info(
