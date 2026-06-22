@@ -85,7 +85,7 @@ class PngSequenceExporter(BaseExporter):
             logger.error(
                 "PngSequenceExporter failed for %s/%s: %s", asset.id, preset.id, exc
             )
-            return self._result_err(str(exc))
+            return ExportResult(format=self.format_id, success=False, message=str(exc))
 
     def _render_frames(self, asset: Asset, preset: MotionPreset) -> list:
         """
