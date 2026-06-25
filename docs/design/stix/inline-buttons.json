@@ -1,0 +1,72 @@
+{
+  "bot": "STIX MΛGIC",
+  "api": "Telegram Bot API 9.4",
+  "accent": "Magic Violet #B07DFF (✦) / Aura Rose #FF8AB3 (✧) / Spark Gold #FFCF70",
+  "note": "style (primary|success|danger) sets the native button colour; text carries the bot's symbol/emoji as fallback; icon_custom_emoji_id (sovereign-icons set) attaches only when SOVEREIGN_PREMIUM_EMOJI=true.",
+  "messages": {
+    "welcome": {
+      "inline_keyboard": [
+        [
+          {
+            "text": "Pick a style ✦",
+            "callback_data": "style",
+            "style": "primary",
+            "icon_custom_emoji_id": "5033138549159888799"
+          }
+        ]
+      ]
+    },
+    "status": {
+      "inline_keyboard": [
+        [
+          {
+            "text": "Add extra magic ✧",
+            "callback_data": "magic",
+            "style": "primary",
+            "icon_custom_emoji_id": "5033138549159888799"
+          }
+        ]
+      ]
+    },
+    "action": {
+      "inline_keyboard": [
+        [
+          {
+            "text": "Create sticker ✦",
+            "callback_data": "create",
+            "style": "success",
+            "icon_custom_emoji_id": "5033138549159888799"
+          }
+        ],
+        [
+          {
+            "text": "Add extra magic ✧",
+            "callback_data": "magic",
+            "style": "primary",
+            "icon_custom_emoji_id": "5035154215966607010"
+          }
+        ],
+        [
+          {
+            "text": "Start over",
+            "callback_data": "reset",
+            "style": "danger",
+            "icon_custom_emoji_id": "5033072157555427511"
+          }
+        ]
+      ]
+    },
+    "error": {
+      "inline_keyboard": [
+        [
+          {
+            "text": "Apply to my image ✦",
+            "callback_data": "apply",
+            "style": "primary",
+            "icon_custom_emoji_id": "5033138549159888799"
+          }
+        ]
+      ]
+    }
+  }
+}
