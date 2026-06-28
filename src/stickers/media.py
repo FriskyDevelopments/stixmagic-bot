@@ -94,14 +94,7 @@ def convert_to_sticker(file_bytes: io.BytesIO) -> io.BytesIO | None:
         img = img.convert("RGBA")
 
     max_dim = 512
-    w, h = img.size
-    if w > h:
-        new_w, new_h = max_dim, int(h * max_dim / w)
-    else:
-        new_w, new_h = int(w * max_dim / h), max_dim
-
-    if (new_w, new_h) != (w, h):
-        img = img.resize((new_w, new_h), Image.LANCZOS)
+    img.thumbnail((max_dim, max_dim), Image.LANCZOS)
 
     for quality in [80, 60, 40, 20]:
         output = io.BytesIO()
@@ -185,27 +178,31 @@ def apply_mask_to_image(
     White areas in the mask are *kept* by default; set inverted=True to flip.
     Returns a WEBP BytesIO (≤ 64 KB).
     """
-    source = Image.open(source_bytes).convert("RGBA")
-    mask = Image.open(mask_bytes).convert("L")
-    mask = mask.resize(source.size, Image.LANCZOS)
+    source = Image.open(source_bytes)
+
+    if source.mode != "RGBA":
+        source = source.convert("RGBA")
+
+    max_dim = 512
+    source.thumbnail((max_dim, max_dim), Image.LANCZOS)
+
+    mask = Image.open(mask_bytes)
+    if mask.mode != "L":
+        mask = mask.convert("L")
+
+    mask.thumbnail(source.size, Image.LANCZOS)
+
+    if mask.size != source.size:
+        mask = mask.resize(source.size, Image.LANCZOS)
 
     if inverted:
         mask = ImageOps.invert(mask)
 
-    result = source.copy()
-    result.putalpha(mask)
-
-    max_dim = 512
-    w, h = result.size
-    if w > h:
-        new_w, new_h = max_dim, int(h * max_dim / w)
-    else:
-        new_w, new_h = int(w * max_dim / h), max_dim
-    result = result.resize((new_w, new_h), Image.LANCZOS)
+    source.putalpha(mask)
 
     for quality in [80, 60, 40, 20]:
         output = io.BytesIO()
-        result.save(output, format="WEBP", quality=quality)
+        source.save(output, format="WEBP", quality=quality)
         if output.tell() <= 64_000:
             output.seek(0)
             return output
