@@ -1,0 +1,4 @@
+🎯 **What:** Removed unused `START_PAYLOAD_*` variables from `stixmagic/__init__.py`. Re-formatted the trailing import to fix PEP 8 `E501` line length violation.
+💡 **Why:** Cleans up the `stixmagic` namespace by not exposing variables that are not explicitly needed at the top-level. Improves maintainability and readability by reducing clutter in the module's exposed API. Also resolved a line length linting error to improve code health.
+✅ **Verification:** Ran `TELEGRAM_BOT_TOKEN=dummy STIXMAGIC_API_KEY=supersecret poetry run python -m unittest discover tests` successfully (no new errors introduced). Also ran `flake8 stixmagic/__init__.py` to ensure adherence to formatting rules.
+✨ **Result:** A cleaner initialization file for the `stixmagic` module, accurately exposing only the needed constants, and fully compliant with PEP 8 styling rules.
