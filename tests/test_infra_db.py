@@ -460,6 +460,16 @@ class TestCatalogGetUserReaction(InfraDbTestCase):
         self.assertIsNone(result)
 
 
+class TestDbFile(unittest.TestCase):
+    """Test the _db_file helper function."""
+
+    @patch("infra.db.get_settings")
+    def test_db_file_returns_configured_path(self, mock_get_settings):
+        """_db_file should return the database_path from settings."""
+        mock_get_settings.return_value.database_path = "custom/path.db"
+        import infra.db
+        self.assertEqual(infra.db._db_file(), "custom/path.db")
+
 if __name__ == "__main__":
     unittest.main()
 
