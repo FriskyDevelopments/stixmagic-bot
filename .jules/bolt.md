@@ -48,3 +48,6 @@
 ## 2026-05-30 - Replace `+=` with `Array.push().join('')` in miniapp
 **Learning:** Found that `miniapp.html` was generating a potentially large HTML string for the catalog using iterative string concatenation (`html +=`) inside a `.forEach` loop over packs. In older JS engines or with very large catalogs, string immutability causes O(n^2) allocations for `+=`, leading to memory thrashing.
 **Action:** Replaced iterative string concatenation with an array buffer approach (`htmlParts.push(...)` and `htmlParts.join('')`) to reduce memory allocations and slightly improve rendering performance for large catalog lists.
+## 2024-06-30 - Optimized image mask applying performance
+**Learning:** Found that applying a mask to an image using `Image.resize` and `ImageOps.invert` was doing redundant operations because the full size image was being resized twice. This significantly increased the processing time, particularly when working with larger input images.
+**Action:** Optimized the process by resizing the source image to the target dimensions *before* compositing it with the mask. This reduces the number of pixels processed during compositing.

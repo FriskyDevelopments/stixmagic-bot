@@ -186,6 +186,20 @@ def apply_mask_to_image(
     Returns a WEBP BytesIO (≤ 64 KB).
     """
     source = Image.open(source_bytes).convert("RGBA")
+
+    # ⚡ Bolt Optimization: Resize the source image *before* applying the mask.
+    # This prevents resizing the full-resolution image twice (once for the mask, once for the composite)
+    # and drastically reduces memory and CPU usage during the resize step.
+    max_dim = 512
+    w, h = source.size
+    if w > h:
+        new_w, new_h = max_dim, int(h * max_dim / w)
+    else:
+        new_w, new_h = int(w * max_dim / h), max_dim
+
+    if (new_w, new_h) != (w, h):
+        source = source.resize((new_w, new_h), Image.LANCZOS)
+
     mask = Image.open(mask_bytes).convert("L")
     mask = mask.resize(source.size, Image.LANCZOS)
 
@@ -194,14 +208,6 @@ def apply_mask_to_image(
 
     result = source.copy()
     result.putalpha(mask)
-
-    max_dim = 512
-    w, h = result.size
-    if w > h:
-        new_w, new_h = max_dim, int(h * max_dim / w)
-    else:
-        new_w, new_h = int(w * max_dim / h), max_dim
-    result = result.resize((new_w, new_h), Image.LANCZOS)
 
     for quality in [80, 60, 40, 20]:
         output = io.BytesIO()
