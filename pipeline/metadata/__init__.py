@@ -94,7 +94,9 @@ class AssetCatalog:
     offending entry so that a partially valid catalog is still usable).
     """
 
-    def __init__(self, path: str = DEFAULT_CATALOG_PATH, *, auto_load: bool = False) -> None:
+    def __init__(
+        self, path: str = DEFAULT_CATALOG_PATH, *, auto_load: bool = False
+    ) -> None:
         self._path = os.path.abspath(path)
         self._assets: dict[str, Asset] = {}
         if auto_load and os.path.exists(self._path):
@@ -115,9 +117,21 @@ class AssetCatalog:
             invalid entry.  When False (default), log the error and skip the
             offending entry so the rest of the catalog is still available.
         """
+        raw = self._read_catalog_file(strict)
+        if raw is None:
+            return
+
+        self._assets = self._parse_assets(raw, strict)
+        logger.info(
+            "Loaded %d assets from catalog (%d entries in file).",
+            len(self._assets),
+            len(raw),
+        )
+
+    def _read_catalog_file(self, strict: bool) -> list[dict[str, Any]] | None:
         if not os.path.exists(self._path):
             logger.info("Catalog not found at %s — starting empty.", self._path)
-            return
+            return None
         try:
             with open(self._path, encoding="utf-8") as fh:
                 raw: list[dict[str, Any]] = json.load(fh)
@@ -126,10 +140,10 @@ class AssetCatalog:
             if strict:
                 raise CatalogValidationError(msg) from exc
             logger.error(msg)
-            return
+            return None
         except Exception as exc:
             logger.error("Failed to open catalog %s: %s", self._path, exc)
-            return
+            return None
 
         if not isinstance(raw, list):
             msg = (
@@ -139,8 +153,13 @@ class AssetCatalog:
             if strict:
                 raise CatalogValidationError(msg)
             logger.error(msg)
-            return
+            return None
 
+        return raw
+
+    def _parse_assets(
+        self, raw: list[dict[str, Any]], strict: bool
+    ) -> dict[str, Asset]:
         loaded: dict[str, Asset] = {}
         for i, item in enumerate(raw):
             try:
@@ -149,16 +168,12 @@ class AssetCatalog:
             except (CatalogValidationError, ValueError, KeyError) as exc:
                 if strict:
                     raise CatalogValidationError(str(exc)) from exc
-                logger.error("Catalog entry [%d] skipped due to validation error: %s", i, exc)
+                logger.error(
+                    "Catalog entry [%d] skipped due to validation error: %s", i, exc
+                )
                 continue
             loaded[asset.id] = asset
-
-        self._assets = loaded
-        logger.info(
-            "Loaded %d assets from catalog (%d entries in file).",
-            len(self._assets),
-            len(raw),
-        )
+        return loaded
 
     def save(self) -> None:
         """Persist the current in-memory catalog to disk."""
@@ -205,7 +220,8 @@ class AssetCatalog:
         compatible with *all* presets.
         """
         return [
-            a for a in self._assets.values()
+            a
+            for a in self._assets.values()
             if not a.animation_compatible_presets
             or preset_id in a.animation_compatible_presets
         ]
@@ -213,7 +229,9 @@ class AssetCatalog:
     def search(self, tag: str) -> list[Asset]:
         """Return assets whose tag list contains the given tag (case-insensitive)."""
         tag_lower = tag.lower()
-        return [a for a in self._assets.values() if tag_lower in (t.lower() for t in a.tags)]
+        return [
+            a for a in self._assets.values() if tag_lower in (t.lower() for t in a.tags)
+        ]
 
     def __len__(self) -> int:
         return len(self._assets)
