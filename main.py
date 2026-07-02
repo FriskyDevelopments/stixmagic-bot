@@ -1149,15 +1149,14 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         desc = pack.get("description", "")
         likes = pack.get("likes", 0)
         dislikes = pack.get("dislikes", 0)
-        parts = [
-            f"🔍 <b>{html.escape(title)}</b>\n",
+        message_text = (
+            f"🔍 <b>{html.escape(title)}</b>\n"
             f"<code>{html.escape(name)}</code>\n"
-        ]
+        )
         if desc:
-            parts.append(f"\n<i>{html.escape(desc)}</i>\n")
-        parts.append(f"\n👍 {likes}  ·  👎 {dislikes}")
-        parts.append(f"\n\n➕ <a href=\"https://t.me/addstickers/{name}\">Add to Telegram</a>")
-        message_text = "".join(parts)
+            message_text += f"\n<i>{html.escape(desc)}</i>\n"
+        message_text += f"\n👍 {likes}  ·  👎 {dislikes}"
+        message_text += f"\n\n➕ <a href=\"https://t.me/addstickers/{name}\">Add to Telegram</a>"
 
         results.append(
             InlineQueryResultArticle(

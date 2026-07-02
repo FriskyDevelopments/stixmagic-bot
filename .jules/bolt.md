@@ -38,7 +38,3 @@
 ## 2026-05-13 - Loop Invariant Code Motion and Lookup Optimization
 **Learning:** Found that `pipeline/packager/__init__.py::build_pack` had an O(Assets * Presets * Formats) nested loop that repeatedly performed identical dictionary lookups and conditional checks (like checking if the format was 'thumbnail') which were invariant for a given asset or the entire execution. This resulted in redundant work and slower execution.
 **Action:** Extracted loop invariants and pre-computed static values (e.g. format tuples, constant thumbnail paths) outside the inner loops. This minimizes repeated dictionary accesses and condition evaluations, yielding an ~23% performance improvement in manifest generation.
-
-## 2026-05-14 - String Concatenation Optimization
-**Learning:** Found that `main.py::inline_query_handler` was using repeated `+=` string concatenations in a loop to build `message_text`. While modern Python (3.12) optimizes this fairly well, building a list of parts and using `"".join(parts)` avoids allocating multiple intermediate string objects. Although simple f-string combinations can be faster, `.join()` is a standard optimization pattern to prevent potential O(N^2) behavior in older versions or very large strings.
-**Action:** Replaced repeated `+=` string concatenations with a list accumulation and `"".join(parts)` to prevent excessive string allocations during string building.
