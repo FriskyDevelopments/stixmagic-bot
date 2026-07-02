@@ -1,0 +1,7 @@
+Title: 🧹 Refactor setup_handlers to improve readability
+
+Description:
+🎯 What: Extracted inline ConversationHandlers into separate _build_*_conv() helper functions.
+💡 Why: Improves readability and maintainability by drastically reducing the size and complexity of the setup_handlers method.
+✅ Verification: Ran formatters, verified file diffs, and executed test_main_forge_handlers.py which passed successfully.
+✨ Result: setup_handlers is now clean, declarative, and easy to parse, while preserving existing routing logic.
