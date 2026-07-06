@@ -7,34 +7,62 @@ import string
 import threading
 import time
 
-from telegram import (InlineKeyboardButton, InlineKeyboardMarkup,
-                      InlineQueryResultArticle, InputSticker,
-                      InputTextMessageContent, MenuButtonWebApp, Update,
-                      WebAppInfo)
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InlineQueryResultArticle,
+    InputSticker,
+    InputTextMessageContent,
+    MenuButtonWebApp,
+    Update,
+    WebAppInfo,
+)
 from telegram.error import BadRequest
-from telegram.ext import (Application, CallbackQueryHandler, CommandHandler,
-                          ContextTypes, ConversationHandler,
-                          InlineQueryHandler, MessageHandler, filters)
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    ConversationHandler,
+    InlineQueryHandler,
+    MessageHandler,
+    filters,
+)
 
 from config.runtime import ConfigError, get_settings
 from core.engine import StixCoreEngine
 from domain.media import apply_mask_to_image, download_file_bytes
 from infra.db import add_pack as add_pack_to_db
-from infra.db import (catalog_add_pack, catalog_count, catalog_get_pack,
-                      catalog_get_user_reaction, catalog_increment_views,
-                      catalog_react, catalog_search)
+from infra.db import (
+    catalog_add_pack,
+    catalog_count,
+    catalog_get_pack,
+    catalog_get_user_reaction,
+    catalog_increment_views,
+    catalog_react,
+    catalog_search,
+)
 from infra.db import delete_pack as delete_pack_from_db
-from infra.db import (get_mask_inverted, get_user_packs, init_db, is_new_user,
-                      set_mask_inverted)
+from infra.db import (
+    get_mask_inverted,
+    get_user_packs,
+    init_db,
+    is_new_user,
+    set_mask_inverted,
+)
 from infra.db import update_pack_title as update_pack_title_in_db
 from loaders import LoaderController, get_loader_for_context
 from menus import build_keyboard, get_menu_text
 from platforms.telegram import TelegramStixAdapter
 from src.bot.forge_wizard import ForgeDraft, ForgeStep
 from src.bot.forge_wizard import cancel_keyboard as forge_cancel_keyboard
-from src.bot.forge_wizard import (create_start_text, sticker_prompt_text,
-                                  title_confirmation_keyboard,
-                                  title_confirmation_text, validate_pack_title)
+from src.bot.forge_wizard import (
+    create_start_text,
+    sticker_prompt_text,
+    title_confirmation_keyboard,
+    title_confirmation_text,
+    validate_pack_title,
+)
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -533,14 +561,16 @@ async def addsticker_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     pack_name = query.data.replace("pack_", "")
     packs = context.user_data.get("user_packs", [])
-    selected_name = next((n for n, _ in packs if n == pack_name), None)
+    # Optimization: Use dict lookup instead of Python generator expression for O(1) performance
+    selected_name = pack_name if pack_name in dict(packs) else None
 
     if not selected_name:
         await query.edit_message_text("Pack not found. Try again.")
         return ConversationHandler.END
 
     context.user_data["selected_pack"] = selected_name
-    pack_title = next((t for n, t in packs if n == pack_name), pack_name)
+    # Optimization: Use dict lookup instead of Python generator expression for O(1) performance
+    pack_title = dict(packs).get(pack_name, pack_name)
 
     await query.edit_message_text(
         f"✦ <b>{html.escape(pack_title)}</b>\n"
@@ -557,7 +587,8 @@ async def addsticker_receive(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user = update.message.from_user
     pack_name = context.user_data.get("selected_pack")
     packs = context.user_data.get("user_packs", [])
-    pack_title = next((t for n, t in packs if n == pack_name), pack_name)
+    # Optimization: Use dict lookup instead of Python generator expression for O(1) performance
+    pack_title = dict(packs).get(pack_name, pack_name)
 
     media = telegram_adapter.parse_message_media(update.message)
     if not media:
@@ -846,7 +877,8 @@ async def magic_pack_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pack_name = data.replace("cutpack_", "")
         user = query.from_user
         packs = get_user_packs(user.id)
-        pack_title = next((t for n, t in packs if n == pack_name), pack_name)
+        # Optimization: Use dict lookup instead of Python generator expression for O(1) performance
+        pack_title = dict(packs).get(pack_name, pack_name)
 
         try:
             sticker_file = io.BytesIO(cut_result)
@@ -1576,7 +1608,8 @@ async def delete_pack_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     pack_name = query.data.replace("del_", "")
     user = query.from_user
     packs = get_user_packs(user.id)
-    pack_title = next((t for n, t in packs if n == pack_name), pack_name)
+    # Optimization: Use dict lookup instead of Python generator expression for O(1) performance
+    pack_title = dict(packs).get(pack_name, pack_name)
 
     keyboard = InlineKeyboardMarkup(
         [
@@ -1602,7 +1635,8 @@ async def delete_pack_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE
     pack_name = query.data.replace("delconfirm_", "")
     user = query.from_user
     packs = get_user_packs(user.id)
-    pack_title = next((t for n, t in packs if n == pack_name), pack_name)
+    # Optimization: Use dict lookup instead of Python generator expression for O(1) performance
+    pack_title = dict(packs).get(pack_name, pack_name)
 
     delete_pack_from_db(user.id, pack_name)
 

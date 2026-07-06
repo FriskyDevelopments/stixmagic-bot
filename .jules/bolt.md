@@ -51,3 +51,6 @@
 ## 2024-06-30 - Optimized image mask applying performance
 **Learning:** Found that applying a mask to an image using `Image.resize` and `ImageOps.invert` was doing redundant operations because the full size image was being resized twice. This significantly increased the processing time, particularly when working with larger input images.
 **Action:** Optimized the process by resizing the source image to the target dimensions *before* compositing it with the mask. This reduces the number of pixels processed during compositing.
+## 2024-07-03 - Dictionary Lookups vs Generator Expressions
+**Learning:** Found that using inline Python generator expressions with `next()` to find elements in small lists of tuples (e.g., `next((v for k_, v in items if k_ == k), default)`) is consistently slower than converting the list to a dictionary and performing an O(1) lookup (`dict(items).get(k, default)`). This is a codebase-specific anti-pattern in high-traffic handler flows.
+**Action:** Replace generator expression lookups on tuple lists with standard dictionary `.get()` method to reduce overhead and latency.
