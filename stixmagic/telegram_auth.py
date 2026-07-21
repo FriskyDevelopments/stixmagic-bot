@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import hashlib
 import hmac
 import json
@@ -10,6 +11,12 @@ from urllib.parse import parse_qsl
 class TelegramInitDataError(ValueError):
     """Raised when Telegram Mini App initData is missing or invalid."""
 
+
+
+@functools.lru_cache(maxsize=1)
+def _get_secret(bot_token: str) -> bytes:
+    """Cache the secret key derived from the bot token."""
+    return hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
 
 
 def _compute_hash(data: dict[str, str], bot_token: str) -> str:
@@ -23,9 +30,8 @@ def _compute_hash(data: dict[str, str], bot_token: str) -> str:
     Returns:
     	hex_digest (str): Lowercase hex digest of the HMAC-SHA256 verification hash.
     """
-    payload = {k: v for k, v in data.items() if k != "hash"}
-    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(payload.items()))
-    secret = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(data.items()) if k != "hash")
+    secret = _get_secret(bot_token)
     return hmac.new(secret, data_check_string.encode(), hashlib.sha256).hexdigest()
 
 

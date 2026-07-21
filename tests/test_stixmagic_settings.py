@@ -190,6 +190,9 @@ class TestAppSettingsProperties(unittest.TestCase):
             bot_mode="polling",
             webhook_url="",
             webhook_secret="",
+            app_env="test",
+            is_development=False,
+            telegram_token_source="TELEGRAM_BOT_TOKEN",
         )
         defaults.update(kwargs)
         return AppSettings(**defaults)
