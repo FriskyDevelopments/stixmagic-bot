@@ -54,3 +54,6 @@
 ## 2024-07-03 - Dictionary Lookups vs Generator Expressions
 **Learning:** Found that using inline Python generator expressions with `next()` to find elements in small lists of tuples (e.g., `next((v for k_, v in items if k_ == k), default)`) is consistently slower than converting the list to a dictionary and performing an O(1) lookup (`dict(items).get(k, default)`). This is a codebase-specific anti-pattern in high-traffic handler flows.
 **Action:** Replace generator expression lookups on tuple lists with standard dictionary `.get()` method to reduce overhead and latency.
+## 2024-07-04 - Cryptographic Derivation Caching in Auth Paths
+**Learning:** Found that generating an HMAC secret key from a constant bot token inside `_compute_hash` was unnecessarily repeating cryptographic (SHA256) operations on every single WebApp authentication request. This CPU overhead limits throughput on high-traffic auth paths.
+**Action:** Extract the secret key derivation into a separate helper and cache it (e.g., via `@functools.lru_cache(maxsize=1)`) since the bot token is constant for the lifetime of the process. Also minimize allocations by filtering keys explicitly in loops instead of constructing intermediate dictionaries.

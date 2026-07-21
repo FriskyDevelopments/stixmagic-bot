@@ -111,7 +111,11 @@ def _resolve_env(*names: str) -> str:
     Returns:
         str: The first non-empty trimmed value found for the given names, or an empty string if none are set.
     """
-    return next(filter(None, (os.environ.get(n, "").strip() for n in names)), "")
+    for n in names:
+        val = os.environ.get(n, "").strip()
+        if val:
+            return val
+    return ""
 
 
 def get_settings() -> AppSettings:
