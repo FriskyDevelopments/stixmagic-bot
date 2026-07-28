@@ -30,6 +30,21 @@ class BridgePlugin:
         self.event_log: list[dict[str, Any]] = []
 
     def handle_event(self, event: PluginEvent) -> HostResult:
+        try:
+            return self._handle_event_inner(event)
+        except Exception as exc:
+            # Fail closed: any unexpected error results in denial, never approval.
+            return HostResult(
+                ok=False,
+                request_id="plugin-error",
+                outcome="error",
+                message=f"Internal error — action denied: {exc}",
+                action=getattr(event, "kind", "unknown"),
+                actor_id=event.actor_id,
+                target_id=event.target_id,
+            )
+
+    def _handle_event_inner(self, event: PluginEvent) -> HostResult:
         request = self._to_action_request(event)
         if not request:
             return HostResult(

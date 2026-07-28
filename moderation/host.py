@@ -79,6 +79,18 @@ class ModerationHost:
         self._request_seq += 1
         request_id = f"mod-{self._request_seq:06d}"
 
+        try:
+            return self._process_inner(request_id, request)
+        except Exception as exc:
+            # Fail closed: any unexpected error results in denial, never approval.
+            return self._reject(
+                request_id,
+                request,
+                "error",
+                f"Internal error — action denied: {exc}",
+            )
+
+    def _process_inner(self, request_id: str, request: ActionRequest) -> HostResult:
         policy = self.action_registry.get(request.action)
         if not policy:
             return self._reject(request_id, request, "unknown_action", "Action is not registered")

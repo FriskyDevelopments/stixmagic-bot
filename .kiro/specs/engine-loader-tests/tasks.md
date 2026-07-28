@@ -64,7 +64,7 @@
     rather than crashing
   - _Requirements: 4.7_
 
-- [ ] 12. Test that moderation fails closed
+- [x] 12. Test that moderation fails closed
   - A check that errors, and a backend that is unreachable, must not approve
   - _Requirements: 5.1_
 
