@@ -5,7 +5,10 @@
     `docs/COVERAGE-BASELINE.md`
   - Fakes for the Telegram client and for `domain/media.py`'s conversion calls; a
     conftest guard that fails any test opening a socket
-  - Assert the existing 24 test files still pass unchanged
+  - Record the pre-existing failures in `docs/TEST-BASELINE.md` — the suite does
+    not collect cleanly today (missing `telegram_bot_token` and other settings).
+    Do not fix them and do not skip them; they are not your regression
+  - Your new tests must run in isolation, without depending on that baseline
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
 - [ ] 2. Test `generate_pack` for image and video

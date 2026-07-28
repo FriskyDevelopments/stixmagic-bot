@@ -30,7 +30,13 @@ shelling out to a real ffmpeg binary against a real file it did not create.
 
 1.1 `pytest` runs green with **no network** and no real Telegram client; a
     conftest guard fails any test that opens a socket.
-1.2 The existing 24 test files keep passing unchanged.
+1.2 The existing suite does **not** pass on a clean checkout — it needs
+    `telegram_bot_token` and other settings that are absent, so collection itself
+    errors. Record that baseline in `docs/TEST-BASELINE.md` (which files error,
+    which fail, and why) and treat it as pre-existing. Do not fix those tests,
+    do not delete or skip them, and do not treat them as your regression. Your
+    bar is: nothing that passed before stops passing, and your new tests pass in
+    isolation.
 1.3 Coverage is measured and reported for the in-scope modules; the baseline is
     recorded before new tests land.
 1.4 No test writes outside a pytest `tmp_path`.
