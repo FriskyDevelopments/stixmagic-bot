@@ -1,6 +1,6 @@
 # STIX Magic — engine, loaders and moderation tests: implementation plan
 
-- [ ] 1. Stand up the harness
+- [x] 1. Stand up the harness
   - Coverage reporting over the in-scope modules; record the baseline in
     `docs/COVERAGE-BASELINE.md`
   - Fakes for the Telegram client and for `domain/media.py`'s conversion calls; a
