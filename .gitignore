@@ -42,3 +42,4 @@ assets/processed/*
 assets/previews/*
 !assets/previews/.gitkeep
   
+logs/
