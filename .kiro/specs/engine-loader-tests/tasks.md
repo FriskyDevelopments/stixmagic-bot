@@ -44,7 +44,7 @@
   - `get_random_loader` only returns entries from `LOADERS`
   - _Requirements: 4.1, 4.2_
 
-- [ ] 8. Test loader lookup
+- [x] 8. Test loader lookup
   - `get_loader_by_name` returns `None` for unknown rather than raising, and is
     exact-match unless documented otherwise
   - `get_loader_for_context` is context-appropriate per known action, random for
