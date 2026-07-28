@@ -55,7 +55,7 @@
   - Every entry renders without raising, and output is escaped for its surface
   - _Requirements: 4.5_
 
-- [ ] 10. Test the loader controller
+- [x] 10. Test the loader controller
   - Advances and stops cleanly; cannot be started twice for the same context
   - _Requirements: 4.6_
 

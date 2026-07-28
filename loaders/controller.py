@@ -61,9 +61,12 @@ class LoaderController:
         self._stop_called: bool = False
 
     async def start(self) -> None:
-        """Spawn the background animation task (no-op if disabled)."""
+        """Spawn the background animation task (no-op if disabled or already running)."""
         if not self._config.loaders_enabled:
             logger.debug("[loader] disabled globally, skipping '%s'", self._loader["name"])
+            return
+        if self._task is not None:
+            logger.debug("[loader] already started '%s', ignoring duplicate start()", self._loader["name"])
             return
         self._task = asyncio.create_task(self._animate())
         logger.debug("[loader] started '%s'", self._loader["name"])
