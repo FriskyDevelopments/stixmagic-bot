@@ -68,7 +68,7 @@
   - A check that errors, and a backend that is unreachable, must not approve
   - _Requirements: 5.1_
 
-- [ ] 13. Test moderation verdicts
+- [x] 13. Test moderation verdicts
   - Each documented verdict produced by the condition described
   - _Requirements: 5.2_
 
