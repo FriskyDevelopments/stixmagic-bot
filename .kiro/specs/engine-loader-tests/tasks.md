@@ -39,7 +39,7 @@
   - Optional defaults are as documented, and no default is a shared mutable
   - _Requirements: 3.1, 3.2_
 
-- [ ] 7. Test the loader catalogue
+- [x] 7. Test the loader catalogue
   - Every `LOADERS` entry has the keys the renderer reads; no duplicate names
   - `get_random_loader` only returns entries from `LOADERS`
   - _Requirements: 4.1, 4.2_
