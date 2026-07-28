@@ -51,7 +51,7 @@
     unknown
   - _Requirements: 4.3, 4.4_
 
-- [ ] 9. Test loader rendering
+- [x] 9. Test loader rendering
   - Every entry renders without raising, and output is escaped for its surface
   - _Requirements: 4.5_
 
