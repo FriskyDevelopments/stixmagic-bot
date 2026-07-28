@@ -12,7 +12,7 @@
 
 set -uo pipefail
 exec python3 - "$@" <<'PY'
-import json, sys, urllib.request, urllib.error, urllib.parse, datetime, pathlib
+import json, sys, urllib.request, urllib.error, urllib.parse, datetime, pathlib, time, random
 
 TOKEN = pathlib.Path.home() / ".aws/sso/cache/kiro-auth-token.json"
 API = "https://management.us-east-1.kiro.dev/Get-Usage-Limits"
@@ -33,10 +33,26 @@ req = urllib.request.Request(
         "Accept": "application/json",
     },
 )
-try:
-    body = urllib.request.urlopen(req, timeout=30).read().decode()
-except urllib.error.HTTPError as e:
-    sys.exit(f"{e.code} from Get-Usage-Limits: {e.read().decode(errors='replace')[:200]}")
+
+# Several burns run at once and each checks the balance in preflight and around
+# every task, so this endpoint gets bursty and answers 429. A throttled read says
+# nothing about the account — retry rather than let a burn die on it.
+body = None
+last = ""
+for attempt in range(5):
+    try:
+        body = urllib.request.urlopen(req, timeout=30).read().decode()
+        break
+    except urllib.error.HTTPError as e:
+        last = f"{e.code} from Get-Usage-Limits: {e.read().decode(errors='replace')[:200]}"
+        if e.code not in (429, 500, 502, 503, 504):
+            sys.exit(last)
+    except Exception as e:                      # transport hiccup, same treatment
+        last = f"{type(e).__name__}: {e}"
+    time.sleep(2 * (attempt + 1) + random.random())
+
+if body is None:
+    sys.exit(last)
 
 if "--json" in sys.argv:
     print(json.dumps(json.loads(body), indent=2))
