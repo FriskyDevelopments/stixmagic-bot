@@ -59,7 +59,7 @@
   - Advances and stops cleanly; cannot be started twice for the same context
   - _Requirements: 4.6_
 
-- [ ] 11. Test loader configuration
+- [x] 11. Test loader configuration
   - Documented defaults when config is absent; a malformed config falls back
     rather than crashing
   - _Requirements: 4.7_
