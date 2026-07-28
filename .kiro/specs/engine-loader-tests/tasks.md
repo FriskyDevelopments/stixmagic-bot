@@ -77,7 +77,7 @@
     assert it, so the harness can never become a bypass
   - _Requirements: 5.3_
 
-- [ ] 15. Test the menus
+- [x] 15. Test the menus
   - Every menu builds a keyboard Telegram would accept: callback data within the
     length limit, no empty rows, no duplicate callback data
   - Menu text with user content is escaped

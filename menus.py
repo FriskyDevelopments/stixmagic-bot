@@ -155,7 +155,7 @@ def build_keyboard(menu_id):
     nav_row = []
     if menu["parent"]:
         nav_row.append(InlineKeyboardButton("◂ BACK", callback_data=f"nav:{menu['parent']}"))
-    if menu_id != "home":
+    if menu_id != "home" and menu.get("parent") != "home":
         nav_row.append(InlineKeyboardButton("✦ HOME", callback_data="nav:home"))
     if nav_row:
         rows.append(nav_row)
