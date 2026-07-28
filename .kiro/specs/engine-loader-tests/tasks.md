@@ -72,7 +72,7 @@
   - Each documented verdict produced by the condition described
   - _Requirements: 5.2_
 
-- [ ] 14. Pin the dev harness shut
+- [x] 14. Pin the dev harness shut
   - `moderation/dev_harness.py` cannot be enabled in a production configuration;
     assert it, so the harness can never become a bypass
   - _Requirements: 5.3_

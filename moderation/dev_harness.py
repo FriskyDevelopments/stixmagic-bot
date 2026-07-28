@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import os
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from .host import ModerationHost
 from .plugin import BridgePlugin, PluginEvent
 from .wizard import WizardInterpreter
+
+
+class DevHarnessProductionError(RuntimeError):
+    """Raised when DevHarness is instantiated in a production environment."""
 
 
 @dataclass(slots=True)
@@ -23,9 +28,21 @@ class MockGroup:
 
 
 class DevHarness:
-    """Dev/test simulator with replayable event history."""
+    """Dev/test simulator with replayable event history.
+
+    Cannot be instantiated when APP_ENV is ``"production"``.  Raises
+    :class:`DevHarnessProductionError` to prevent the harness from ever
+    acting as a moderation bypass in a live environment.
+    """
 
     def __init__(self, group: MockGroup, host: ModerationHost | None = None):
+        app_env = os.environ.get("APP_ENV", "").strip().lower()
+        if app_env == "production":
+            raise DevHarnessProductionError(
+                "DevHarness cannot be enabled in a production environment "
+                "(APP_ENV='production')."
+            )
+
         self.group = group
         self.host = host or ModerationHost()
         self.plugin = BridgePlugin(self.host, WizardInterpreter())
