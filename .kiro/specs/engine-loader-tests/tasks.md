@@ -15,7 +15,7 @@
   - Documented `PackGenerationResult` for each, with the right `sticker_format`
   - _Requirements: 2.1_
 
-- [ ] 3. Test engine failure paths
+- [x] 3. Test engine failure paths
   - Unsupported `media_type` returns the documented failure, not a raise and not
     a silently-static sticker
   - A conversion failure surfaces as an actionable result, never an unhandled

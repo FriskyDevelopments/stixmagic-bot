@@ -221,6 +221,7 @@ whether task $N is DONE or BLOCKED."
   # — wait it out and re-run the task rather than ending the burn.
   T0="$(date +%s)"
   ATTEMPT=1
+  GAVE_UP_TRANSIENT=0
   while :; do
     MARK="$(wc -c < "$RUN_LOG")"
     run_capped "$TASK_TIMEOUT" kiro-cli chat \
@@ -247,6 +248,7 @@ whether task $N is DONE or BLOCKED."
     fi
     if [ "$ATTEMPT" -ge "$RATE_LIMIT_RETRIES" ]; then
       log "task $N still failing on $REASON after $RATE_LIMIT_RETRIES attempts — giving up on this task"
+      GAVE_UP_TRANSIENT=1
       break
     fi
     log "task $N hit $REASON (attempt $ATTEMPT/$RATE_LIMIT_RETRIES) — waiting ${RATE_LIMIT_COOLDOWN}s"
@@ -266,6 +268,13 @@ whether task $N is DONE or BLOCKED."
   elif is_done "$N"; then
     STATUS="done"
     log "task $N DONE in ${ELAPSED}s"
+  elif [ "${GAVE_UP_TRANSIENT:-0}" = 1 ]; then
+    # Not a blocker. Nothing is missing and no owner action is owed — the service
+    # simply would not answer. The checkbox stays open and a later pass retries.
+    # Calling this "blocked" would report a throttle as an owner-gated dependency
+    # and put work in the blockers list that nobody needs to act on.
+    STATUS="transient"
+    log "task $N gave up after ${ELAPSED}s on $REASON — retries on the next pass"
   else
     STATUS="blocked"
     log "task $N finished in ${ELAPSED}s but checkbox still open → treating as BLOCKED"

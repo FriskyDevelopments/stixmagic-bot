@@ -15,19 +15,20 @@ class StixCoreEngine:
     """Platform-agnostic STIX generation engine used by platform adapters."""
 
     async def generate_pack(self, payload: PackGenerationInput) -> PackGenerationResult | None:
-        sticker_file = payload.file_bytes
-        sticker_format = "video" if payload.media_type == "video" else "static"
-
         if payload.media_type == "image":
-            converted = await async_convert_to_sticker(sticker_file)
-            if converted:
-                sticker_file = converted
+            converted = await async_convert_to_sticker(payload.file_bytes)
+            if converted is None:
+                return None
+            return PackGenerationResult(sticker_file=converted, sticker_format="static")
         elif payload.media_type == "video":
-            converted = await async_convert_video_to_sticker(sticker_file)
-            if converted:
-                sticker_file = converted
-
-        return PackGenerationResult(sticker_file=sticker_file, sticker_format=sticker_format)
+            converted = await async_convert_video_to_sticker(payload.file_bytes)
+            if converted is None:
+                return None
+            return PackGenerationResult(sticker_file=converted, sticker_format="video")
+        else:
+            # Unsupported media_type — return None rather than raising or
+            # silently producing a static sticker.
+            return None
 
     def generate_reactions(self, payload: ReactionRenderInput) -> ReactionRenderResult:
         like_mark = " ◀" if payload.user_reaction == "like" else ""
