@@ -83,7 +83,7 @@
   - Menu text with user content is escaped
   - _Requirements: 6.1, 6.2_
 
-- [ ] 16. Add the credential guard and record coverage
+- [x] 16. Add the credential guard and record coverage
   - Scan tracked source for credential-shaped literals; fail with file and line
   - `docs/COVERAGE.md` with per-module before/after
   - _Requirements: 7.1, 7.2, 1.3_
