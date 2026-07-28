@@ -27,7 +27,7 @@
     generation, including its failure path
   - _Requirements: 2.4_
 
-- [ ] 5. Test engine input edge cases and escaping
+- [x] 5. Test engine input edge cases and escaping
   - Empty, truncated and oversized `file_bytes` each handled explicitly
   - User-supplied text is HTML-escaped exactly once — assert a payload containing
     `&amp;` does not become `&amp;amp;`

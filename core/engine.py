@@ -10,11 +10,28 @@ from core.types import (
 )
 from domain.media import async_convert_to_sticker, async_convert_video_to_sticker
 
+# Minimum bytes for a valid image or video file (magic number + minimal header).
+_MIN_FILE_BYTES = 8
+# Telegram Bot API max file download is 20 MB.
+_MAX_FILE_BYTES = 20 * 1024 * 1024
+
 
 class StixCoreEngine:
     """Platform-agnostic STIX generation engine used by platform adapters."""
 
     async def generate_pack(self, payload: PackGenerationInput) -> PackGenerationResult | None:
+        # --- Input validation for file_bytes edge cases (2.5) ---
+        data = payload.file_bytes.getvalue()
+        if len(data) == 0:
+            # Empty file — nothing to convert.
+            return None
+        if len(data) < _MIN_FILE_BYTES:
+            # Truncated file — too small to be a valid image/video.
+            return None
+        if len(data) > _MAX_FILE_BYTES:
+            # Oversized file — exceeds platform upload limit.
+            return None
+
         if payload.media_type == "image":
             converted = await async_convert_to_sticker(payload.file_bytes)
             if converted is None:
