@@ -22,7 +22,7 @@
     exception and never a success
   - _Requirements: 2.2, 2.3_
 
-- [ ] 4. Test reaction rendering
+- [x] 4. Test reaction rendering
   - `render_reaction` / `ReactionRenderResult` follows the same contract as pack
     generation, including its failure path
   - _Requirements: 2.4_
