@@ -11,7 +11,7 @@
   - Your new tests must run in isolation, without depending on that baseline
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
-- [ ] 2. Test `generate_pack` for image and video
+- [x] 2. Test `generate_pack` for image and video
   - Documented `PackGenerationResult` for each, with the right `sticker_format`
   - _Requirements: 2.1_
 

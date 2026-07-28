@@ -12,7 +12,7 @@
 
 set -uo pipefail
 exec python3 - "$@" <<'PY'
-import json, sys, urllib.request, urllib.error, urllib.parse, datetime, pathlib, time, random
+import json, sys, urllib.request, urllib.error, urllib.parse, datetime, pathlib, time, random, subprocess
 
 TOKEN = pathlib.Path.home() / ".aws/sso/cache/kiro-auth-token.json"
 API = "https://management.us-east-1.kiro.dev/Get-Usage-Limits"
@@ -22,9 +22,27 @@ try:
 except FileNotFoundError:
     sys.exit(f"no auth token at {TOKEN} — open Kiro.app and sign in")
 
-expires = tok.get("expiresAt", "")
-if expires and expires < datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"):
-    print(f"warning: desktop token expired at {expires}; open Kiro.app to refresh", file=sys.stderr)
+# The desktop token is refreshed by Kiro.app, and only while it is running. If
+# the app has quit the token goes stale within the hour and every balance read
+# starts failing — which takes the overage guard, and therefore the burn, with
+# it. Relaunch the app and wait for it to write a fresh token.
+def _expired(t):
+    return t.get("expiresAt", "") < datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+if _expired(tok):
+    print("desktop token expired — relaunching Kiro.app to refresh it", file=sys.stderr)
+    subprocess.run(["open", "-a", "Kiro"], capture_output=True)
+    for _ in range(20):
+        time.sleep(3)
+        try:
+            fresh = json.loads(TOKEN.read_text())
+        except Exception:
+            continue
+        if not _expired(fresh):
+            tok = fresh
+            break
+    else:
+        sys.exit("desktop token still expired after relaunching Kiro.app; sign in there")
 
 req = urllib.request.Request(
     API + "?" + urllib.parse.urlencode({"profileArn": tok["profileArn"]}),
