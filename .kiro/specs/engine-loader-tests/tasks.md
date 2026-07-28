@@ -33,7 +33,7 @@
     `&amp;` does not become `&amp;amp;`
   - _Requirements: 2.5, 2.6_
 
-- [ ] 6. Test the contracts
+- [x] 6. Test the contracts
   - Every input dataclass rejects a missing required field rather than producing
     a half-built object
   - Optional defaults are as documented, and no default is a shared mutable
