@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import functools
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
@@ -118,6 +119,7 @@ def _resolve_env(*names: str) -> str:
     return ""
 
 
+@functools.lru_cache(maxsize=1)
 def get_settings() -> AppSettings:
     """
     Builds an AppSettings instance by reading and normalizing configuration from environment variables.
