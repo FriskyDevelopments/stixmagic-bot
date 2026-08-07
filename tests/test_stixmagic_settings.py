@@ -24,6 +24,7 @@ class TestGetSettings(unittest.TestCase):
         if 'TELEGRAM_BOT_TOKEN' not in env and 'BOT_TOKEN_DEV' not in env and 'BOT_TOKEN_PROD' not in env:
             env['TELEGRAM_BOT_TOKEN'] = 'dummy'
         with patch.dict(os.environ, env, clear=True):
+            mod.get_settings.cache_clear()
             return mod.get_settings()
 
     def test_basic_settings_loaded(self):

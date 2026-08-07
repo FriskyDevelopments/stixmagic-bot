@@ -57,3 +57,6 @@
 ## 2024-07-04 - Cryptographic Derivation Caching in Auth Paths
 **Learning:** Found that generating an HMAC secret key from a constant bot token inside `_compute_hash` was unnecessarily repeating cryptographic (SHA256) operations on every single WebApp authentication request. This CPU overhead limits throughput on high-traffic auth paths.
 **Action:** Extract the secret key derivation into a separate helper and cache it (e.g., via `@functools.lru_cache(maxsize=1)`) since the bot token is constant for the lifetime of the process. Also minimize allocations by filtering keys explicitly in loops instead of constructing intermediate dictionaries.
+## 2024-07-05 - AppSettings Redundant Environment Parsing
+**Learning:** Found that `stixmagic.settings.get_settings()` is called frequently across the codebase (e.g. on every database operation or request). By not caching the result, the application repeatedly parses environment variables and allocates new `AppSettings` dataclass instances, creating unnecessary overhead and memory allocation churn.
+**Action:** Always use `@functools.lru_cache(maxsize=1)` on global configuration factory functions to ensure settings are only parsed once per process lifecycle, preventing redundant allocations on high-traffic paths.
