@@ -27,14 +27,38 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder="static")
 
-SETTINGS = get_settings()
-API_KEY = SETTINGS.stixmagic_api_key
+# Configuration is resolved on first use instead of during module import. This keeps
+# lightweight helpers importable in tooling and tests while production routes still
+# fail closed when required secrets are absent.
+SETTINGS = None
+API_KEY = ""
 PAGE_SIZE = 20
-if SETTINGS.webhook_secret:
-    app.secret_key = SETTINGS.webhook_secret
-else:
-    app.secret_key = os.urandom(32).hex()
+# ``None`` means derive origins from settings; tests and embedding applications may
+# provide a frozenset explicitly for deterministic CORS behavior.
+_MINIAPP_CORS_ORIGINS: frozenset[str] | None = None
+app.secret_key = os.urandom(32).hex()
 moderation_harness = create_default_harness()
+
+
+def _get_settings():
+    """Resolve and cache application settings on first request/use."""
+    global SETTINGS, API_KEY
+    if SETTINGS is None:
+        SETTINGS = get_settings()
+        API_KEY = SETTINGS.stixmagic_api_key
+        if SETTINGS.webhook_secret:
+            app.secret_key = SETTINGS.webhook_secret
+    return SETTINGS
+
+
+def _configured_api_key() -> str:
+    """Return the configured API key, or an empty value when configuration is absent."""
+    if API_KEY:
+        return API_KEY
+    try:
+        return _get_settings().stixmagic_api_key
+    except ValueError:
+        return ""
 
 
 def _normalize_origin(url: str) -> str:
@@ -55,33 +79,36 @@ def _normalize_origin(url: str) -> str:
     return url.rstrip("/")
 
 
-_MINIAPP_CORS_ORIGINS = frozenset(
-    origin
-    for origin in (
-        _normalize_origin(SETTINGS.public_base_url),
-        _normalize_origin(SETTINGS.miniapp_url),
-    )
-    if origin
-)
-
-if not _MINIAPP_CORS_ORIGINS:
-    logger.warning(
-        "CORS for miniapp routes is disabled: neither SETTINGS.public_base_url "
-        "nor SETTINGS.miniapp_url are set. Consider setting STIXMAGIC_PUBLIC_BASE_URL."
+def _miniapp_cors_origins() -> frozenset[str]:
+    """Return the currently configured and normalized Mini App origins."""
+    if _MINIAPP_CORS_ORIGINS is not None:
+        return _MINIAPP_CORS_ORIGINS
+    settings = _get_settings()
+    return frozenset(
+        origin
+        for origin in (
+            _normalize_origin(settings.public_base_url),
+            _normalize_origin(settings.miniapp_url),
+        )
+        if origin
     )
 
 
 def get_db():
     """
-    Open a SQLite connection to the configured database path.
+    Open a SQLite connection to the configured database path and ensure its schema.
 
     Returns:
-        sqlite3.Connection: A connection to SETTINGS.database_path with `row_factory` set to `sqlite3.Row`.
+        sqlite3.Connection: A connection to the configured database path with
+        `row_factory` set to `sqlite3.Row`.
     """
-    conn = sqlite3.connect(SETTINGS.database_path)
+    conn = sqlite3.connect(_get_settings().database_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA synchronous=NORMAL;")
+    from infra.db import ensure_schema
+
+    ensure_schema(conn)
     return conn
 
 
@@ -92,7 +119,7 @@ def _settings_str(name: str, default: str = "") -> str:
     Returns:
         The SETTINGS.<name> value if it exists and is a string, otherwise `default`.
     """
-    value = getattr(SETTINGS, name, default)
+    value = getattr(_get_settings(), name, default)
     return value if isinstance(value, str) else default
 
 
@@ -141,7 +168,11 @@ def add_headers(response):
     origin = _normalize_origin(request.headers.get("Origin", ""))
 
     if is_miniapp_route:
-        if origin and origin in _MINIAPP_CORS_ORIGINS:
+        try:
+            allowed_origins = _miniapp_cors_origins()
+        except ValueError:
+            allowed_origins = frozenset()
+        if origin and origin in allowed_origins:
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Vary"] = "Origin"
     else:
@@ -177,7 +208,7 @@ def require_api_key(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         key = request.headers.get("X-API-Key")
-        if not API_KEY or key != API_KEY:
+        if not _configured_api_key() or key != _configured_api_key():
             return err(
                 "Valid API key required. Pass it as X-API-Key header.",
                 401,
@@ -227,7 +258,7 @@ def require_miniapp_auth(f):
     def decorated(*args, **kwargs):
         init_data = _telegram_init_data_from_request()
         try:
-            session = validate_init_data(init_data, SETTINGS.telegram_bot_token)
+            session = validate_init_data(init_data, _get_settings().telegram_bot_token)
         except TelegramInitDataError as exc:
             return err(str(exc), 401, "miniapp_unauthorized")
 
@@ -440,7 +471,7 @@ def miniapp_packs():
     """
     uid = g.miniapp_user_id
 
-    raw_token = SETTINGS.telegram_bot_token
+    raw_token = _get_settings().telegram_bot_token
     token_match = re.search(r"\d+:[A-Za-z0-9_-]{35,}", raw_token)
     if token_match:
         try:
@@ -659,7 +690,7 @@ def health():
             "status": "ok",
             "service": PRODUCT_NAME,
             "version": API_VERSION,
-            "bot_mode": SETTINGS.bot_mode,
+            "bot_mode": _get_settings().bot_mode,
             "db": "ok" if db_ok else "error",
             "timestamp": int(time.time()),
         }

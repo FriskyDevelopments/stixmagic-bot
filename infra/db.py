@@ -96,15 +96,23 @@ def _seed_initial_data(c: sqlite3.Cursor) -> None:
     pass
 
 
+def ensure_schema(conn: sqlite3.Connection) -> None:
+    """Create tables and indexes on an already-open connection."""
+    cursor = conn.cursor()
+    _create_tables(cursor)
+    _create_indices(cursor)
+    conn.commit()
+
+
 def init_db() -> None:
     """Create tables if they don't exist."""
     conn = _connect()
-    c = conn.cursor()
-    _create_tables(c)
-    _create_indices(c)
-    _seed_initial_data(c)
-    conn.commit()
-    conn.close()
+    try:
+        ensure_schema(conn)
+        _seed_initial_data(conn.cursor())
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # ── User Settings ─────────────────────────────────────────────

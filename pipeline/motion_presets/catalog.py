@@ -104,7 +104,7 @@ _ORBIT = MotionPreset(
     duration_ms=2000,
     alpha_safe=True,
     overlay_safe=True,
-    sticker_safe=True,
+    sticker_safe=False,
     recommended_categories=["particle", "symbol", "icon", "frame"],
     parameter_schema={
         "radius_px":   {"type": "number", "default": 30, "min": 10, "max": 120},
@@ -122,7 +122,7 @@ _GLITCH = MotionPreset(
     name="Glitch",
     loopable=True,
     duration_ms=500,
-    alpha_safe=True,
+    alpha_safe=False,
     overlay_safe=True,
     sticker_safe=True,
     recommended_categories=["letter", "number", "signal", "icon"],

@@ -1,37 +1,98 @@
-"""
-pipeline/motion_presets/__init__.py – MagicStix motion preset registry.
+"""Public motion-preset model and canonical registry.
 
-Defines the MotionPreset dataclass and the built-in preset catalogue.
-Presets are deliberately abstract: they describe *what* an animation
-should feel like and constrain which asset categories and export formats
-are appropriate.  Actual rendering is delegated to the exporters layer.
-
-Built-in presets
-----------------
-pulse, glow, wobble, bounce, orbit, glitch, sparkle,
-particle_burst, laser_sweep, signal_flash
+The package-level API uses the documented ``duration``/``notes`` schema.  The
+legacy ``pipeline.motion_presets.preset`` and ``catalog`` modules remain
+available for older integrations that use ``duration_ms``/``description``.
+Keeping the registries separate prevents import order from changing the public
+contract.
 """
 
-# ── Catalog helpers ───────────────────────────────────────────
-# catalog.py and preset.py provide a dict-based preset registry that wraps
-# the dataclass above.  Both APIs are exposed from this package.
-try:
-    from .catalog import PRESETS
-    from .catalog import get_preset as _catalog_get_preset
-    from .preset import MotionPreset
+from __future__ import annotations
 
-    PRESET_REGISTRY = PRESETS
-    BUILTIN_PRESETS = list(PRESETS.values())
-except ImportError:
-    pass
+from dataclasses import dataclass, field
+from typing import Any
+
+
+@dataclass
+class MotionPreset:
+    """Describe a reusable animation effect in seconds."""
+
+    id: str
+    name: str
+    loopable: bool = True
+    duration: float = 2.0
+    alpha_safe: bool = True
+    overlay_safe: bool = True
+    sticker_safe: bool = True
+    recommended_categories: list[str] = field(default_factory=list)
+    parameter_schema: dict[str, Any] = field(default_factory=dict)
+    notes: str = ""
+
+    def is_recommended_for(self, category: str) -> bool:
+        return not self.recommended_categories or category in self.recommended_categories
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "loopable": self.loopable,
+            "duration": self.duration,
+            "alpha_safe": self.alpha_safe,
+            "overlay_safe": self.overlay_safe,
+            "sticker_safe": self.sticker_safe,
+            "recommended_categories": list(self.recommended_categories),
+            "parameter_schema": dict(self.parameter_schema),
+            "notes": self.notes,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "MotionPreset":
+        return cls(
+            id=data["id"],
+            name=data["name"],
+            loopable=data.get("loopable", True),
+            duration=float(data.get("duration", 2.0)),
+            alpha_safe=data.get("alpha_safe", True),
+            overlay_safe=data.get("overlay_safe", True),
+            sticker_safe=data.get("sticker_safe", True),
+            recommended_categories=list(data.get("recommended_categories", [])),
+            parameter_schema=dict(data.get("parameter_schema", {})),
+            notes=data.get("notes", ""),
+        )
+
+
+_FALLBACK_SPECS = (
+    ("pulse", "Pulse", True, 0.8, True, True, True),
+    ("glow", "Glow", True, 1.2, True, True, True),
+    ("wobble", "Wobble", True, 0.6, True, False, True),
+    ("bounce", "Bounce", True, 0.7, True, False, True),
+    ("orbit", "Orbit", True, 2.0, True, True, False),
+    ("glitch", "Glitch", True, 0.5, False, True, True),
+    ("sparkle", "Sparkle", True, 1.5, True, True, True),
+    ("particle_burst", "Particle Burst", False, 1.0, True, True, False),
+    ("laser_sweep", "Laser Sweep", True, 1.0, True, True, True),
+    ("signal_flash", "Signal Flash", True, 0.4, True, True, True),
+)
+
+BUILTIN_PRESETS = [
+    MotionPreset(
+        id=preset_id,
+        name=name,
+        loopable=loopable,
+        duration=duration,
+        alpha_safe=alpha_safe,
+        overlay_safe=overlay_safe,
+        sticker_safe=sticker_safe,
+        notes=f"Built-in {name} motion preset.",
+    )
+    for preset_id, name, loopable, duration, alpha_safe, overlay_safe, sticker_safe in _FALLBACK_SPECS
+]
+PRESET_REGISTRY = {preset.id: preset for preset in BUILTIN_PRESETS}
 
 
 def get_preset(preset_id: str) -> MotionPreset | None:
-    """Return the MotionPreset with the given id, or None if not found."""
-    try:
-        return _catalog_get_preset(preset_id)
-    except KeyError:
-        return None
+    """Return a canonical preset by ID, or ``None`` when absent."""
+    return PRESET_REGISTRY.get(preset_id)
 
 
 def list_presets(
@@ -40,30 +101,17 @@ def list_presets(
     sticker_safe: bool | None = None,
     overlay_safe: bool | None = None,
 ) -> list[MotionPreset]:
-    """
-    Return presets filtered by optional criteria.
-
-    Parameters
-    ----------
-    category:
-        If provided, only return presets whose recommended_categories list
-        contains this category string, or whose list is empty (= all).
-    sticker_safe:
-        Filter by the sticker_safe flag when not None.
-    overlay_safe:
-        Filter by the overlay_safe flag when not None.
-    """
+    """Return canonical presets filtered by category and safety flags."""
     result = list(BUILTIN_PRESETS)
-
     if category is not None:
         result = [
-            p
-            for p in result
-            if not p.recommended_categories or category in p.recommended_categories
+            preset
+            for preset in result
+            if not preset.recommended_categories
+            or category in preset.recommended_categories
         ]
     if sticker_safe is not None:
-        result = [p for p in result if p.sticker_safe is sticker_safe]
+        result = [preset for preset in result if preset.sticker_safe is sticker_safe]
     if overlay_safe is not None:
-        result = [p for p in result if p.overlay_safe is overlay_safe]
-
+        result = [preset for preset in result if preset.overlay_safe is overlay_safe]
     return result
