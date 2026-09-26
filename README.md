@@ -1,5 +1,7 @@
 # 🪄 Stix Magic Bot
 
+[![PR Validation](https://github.com/FriskyDevelopments/stixmagic-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/FriskyDevelopments/stixmagic-bot/actions/workflows/ci.yml) [![Validate Repository](https://github.com/FriskyDevelopments/stixmagic-bot/actions/workflows/validate.yml/badge.svg)](https://github.com/FriskyDevelopments/stixmagic-bot/actions/workflows/validate.yml) ![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white) ![Telegram Bot](https://img.shields.io/badge/Telegram-Bot-26A5E4?logo=telegram&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
+
   > **Telegram sticker alchemy bot** — create, cut, and manage sticker packs with ease.
 
   **Bot:** [@stixmagicbot](https://t.me/stixmagicbot) &nbsp;|&nbsp; **Website:** [stixmagic.com](https://stixmagic.com)
@@ -100,6 +102,22 @@
   ---
 
   
+## Architecture
+
+`main.py` starts the python-telegram-bot application and the bundled Flask API (`api.py`) together. Both share one SQLite database.
+
+```mermaid
+flowchart LR
+  user([Telegram user]) <-->|commands · images · video| tg[Telegram Bot API]
+  tg <-->|polling or webhook<br/>TELEGRAM_BOT_MODE| bot[main.py<br/>python-telegram-bot v21<br/>menus.py · src/bot]
+  bot --> media[Media pipeline<br/>Pillow → WEBP · ffmpeg → WEBM<br/>/magic B&W mask cut]
+  bot --> stickers[Telegram sticker-set API<br/>create / add / delete packs]
+  bot <--> db[(SQLite<br/>STIXMAGIC_DB_PATH)]
+  mini([Mini App / API clients]) -->|X-API-Key or<br/>Telegram initData| api[api.py · Flask<br/>/api/* · static/]
+  api <--> db
+  bot -.-> plugins[src/plugins<br/>Truck Club plugin]
+```
+
 ## Runtime Boundaries
 
 The repository now separates two related responsibilities:
@@ -270,11 +288,13 @@ Runtime rejects ambiguous aliases. Set only one variable per setting.
 
 ### GitHub Actions
 
-The repository now uses three workflows:
+The repository uses these workflows:
 
 - `ci.yml` — runs on pull requests and pushes to `main`; installs dependencies, runs compile checks, and runs runtime unit checks without secrets.
 - `development.yml` — manual/on-branch development workflow that validates the development secret set against `APP_ENV=development`.
 - `production.yml` — manual production-prep workflow that validates production-only settings in protected environment context.
+- `validate.yml` — on pull requests and pushes to `main`; installs dependencies, checks the runtime summary and compiles the Python packages.
+- `deploy.yml` — legacy, manual-only notice that automatic deploy-on-push has been retired.
 
 ### Required GitHub Actions secrets
 
@@ -303,7 +323,6 @@ CI and the dev/prod workflows intentionally stop at safe validation and smoke te
 
 ## License
 
-  MIT
+Copyright (c) 2026 FriskyDevelopments. All rights reserved. See [LICENSE](LICENSE).
 
   ![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/FriskyDevelopments/stixmagic-bot?utm_source=oss&utm_medium=github&utm_campaign=FriskyDevelopments%2Fstixmagic-bot&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
-  
